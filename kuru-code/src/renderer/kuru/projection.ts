@@ -43,8 +43,6 @@ export interface ThreadProjectionSource {
   readonly branch: string | null;
   readonly createdAt: number;
   readonly updatedAt: number;
-  /** When each turn began, ms, by turn id: those known. */
-  readonly turnTimes: ReadonlyMap<number, number>;
 }
 
 const WAKES: Record<NonNullable<TurnHead["wake"]>, string> = {
@@ -216,7 +214,7 @@ export class ThreadProjector {
         ordinal += 1;
         continue;
       }
-      const began = source.turnTimes.get(entry.id) ?? clock + 1;
+      const began = entry.at ?? clock + 1;
       clock = began + (entry.ms ?? 0);
       const projected = this.turn(entry, threadId, began, ordinal, modelSelection, instanceId);
       ordinal += projected.items.length;

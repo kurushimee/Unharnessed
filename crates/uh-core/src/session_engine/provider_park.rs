@@ -254,7 +254,7 @@ pub fn quota_parked_final_error(abort: &str, resume_at_ms: u64, error: &str) -> 
 }
 
 /// ISO-8601 parse to epoch millis (RFC 3339 subset).
-fn parse_iso_millis(text: &str) -> Option<u64> {
+pub fn parse_iso_millis(text: &str) -> Option<u64> {
     let text = text.trim();
     let (date, time) = text.split_once('T')?;
     let date_parts: Vec<&str> = date.split('-').collect();

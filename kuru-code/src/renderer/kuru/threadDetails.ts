@@ -26,19 +26,12 @@ const detailsAtom = Atom.make<ReadonlyMap<string, EnvironmentThread>>(new Map())
 );
 
 const projectors = new Map<string, ThreadProjector>();
-/** When each turn of each thread began, as seen here, ms: Unharnessed's replay has no times. */
-const turnTimes = new Map<string, Map<number, number>>();
 let sources = new Map<string, ThreadProjectionSource>();
 
 function sourceFor(state: Store, threadId: string): ThreadProjectionSource | null {
   const shell = readShells().threadByKey.get(`${LOCAL_ENVIRONMENT_ID}:${threadId}`);
   const row = state.app?.threads.find((candidate) => candidate.id === threadId);
-  const times = turnTimes.get(threadId) ?? new Map<number, number>();
-  turnTimes.set(threadId, times);
   const now = Date.now();
-  for (const entry of state.chat.entries) {
-    if (entry.kind === "turn" && entry.state === "running" && !times.has(entry.id)) times.set(entry.id, now);
-  }
   const previous = sources.get(threadId);
   const next: ThreadProjectionSource = {
     threadId: ThreadId.make(threadId),
@@ -49,7 +42,6 @@ function sourceFor(state: Store, threadId: string): ThreadProjectionSource | nul
     branch: row?.branch ?? null,
     createdAt: row?.created ?? now,
     updatedAt: row?.updated ?? now,
-    turnTimes: times,
   };
   // The same source keeps the projection when only the conversation changed.
   if (
@@ -59,8 +51,7 @@ function sourceFor(state: Store, threadId: string): ThreadProjectionSource | nul
     previous.provider === next.provider &&
     previous.model === next.model &&
     previous.branch === next.branch &&
-    previous.createdAt === next.createdAt &&
-    previous.turnTimes.size === times.size
+    previous.createdAt === next.createdAt
   ) {
     return previous;
   }

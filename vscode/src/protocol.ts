@@ -321,7 +321,9 @@ export type TurnHead = {
   wake?: "bash" | "quota" | "goal";
   state: "running" | "done" | "cancelled" | "failed";
   error?: string;
-  /** How long it worked, once done; absent on a turn the agent replays. */
+  /** When it began, epoch ms: when the agent took it, or as its session file dates a replayed one. */
+  at?: number;
+  /** How long it worked, once done. */
   ms?: number;
   /** Where the agent goes back to send the prompt again, changed; absent when it cannot (an earlier agent's turn). */
   rewindTo?: string;

@@ -11,6 +11,7 @@ import { resolveThreadRouteTarget } from "~/threadRoutes";
 import { appProjectIdOf, startShellAtoms } from "./shells";
 import { startThreadDetails } from "./threadDetails";
 import { startProviders } from "./providers";
+import { startServerConfig } from "./serverConfig";
 
 function followRoute(router: AnyRouter): void {
   let last: string | null = null;
@@ -44,5 +45,6 @@ export function startKuru(router: AnyRouter): void {
   startShellAtoms();
   startThreadDetails();
   startProviders();
+  startServerConfig();
   followRoute(router);
 }

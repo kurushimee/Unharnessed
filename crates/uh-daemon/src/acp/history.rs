@@ -10,9 +10,10 @@
 //!   listed.
 //! - `session/load` (`mod.rs`) replays the session this process was started
 //!   on (`--resume`) as `session/update`s, one turn after the other: what
-//!   started it (`turnStart`, then the prompt's `user_message_chunk`s), what
-//!   the agent did (as it streamed live, without the reasoning's timing),
-//!   then how it ended (`turnEnd`).
+//!   started it (`turnStart`, with when it began, then the prompt's
+//!   `user_message_chunk`s), what the agent did (as it streamed live,
+//!   without the reasoning's timing), then how it ended (`turnEnd`, with how
+//!   long it worked), dated by the session file's entries.
 //! - `_unharnessed/sessions/delete` `{ sessionId }` removes a session's file
 //!   and its artifacts (the kernel's saved state). It answers `{}`, or is
 //!   refused with `-32602` and `data.details`: a session another process
@@ -173,6 +174,7 @@ pub(super) fn replay(entries: &[FileEntry], leaf: Option<&str>) -> Vec<Vec<AcpSe
     let mut replay = Replay::default();
     for entry in branch {
         replay.rewind_to = entry.parent_id().map(str::to_string);
+        replay.at = uh_core::session_engine::provider_park::parse_iso_millis(entry.timestamp());
         match entry {
             FileEntry::Message { message, .. } => replay.message(message),
             FileEntry::CustomMessage { payload, .. } => replay.custom(
@@ -191,6 +193,10 @@ pub(super) fn replay(entries: &[FileEntry], leaf: Option<&str>) -> Vec<Vec<AcpSe
                 });
             }
             _ => {}
+        }
+        // A message's date is where its turn has got to.
+        if matches!(entry, FileEntry::Message { .. } | FileEntry::CustomMessage { .. }) {
+            replay.last_at = replay.at.or(replay.last_at);
         }
     }
     replay.finish();
@@ -212,6 +218,11 @@ struct Replay {
     rewind_to: Option<String>,
     /// The next prompt was steered into the turn under way.
     steered: bool,
+    /// When the entry being read was written, epoch ms.
+    at: Option<u64>,
+    /// When the last turn began and when its latest message was written.
+    began: Option<u64>,
+    last_at: Option<u64>,
 }
 
 impl Replay {
@@ -368,12 +379,15 @@ impl Replay {
 
     fn open_turn(&mut self, wake: Option<&str>, rewind_to: Option<String>) {
         self.finish();
+        self.began = self.at;
+        self.last_at = self.at;
         let origin = if wake.is_some() { "wake" } else { "prompt" };
         self.turns.push(vec![info(&UnharnessedSessionMeta {
             turn_start: Some(UnharnessedTurnStartMeta {
                 origin: origin.to_string(),
                 wake: wake.map(str::to_string),
                 rewind_to,
+                at: self.began,
             }),
             ..Default::default()
         })]);
@@ -449,6 +463,10 @@ impl Replay {
                 turn_end: Some(UnharnessedTurnEndMeta {
                     state: state.to_string(),
                     error,
+                    ms: self
+                        .began
+                        .zip(self.last_at)
+                        .map(|(began, last)| last.saturating_sub(began)),
                 }),
                 ..Default::default()
             }));

@@ -142,7 +142,8 @@ function toWireThread(row: ThreadRow): OrchestrationV2ThreadShell {
     activeRunId: working ? runId : null,
     activityRunStartedAt: working ? utc(started) : null,
     activityRunStatus: working ? "running" : null,
-    status: working ? "running" : row.failed ? "failed" : "idle",
+    // T3 Code's server says "idle" only for a thread that never ran.
+    status: working ? "running" : row.failed ? "failed" : "completed",
     lastError: row.failed && !working ? "The turn failed." : null,
     pendingRuntimeRequest: null,
     latestVisibleMessage: null,

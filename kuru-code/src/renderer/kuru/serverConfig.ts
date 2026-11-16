@@ -79,7 +79,21 @@ function buildConfig(
     threadFind: true,
     threadLinkMetadata: true,
   });
-  return { ...config, providers, keybindings };
+  // Unharnessed's providers are its own instances, each on while it is connected; T3 Code's
+  // screens read that from the settings' instances, which kuru code never saves.
+  const providerInstances = Object.fromEntries(
+    providers.map((provider) => [provider.instanceId, { driver: provider.driver, enabled: provider.enabled }]),
+  );
+  // The model a new thread starts on is the one Unharnessed opens a session on.
+  const current = providers.flatMap((provider) =>
+    provider.models.filter((model) => model.isDefault).map((model) => ({ instanceId: provider.instanceId, model: model.slug })),
+  )[0];
+  return {
+    ...config,
+    settings: { ...config.settings, providerInstances, defaultModelSelection: current ?? null },
+    providers,
+    keybindings,
+  };
 }
 
 const NO_PROVIDERS: ReadonlyArray<ServerProvider> = [];
@@ -155,7 +169,8 @@ export function startServerConfig(): void {
   });
   void loadKeybindings().catch((error) => console.error("kuru: the keybindings did not load", error));
   useStore.subscribe((state, previous) => {
-    if (state.app !== previous.app || state.providers !== previous.providers) refresh(state);
+    if (state.app !== previous.app || state.providers !== previous.providers || state.session !== previous.session)
+      refresh(state);
   });
 }
 
@@ -174,7 +189,11 @@ const encodeSettings = Schema.encodeSync(ServerSettings);
 export async function updateServerSettings(patch: ServerSettingsPatch): Promise<ServerSettings> {
   const current = readServerConfig()?.settings ?? DEFAULT_SERVER_SETTINGS;
   const next = applyServerSettingsPatch(current, patch);
-  const encoded = encodeSettings(next) as Record<string, unknown>;
+  const {
+    providerInstances: _instances,
+    defaultModelSelection: _model,
+    ...encoded
+  } = encodeSettings(next) as Record<string, unknown>;
   await invoke("serverSettings.set", { settings: encoded });
   storedSettings = encoded;
   refresh(useStore.getState());

@@ -157,6 +157,10 @@ pub struct UnharnessedTurnEndMeta {
     /// Why it failed.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub error: Option<String>,
+    /// How long it worked, ms: from its first entry to its last, as the
+    /// session file dated them.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub ms: Option<u64>,
 }
 
 /// A reasoning block of the streaming assistant message opened or closed.
@@ -187,6 +191,10 @@ pub struct UnharnessedTurnStartMeta {
     /// (`_unharnessed/session/rewind`) lets it be sent again, changed.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub rewind_to: Option<String>,
+    /// When it began, epoch ms, on a turn `session/load` replays: its first
+    /// entry's date in the session file.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub at: Option<u64>,
 }
 
 /// What a session command answered (the `/goal` status, `/autonomous

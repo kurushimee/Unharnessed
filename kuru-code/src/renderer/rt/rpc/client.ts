@@ -10,6 +10,7 @@ import * as Effect from "effect/Effect";
 import * as Schema from "effect/Schema";
 import * as Stream from "effect/Stream";
 import * as Queue from "effect/Queue";
+import * as RpcSchema from "effect/rpc/RpcSchema";
 
 import { rpcBridge, type RpcEvent } from "~/bridge";
 import type { WsRpcProtocolClient } from "./protocol";
@@ -148,8 +149,10 @@ export function subscribe<TTag extends EnvironmentStreamRpcTag>(
         return yield* new EnvironmentRpcUnavailableError({ environmentId: "local", message: `No RPC ${tag}.` });
       }
       const payload = yield* Effect.orDie(Schema.encodeUnknownEffect(rpc.payloadSchema)(input));
-      const decodeValue = Schema.decodeUnknownSync(rpc.successSchema);
-      const decodeError = Schema.decodeUnknownSync(rpc.errorSchema);
+      // A stream's values and its failure decode by the schemas its stream marker holds.
+      const streamSchema = RpcSchema.isStreamSchema(rpc.successSchema) ? rpc.successSchema : null;
+      const decodeValue = Schema.decodeUnknownSync(streamSchema?.success ?? rpc.successSchema);
+      const decodeError = Schema.decodeUnknownSync(streamSchema?.error ?? rpc.errorSchema);
       listen();
       const id = `s${++nextStreamId}`;
       streamListeners.set(id, (event) => {

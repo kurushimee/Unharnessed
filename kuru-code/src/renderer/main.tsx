@@ -1,9 +1,10 @@
 // The window's entry, as T3 Code's main.tsx and appInit.tsx: its router on
 // hash history (desktop), over kuru code's connection to its main process.
 import "@fontsource-variable/inter";
-import { createHashHistory, RouterProvider } from "@tanstack/react-router";
+import { createHashHistory } from "@tanstack/react-router";
 import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
+import { AppRoot } from "./AppRoot";
 import { post } from "./bridge";
 import { startAppServices } from "./appInit";
 import { getRouter } from "./router";
@@ -25,7 +26,7 @@ void router.load().then(() => {
     },
   }).render(
     <StrictMode>
-      <RouterProvider router={router} />
+      <AppRoot router={router} />
     </StrictMode>,
   );
 });

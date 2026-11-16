@@ -340,6 +340,7 @@ async fn run_prompt_turn(
             TurnStart::Wake(wake) => Some(wake.kind().to_string()),
         },
         rewind_to,
+        at: None,
     };
     session
         .producer()

@@ -80,7 +80,8 @@ function toProvider(
   const models: ServerProviderModel[] = choices.map((choice) => ({
     slug: modelSlug(choice),
     name: choice.name || choice.id,
-    isCustom: provider?.local !== undefined,
+    // T3 Code's custom models are ones the user lists in its settings; these are the provider's own.
+    isCustom: false,
     ...(choice.value === current ? { isDefault: true } : {}),
     capabilities: choice.value === current && descriptors.length > 0 ? { optionDescriptors: descriptors } : null,
   }));

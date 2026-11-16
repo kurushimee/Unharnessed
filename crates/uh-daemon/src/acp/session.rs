@@ -328,6 +328,7 @@ async fn subscribe_engine_events(
                                     origin: "steer".to_string(),
                                     wake: None,
                                     rewind_to,
+                                    at: None,
                                 }),
                                 ..Default::default()
                             }),

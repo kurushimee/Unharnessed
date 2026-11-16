@@ -1,4 +1,5 @@
 {
+ "AppRoot.tsx": "apps/web/src/AppRoot.tsx",
  "appearanceContrast.ts": "apps/web/src/appearanceContrast.ts",
  "appearanceFonts.ts": "apps/web/src/appearanceFonts.ts",
  "assets/assetUrls.ts": "apps/web/src/assets/assetUrls.ts",

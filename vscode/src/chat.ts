@@ -53,13 +53,14 @@ type Meta = {
   promptTurnId?: number;
   phase?: "event" | "responseBoundary" | "terminalQuiescence";
   outcome?: "result" | "error";
-  turnStart?: { origin: "prompt" | "wake" | "steer"; wake?: keyof typeof WAKES; rewindTo?: string };
+  /** `at`: when a replayed turn began, epoch ms. */
+  turnStart?: { origin: "prompt" | "wake" | "steer"; wake?: keyof typeof WAKES; rewindTo?: string; at?: number };
   command?: { name: string; text: string; severity: string };
   thinking?: { state: "start" | "end"; messageId: string };
   /** The provider cut the agent's answer at the output limit; it went on. */
   outputLimit?: boolean;
-  /** How a turn of a loaded conversation ended. */
-  turnEnd?: { state: "done" | "cancelled" | "failed"; error?: string };
+  /** How a turn of a loaded conversation ended, and how long it worked, ms. */
+  turnEnd?: { state: "done" | "cancelled" | "failed"; error?: string; ms?: number };
   compaction?: { tokensBefore?: number; summary?: string };
   goal?: { status: string; objective?: string; createdAt?: number; updatedAt?: number; lastReason?: string };
   ipython?: { attachments?: unknown[]; errorEname?: string };
@@ -551,7 +552,7 @@ export class Chat {
     };
     this.images.set(id, images);
     this.sent = turn;
-    this.began.set(turn, Date.now());
+    this.started(turn);
     if (edit !== undefined) {
       const error = await this.rewind(sessionId, edit);
       if (run !== this.run) return;
@@ -638,6 +639,13 @@ export class Chat {
     if (!this.busy) this.requeue();
     this.next();
     this.changed();
+  }
+
+  /** A turn begins here, now. */
+  private started(turn: Turn): void {
+    const now = Date.now();
+    this.began.set(turn, now);
+    turn.at = now;
   }
 
   /** How long a turn that began here worked, once done. */
@@ -732,6 +740,7 @@ export class Chat {
     if (this.loading) {
       const turn: Turn = { kind: "turn", id: this.nextId++, wake: start.wake, state: "running", items: [] };
       if (start.rewindTo !== undefined) turn.rewindTo = start.rewindTo;
+      if (start.at !== undefined) turn.at = start.at;
       this.turns.set(agentTurn, turn);
       this.entries.push(turn);
       return;
@@ -744,7 +753,7 @@ export class Chat {
       this.turns.set(agentTurn, this.sent);
       this.live = this.sent;
       // It may have waited for a turn the agent started.
-      this.began.set(this.sent, Date.now());
+      this.started(this.sent);
       if (start.rewindTo !== undefined) {
         this.sent.rewindTo = start.rewindTo;
         this.dirtyHeads.add(this.sent.id);
@@ -756,7 +765,7 @@ export class Chat {
     const turn: Turn = { kind: "turn", id: this.nextId++, wake: start.wake, state: "running", items: [] };
     this.turns.set(agentTurn, turn);
     this.live = turn;
-    this.began.set(turn, Date.now());
+    this.started(turn);
     // Our prompt waits for it: the agent's turn shows above it.
     const at = this.sent ? this.entries.indexOf(this.sent) : -1;
     if (at >= 0) {
@@ -792,7 +801,7 @@ export class Chat {
     if (this.sent === before) this.sent = turn;
     this.turns.set(agentTurn, turn);
     this.live = turn;
-    this.began.set(turn, Date.now());
+    this.started(turn);
     this.streaming = undefined;
     this.entries.push(turn);
     this.dirtyHeads.add(turn.id);
@@ -896,6 +905,7 @@ export class Chat {
   /** Reasoning opening and closing, a command's answer, a cut answer, a compaction, a goal's change; the end of a turn the agent started or replayed. */
   private info(turn: Turn, meta: Meta): void {
     if (meta.turnEnd) {
+      if (meta.turnEnd.state === "done" && meta.turnEnd.ms !== undefined) turn.ms = meta.turnEnd.ms;
       this.end(turn, meta.turnEnd.state, meta.turnEnd.error);
       return;
     }
