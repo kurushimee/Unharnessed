@@ -419,7 +419,7 @@ function KeyDialog({
   return (
     <Dialog open onOpenChange={(open) => !open && onCancel()}>
       <DialogPopup>
-        <form onSubmit={submit}>
+        <form className="flex min-h-0 flex-col" onSubmit={submit}>
           <DialogHeader>
             <DialogTitle>{provider.name} API key</DialogTitle>
             {replaces ? <DialogDescription>{replaces}</DialogDescription> : null}

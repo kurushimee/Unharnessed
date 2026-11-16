@@ -198,7 +198,7 @@ export function LocalServerDialog({
   return (
     <Dialog open onOpenChange={(next) => !next && onCancel()}>
       <DialogPopup className="max-w-xl">
-        <form onSubmit={submit}>
+        <form className="flex min-h-0 flex-col" onSubmit={submit}>
           <DialogHeader>
             <DialogTitle>{provider ? provider.name : "Add a local model"}</DialogTitle>
             <DialogDescription>Ollama, LM Studio, llama.cpp or vLLM, on this machine.</DialogDescription>

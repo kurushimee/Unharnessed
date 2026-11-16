@@ -169,7 +169,7 @@ export function AgentSettingsPanel() {
           return (
             <SettingsSection key={group.id} id={group.id} title={group.label}>
               {group.help ? (
-                <p className="px-3 pt-3 text-xs text-muted-foreground sm:px-4">{group.help}</p>
+                <p className="px-3 py-2.5 text-xs text-muted-foreground sm:px-4">{group.help}</p>
               ) : null}
               {group.fields.map((field) => (
                 <FieldRow

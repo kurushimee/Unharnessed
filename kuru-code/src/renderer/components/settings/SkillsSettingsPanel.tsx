@@ -207,7 +207,7 @@ function NewSkillDialog({ actions, onDone }: { actions: SettingsActions; onDone:
   return (
     <Dialog open onOpenChange={(open) => !open && onDone()}>
       <DialogPopup>
-        <form onSubmit={submit}>
+        <form className="flex min-h-0 flex-col" onSubmit={submit}>
           <DialogHeader>
             <DialogTitle>New skill</DialogTitle>
             <DialogDescription>Written to the agent's skills folder, then opened.</DialogDescription>
@@ -267,7 +267,7 @@ function Folders({ folders, actions }: { folders: ReadonlyArray<string>; actions
 
   return (
     <SettingsSection {...searchableSetting("skill-folders")} title="Folders">
-      <p className="px-3 pt-3 text-xs text-muted-foreground sm:px-4">
+      <p className="px-3 py-2.5 text-xs text-muted-foreground sm:px-4">
         The agent reads ~/.unharnessed/skills, ~/.agents/skills, and the workspace's
         .unharnessed/skills and .agents/skills. It also reads the folders added here.
       </p>

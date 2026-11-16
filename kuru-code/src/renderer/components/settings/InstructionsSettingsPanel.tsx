@@ -81,7 +81,7 @@ export function InstructionsSettingsPanel() {
           </Button>
         }
       >
-        <p className="px-3 pt-3 text-xs text-muted-foreground sm:px-4">
+        <p className="px-3 py-2.5 text-xs text-muted-foreground sm:px-4">
           A group's text joins the agent's instructions whenever it runs on one of the group's
           models. Changes apply from the next conversation.
         </p>
@@ -219,7 +219,7 @@ function GroupDialog({
             </DialogFooter>
           </>
         ) : (
-          <form onSubmit={submit}>
+          <form className="flex min-h-0 flex-col" onSubmit={submit}>
             <DialogHeader>
               <DialogTitle>{index === null ? "New group" : "Group"}</DialogTitle>
             </DialogHeader>

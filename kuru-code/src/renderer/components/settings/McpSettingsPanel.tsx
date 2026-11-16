@@ -98,7 +98,7 @@ export function McpSettingsPanel() {
           </Button>
         }
       >
-        <p className="px-3 pt-3 text-xs text-muted-foreground sm:px-4">
+        <p className="px-3 py-2.5 text-xs text-muted-foreground sm:px-4">
           The agent calls MCP servers' tools from its Python kernel. Changes apply when it restarts.
         </p>
         {yours.length === 0 && services.length === 0 ? (
@@ -339,7 +339,9 @@ function Marketplace({
             <SettingsRow
               key={service.id}
               title={service.label}
-              description={service.description}
+              {...(service.description
+                ? { description: <span className="line-clamp-2">{service.description}</span> }
+                : {})}
               {...(blocked ? { status: service.hint ?? "Cannot be added" } : {})}
               control={
                 <Button
@@ -397,7 +399,7 @@ function TokenDialog({
   return (
     <Dialog open onOpenChange={(open) => !open && onDone()}>
       <DialogPopup>
-        <form onSubmit={submit}>
+        <form className="flex min-h-0 flex-col" onSubmit={submit}>
           <DialogHeader>
             <DialogTitle>Add {service.label}</DialogTitle>
             {service.description ? <DialogDescription>{service.description}</DialogDescription> : null}
@@ -528,7 +530,7 @@ function ServerDialog({
             </DialogFooter>
           </>
         ) : (
-          <form onSubmit={submit}>
+          <form className="flex min-h-0 flex-col" onSubmit={submit}>
             <DialogHeader>
               <DialogTitle>{id === undefined ? "Add an MCP server" : id}</DialogTitle>
               {server?.hint && server.status !== "not_connected" ? (

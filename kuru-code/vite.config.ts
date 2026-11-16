@@ -51,9 +51,13 @@ function bundledModules(): Plugin {
   };
 }
 
+const { version } = JSON.parse(readFileSync(resolve(root, "package.json"), "utf8")) as { version: string };
+
 export default defineConfig({
   root,
   base: "./",
+  // T3 Code's branding.ts reads the version from here.
+  define: { "import.meta.env.APP_VERSION": JSON.stringify(version) },
   plugins: [
     extensionPanel(),
     // T3 Code's file routes (src/renderer/routes), and its React Compiler.
