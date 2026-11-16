@@ -253,9 +253,8 @@ interface MessagesTimelineProps {
   } | null;
   workflowOpening?: WorkflowOpening | null;
   supportsConversationRollback: boolean;
-  threadStartCheckpointReady?: boolean;
-  availableRevertTurnCounts?: ReadonlySet<number> | undefined;
-  onRevertToTurnCount: (targetTurnCount: number, messageId: MessageId) => void;
+  rewindableMessageIds?: ReadonlySet<MessageId> | undefined;
+  onRewindToMessage: (messageId: MessageId) => void;
   isRevertingCheckpoint: boolean;
   onImageExpand: (preview: ExpandedImagePreview) => void;
   onFileOpen?: (attachment: ChatFileAttachment) => void;
@@ -339,9 +338,8 @@ const ConversationTimeline = memo(function ConversationTimeline({
   parentThreadLink = null,
   workflowOpening = null,
   supportsConversationRollback,
-  threadStartCheckpointReady = false,
-  availableRevertTurnCounts,
-  onRevertToTurnCount,
+  rewindableMessageIds,
+  onRewindToMessage,
   isRevertingCheckpoint,
   onImageExpand,
   onFileOpen = NOOP_OPEN_ATTACHMENT,
@@ -625,8 +623,7 @@ const ConversationTimeline = memo(function ConversationTimeline({
     activeTurnStartedAt,
     turnDiffSummaries,
     supportsConversationRollback,
-    threadStartCheckpointReady,
-    availableRevertTurnCounts,
+    rewindableMessageIds,
     toolCallVisibility,
     revealedMessageId,
   });
@@ -976,7 +973,7 @@ const ConversationTimeline = memo(function ConversationTimeline({
     skills,
     runs,
     activeThreadEnvironmentId,
-    onRevertToTurnCount,
+    onRewindToMessage,
     findActive,
     onImageExpand,
     onFileOpen,

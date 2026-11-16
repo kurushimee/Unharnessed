@@ -54,7 +54,7 @@ export interface TimelineRowSharedState {
   skills: ReadonlyArray<ServerProviderSkill>;
   runs: ReadonlyArray<HandoffTimelineRun>;
   activeThreadEnvironmentId: EnvironmentId;
-  onRevertToTurnCount: (targetTurnCount: number, messageId: MessageId) => void;
+  onRewindToMessage: (messageId: MessageId) => void;
   onAppFullscreenChange: (rowId: string, fullscreen: boolean) => void;
   findActive: boolean;
   onImageExpand: (preview: ExpandedImagePreview) => void;

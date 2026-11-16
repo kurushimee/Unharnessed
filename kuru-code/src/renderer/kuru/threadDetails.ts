@@ -75,10 +75,34 @@ function update(state: Store): void {
     projectors.set(threadId, projector);
   }
   const projection = projector.project(state.chat, source);
+  const rewindable = appAtomRegistry.get(rewindableAtom);
+  if (rewindable.threadId !== threadId || rewindable.ids !== projector.rewindableMessageIds) {
+    appAtomRegistry.set(rewindableAtom, { threadId, ids: projector.rewindableMessageIds });
+  }
   const key = threadKey({ environmentId: LOCAL_ENVIRONMENT_ID, threadId: ThreadId.make(threadId) });
   if (current.get(key)?.projection === projection) return;
   appAtomRegistry.set(detailsAtom, new Map([[key, { environmentId: LOCAL_ENVIRONMENT_ID, projection }]]));
 }
+
+/** The thread's turn whose prompt is `messageId`, when the agent can go back to before it. */
+export function rewindableTurnOf(threadId: string, messageId: string): number | undefined {
+  return projectors.get(threadId)?.rewindableTurn(messageId);
+}
+
+const NO_MESSAGES: ReadonlySet<string> = new Set();
+/** The shown thread's prompts the agent can go back to before: they come with the conversation, not its items. */
+const rewindableAtom = Atom.make<{ readonly threadId: string | null; readonly ids: ReadonlySet<string> }>({
+  threadId: null,
+  ids: NO_MESSAGES,
+}).pipe(Atom.keepAlive, Atom.withLabel("kuru:rewindable-messages"));
+
+/** The thread's prompts the agent can go back to before, the same set while they stay the same. */
+export const rewindableMessageIdsAtom = Atom.family((threadId: string | null) =>
+  Atom.make((get) => {
+    const shown = get(rewindableAtom);
+    return threadId !== null && shown.threadId === threadId ? shown.ids : NO_MESSAGES;
+  }),
+);
 
 let started = false;
 /** Keeps the projections up with the conversation, for the window's life. */
@@ -108,3 +132,4 @@ export const threadStateFamily = Atom.family((key: string) =>
 export const environmentThreadDetails = createEnvironmentThreadDetailAtoms((environmentId, threadId) =>
   threadStateFamily(threadKey({ environmentId, threadId })),
 );
+

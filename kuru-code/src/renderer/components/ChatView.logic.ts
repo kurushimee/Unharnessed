@@ -1,9 +1,7 @@
-import { type OrchestrationV2ProviderTurn, type RunAttemptId } from "~/contracts";
 import { deriveLatestThreadRun, deriveThreadRuntime } from "~/rt/state/threadExecution";
 import { COMPACT_COMMAND_PATTERN } from "~/rt/state/contextWindow";
 import { derivePendingBackgroundWork } from "~/shared/orchestrationV2PendingBackgroundWork";
 import { latestUnheldRun, usageLimitRunPresentedAsLatest } from "~/shared/orchestrationV2ThreadError";
-import * as Option from "effect/Option";
 import type { SetStateAction } from "react";
 import { applyClaudePromptEffortPrefix, resolvePromptInjectedEffort } from "~/shared/model";
 import { getProviderModelCapabilities } from "../providerModels";
@@ -13,7 +11,6 @@ import {
   type AssetCreateUrlInput,
   type AssetCreateUrlResult,
   type ChatFileAttachment,
-  type CommandId,
   type EnvironmentId,
   isProviderDriverKind,
   type MessageId,
@@ -40,12 +37,9 @@ import {
   type DraftId,
   type DraftThreadState,
 } from "../composerDraftStore";
-import { appAtomRegistry } from "../rpc/atomRegistry";
-import { environmentThreadDetails } from "../state/threads";
 import { stripInlineContextReferences } from "~/lib/composerContextReferences";
 import { reviewCommentContextLabel } from "../lib/composerContextRecords";
 import type { ComposerDispatchMode } from "~/rt/state/composerDispatch";
-import type { DraftThreadEnvMode } from "../composerDraftStore";
 import { type ComposerSubmissionIntent } from "../composer-logic";
 import type { ReviewCommentContext } from "../reviewCommentContext";
 import { derivePhase, type TimelineEntry } from "../session-logic";
@@ -57,14 +51,6 @@ import {
 
 type ThreadProjection = EnvironmentThread["projection"];
 type ThreadStructureRow = ThreadStructure["visibleTurnItems"][number];
-
-interface ProactivePanelObservation {
-  threadKey: string;
-  runningTurnId: RunId | null | undefined;
-  targetKey: string | null | undefined;
-  userActionTurnId: RunId | null;
-  userActionRevision: number;
-}
 
 export function shouldDockDraftHeroForSubmission(input: {
   isDraftHeroState: boolean;
@@ -399,24 +385,6 @@ export { readFileAsDataUrl } from "../lib/imageCompression";
 
 export { resolveSendEnvMode } from "~/shared/projectSettings";
 
-export function resolveBackgroundDraftWorkspaceOptions(input: {
-  envMode: DraftThreadEnvMode;
-  branch: string | null;
-  startFromOrigin: boolean;
-}): {
-  envMode: DraftThreadEnvMode;
-  branch: string | null;
-  worktreePath: null;
-  startFromOrigin: boolean;
-} {
-  return {
-    envMode: input.envMode,
-    branch: input.branch,
-    worktreePath: null,
-    startFromOrigin: input.envMode === "worktree" && input.startFromOrigin,
-  };
-}
-
 export function cloneComposerImageForRetry(
   image: ComposerImageAttachment,
 ): ComposerImageAttachment {
@@ -567,87 +535,6 @@ export function getStartedThreadModelChangeBlockReason(input: {
     title: "Start a new chat to switch providers",
     description: "This thread does not support switching providers after it has started.",
   };
-}
-
-export async function waitForRevertedMessage(
-  threadRef: ScopedThreadRef,
-  turnCount: number,
-  requestId: CommandId,
-  revert: () => Promise<void>,
-  timeoutMs = 120_000,
-): Promise<void> {
-  const threadAtom = environmentThreadDetails.stateAtom(threadRef);
-  const readProjection = () => Option.getOrNull(appAtomRegistry.get(threadAtom).data);
-  const initial = readProjection();
-  const providerThreadId = initial?.thread.activeProviderThreadId;
-  const initialProviderThread = initial?.providerThreads.find(
-    (providerThread) => providerThread.id === providerThreadId,
-  );
-  const initialProviderThreadIds = new Set(initial?.providerThreads.map((thread) => thread.id));
-  // Paging can omit the source run. Rollback commits the entire settled suffix atomically.
-  const witness = initial?.runs.reduce<(typeof initial.runs)[number] | undefined>((latest, run) => {
-    if (
-      run.ordinal <= turnCount ||
-      (run.status !== "completed" &&
-        run.status !== "interrupted" &&
-        run.status !== "failed" &&
-        run.status !== "cancelled")
-    )
-      return latest;
-    return latest === undefined || run.ordinal > latest.ordinal ? run : latest;
-  }, undefined);
-  if (witness === undefined) {
-    throw new Error("The thread has changed. Select a message to rewind again.");
-  }
-  return new Promise<void>((resolve, reject) => {
-    let settled = false;
-    let accepted = false;
-    let unsubscribe = () => {};
-    let timeout: ReturnType<typeof globalThis.setTimeout> | undefined;
-    const finish = (error?: unknown) => {
-      if (settled) return;
-      settled = true;
-      if (timeout !== undefined) globalThis.clearTimeout(timeout);
-      unsubscribe();
-      if (error !== undefined) reject(error);
-      else resolve();
-    };
-    const inspect = () => {
-      const thread = readProjection();
-      if (!thread) return;
-      const failure = thread.thread.rollbackFailure;
-      if (failure?.requestId === requestId) {
-        finish(new Error(failure.message));
-        return;
-      }
-      if (
-        accepted &&
-        thread.providerThreads.some(
-          (providerThread) =>
-            (providerThread.id === providerThreadId ||
-              // Claude resets to a fresh root session when rewinding to thread start.
-              (turnCount === 0 &&
-                providerThread.ownerNodeId === null &&
-                providerThread.appThreadId === initial?.thread.id &&
-                providerThread.providerInstanceId === initialProviderThread?.providerInstanceId &&
-                !initialProviderThreadIds.has(providerThread.id))) &&
-            providerThread.lastRunOrdinal === (turnCount === 0 ? null : turnCount),
-        ) &&
-        thread.runs.some((run) => run.id === witness.id && run.status === "rolled_back")
-      )
-        finish();
-    };
-    unsubscribe = appAtomRegistry.subscribe(threadAtom, inspect);
-    timeout = globalThis.setTimeout(() => {
-      finish(new Error("Timed out waiting for the thread to rewind."));
-    }, timeoutMs);
-    Promise.resolve()
-      .then(revert)
-      .then(() => {
-        accepted = true;
-        inspect();
-      }, finish);
-  });
 }
 
 export interface LocalDispatchSnapshot {
@@ -1068,44 +955,3 @@ export function deriveThreadPendingBackgroundTasks(projection: ThreadStructure |
   ];
 }
 
-/**
- * Run ordinals the conversation can be reverted to: those whose provider turn belongs to the
- * active provider thread, plus 0 for the thread start. Empty without a live provider session
- * on the thread's selected instance.
- */
-export function deriveAvailableRevertTurnCounts(projection: ThreadStructure | null) {
-  const available = new Set<number>();
-  const providerThread = projection?.providerThreads.find(
-    (candidate) => candidate.id === projection.thread.activeProviderThreadId,
-  );
-  if (
-    !providerThread?.providerSessionId ||
-    providerThread.providerInstanceId !== projection?.thread.modelSelection.instanceId
-  )
-    return available;
-  available.add(0);
-  const attemptsById = new Map(projection.attempts.map((attempt) => [attempt.id, attempt]));
-  const providerTurnsById = new Map<
-    OrchestrationV2ProviderTurn["id"],
-    OrchestrationV2ProviderTurn
-  >();
-  const latestTurnByAttempt = new Map<RunAttemptId, OrchestrationV2ProviderTurn>();
-  for (const turn of projection.providerTurns) {
-    providerTurnsById.set(turn.id, turn);
-    if (turn.runAttemptId === null) continue;
-    const latest = latestTurnByAttempt.get(turn.runAttemptId);
-    if (latest === undefined || turn.ordinal > latest.ordinal) {
-      latestTurnByAttempt.set(turn.runAttemptId, turn);
-    }
-  }
-  for (const run of projection.runs) {
-    if (run.activeAttemptId === null) continue;
-    const attempt = attemptsById.get(run.activeAttemptId);
-    const providerTurn =
-      latestTurnByAttempt.get(run.activeAttemptId) ??
-      (attempt?.providerTurnId == null ? undefined : providerTurnsById.get(attempt.providerTurnId));
-    // A ready file checkpoint alone cannot restore the provider conversation.
-    if (providerTurn?.providerThreadId === providerThread.id) available.add(run.ordinal);
-  }
-  return available;
-}

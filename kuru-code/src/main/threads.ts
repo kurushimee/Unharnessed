@@ -153,6 +153,13 @@ export class Threads {
     conversation?.chat.send(text, images, undefined, now);
   }
 
+  /** The thread `id` back to before its turn `turn`'s prompt; why not, when it cannot. */
+  async rewind(id: string, turn: number): Promise<string | undefined> {
+    const conversation = this.openByWindowId(id);
+    if (!conversation) return "the thread is not open.";
+    return conversation.chat.rewindTo(turn);
+  }
+
   /** Stops the running turn of the thread `id`, open on screen or not. */
   cancel(id: string): void {
     this.openByWindowId(id)?.chat.cancel();

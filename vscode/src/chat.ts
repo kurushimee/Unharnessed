@@ -324,6 +324,26 @@ export class Chat {
     this.next();
   }
 
+  /**
+   * Back to before turn `id`'s prompt now, as sending it edited does first:
+   * the agent goes back and the turns from it on leave the conversation. The
+   * desktop app's rewind (kuru code), which puts the prompt back itself; why
+   * not, when it cannot.
+   */
+  async rewindTo(id: number): Promise<string | undefined> {
+    const sessionId = this.session.sessionId;
+    if (!sessionId) return "the thread has no session.";
+    if (this.busy) return "a turn is running: stop it first.";
+    const run = this.run;
+    const error = await this.rewind(sessionId, id);
+    if (error) return error;
+    if (run !== this.run) return "the thread changed meanwhile.";
+    const at = this.entries.findIndex((entry) => entry.id === id);
+    if (at >= 0) this.entries.splice(at);
+    this.post({ type: "chat", chat: this.current });
+    return undefined;
+  }
+
   /** A sent prompt back in the message box, to be changed and sent again; or a waiting one, held meanwhile. */
   edit(id: number): void {
     const waiting = this.queue.find((message) => message.id === id && !message.quiet);

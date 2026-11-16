@@ -1,12 +1,9 @@
 import {
-  CommandId,
   type EnvironmentId,
   type ScopedThreadRef,
   type ThreadId,
   PROVIDER_SEND_TURN_MAX_ATTACHMENTS,
 } from "~/contracts";
-import { squashAtomCommandFailure, type AtomCommandResult } from "~/rt/state/runtime";
-import { findRevertCheckpoint } from "../../session-logic";
 import { type ChatMessage } from "../../types";
 import { randomUUID } from "~/lib/utils";
 import {
@@ -20,7 +17,6 @@ import {
   type ComposerSendSnapshot,
   readFileAsDataUrl,
   prepareRevertedMessageAttachments,
-  waitForRevertedMessage,
 } from "../ChatView.logic";
 import { readPreparedConnection } from "../../state/session";
 import { recallableComposerPrompt } from "./composerPromptHistory";
@@ -50,27 +46,13 @@ export function draftSendState(routeKey: string) {
 export async function rewindToMessage(input: {
   readonly message: ChatMessage;
   readonly environmentId: EnvironmentId;
-  readonly routeThreadRef: ScopedThreadRef;
-  readonly threadId: ThreadId;
-  readonly turnCount: number;
-  readonly restoreFiles: boolean;
-  readonly checkpoint: ReturnType<typeof findRevertCheckpoint>;
   readonly draftTarget: ScopedThreadRef | DraftId;
   readonly composerHasPendingAttachments: boolean;
   readonly createAssetUrl: Parameters<
     typeof prepareRevertedMessageAttachments
   >[0]["createAssetUrl"];
-  readonly revertThreadCheckpoint: (value: {
-    environmentId: EnvironmentId;
-    input: {
-      commandId: CommandId;
-      threadId: ThreadId;
-      turnCount: number;
-      restoreFiles: boolean;
-      checkpointId?: string;
-      scopeId?: string;
-    };
-  }) => Promise<AtomCommandResult<unknown, unknown>>;
+  /** Takes the conversation back to before the message; rejects with why not. */
+  readonly rewind: () => Promise<void>;
 }): Promise<
   | { readonly error: string; readonly prompt?: never }
   | { readonly error: null; readonly prompt: string }
@@ -96,22 +78,7 @@ export async function rewindToMessage(input: {
     ) {
       throw new Error("Make room for this message's attachments in the composer before rewinding.");
     }
-    const commandId = CommandId.make(randomUUID());
-    await waitForRevertedMessage(input.routeThreadRef, input.turnCount, commandId, async () => {
-      const result = await input.revertThreadCheckpoint({
-        environmentId,
-        input: {
-          commandId,
-          threadId: input.threadId,
-          turnCount: input.turnCount,
-          restoreFiles: input.restoreFiles,
-          ...(input.checkpoint === undefined
-            ? {}
-            : { checkpointId: input.checkpoint.id, scopeId: input.checkpoint.scopeId }),
-        },
-      });
-      if (result._tag === "Failure") throw squashAtomCommandFailure(result);
-    });
+    await input.rewind();
     const currentPrompt = store.getComposerDraft(draftTarget)?.prompt ?? "";
     const restoredPrompt = recallableComposerPrompt(message.text);
     const nextPrompt =

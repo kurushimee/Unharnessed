@@ -462,6 +462,8 @@ async function start(): Promise<void> {
       threads.send(String(id), cwd, String(text ?? ""), Array.isArray(images) ? images : [], now === true);
       return null;
     },
+    // T3 Code's rewind: back to before a prompt, which goes back to the message box.
+    "threads.rewind": async ({ id, turn }) => (await threads.rewind(String(id), Number(turn))) ?? null,
     "threads.cancel": ({ id }) => {
       threads.cancel(String(id));
       return null;

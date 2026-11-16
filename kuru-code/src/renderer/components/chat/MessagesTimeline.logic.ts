@@ -23,7 +23,6 @@ import {
   workEntryHiddenByToolCallVisibility,
 } from "~/rt/work-log/presentation";
 import {
-  deriveRevertTurnCountByUserMessageId,
   formatDuration,
   isStreamingMessageTextUpdate,
   isStreamingTurnItemTextUpdate,
@@ -578,7 +577,8 @@ type MessagesTimelineRowContent =
       showAssistantCopyButton: boolean;
       assistantCopyStreaming: boolean;
       assistantTurnDiffSummary?: TurnDiffSummary | undefined;
-      revertTurnCount?: number | undefined;
+      /** The agent can go back to before this prompt. */
+      rewindable?: boolean | undefined;
       /** Another of your messages follows directly, so the two sit closer together. */
       groupedWithNext?: boolean;
       /** Another of your messages sits directly above, so the joined corners tighten. */
@@ -1505,8 +1505,8 @@ export function deriveMessagesTimelineRows(input: {
   activeTurnStartedAt?: string | null;
   turnDiffSummaries: ReadonlyArray<TurnDiffSummary>;
   supportsConversationRollback: boolean;
-  threadStartCheckpointReady?: boolean;
-  availableRevertTurnCounts?: ReadonlySet<number> | undefined;
+  /** The prompts the agent can go back to before. */
+  rewindableMessageIds?: ReadonlySet<MessageId> | undefined;
   toolCallVisibility?: ToolCallVisibility;
   revealedMessageId?: MessageId | null;
 }): MessagesTimelineRow[] {
@@ -1531,15 +1531,6 @@ export function deriveMessagesTimelineRows(input: {
     }
   }
   const unsettledRunId = deriveUnsettledRunId(input.latestRun ?? null, input.runningRunId ?? null);
-  const revertTurnCountByUserMessageId = input.supportsConversationRollback
-    ? deriveRevertTurnCountByUserMessageId({
-        timelineEntries: input.timelineEntries,
-        checkpoints: input.turnDiffSummaries,
-        threadStartCheckpointReady: input.threadStartCheckpointReady === true,
-        unsettledRunId,
-        availableRevertTurnCounts: input.availableRevertTurnCounts,
-      })
-    : new Map<MessageId, number>();
   const nextRows: MessagesTimelineRow[] = [];
   const terminalAssistantMessageIds = deriveTerminalAssistantMessageIds(timelineEntries);
   const failedRunIds = failedTimelineRunIds(timelineEntries, input.latestRun ?? null);
@@ -2186,10 +2177,10 @@ export function deriveMessagesTimelineRows(input: {
         timelineEntry.message.role === "assistant"
           ? turnDiffSummaryByAssistantMessageId.get(timelineEntry.message.id)
           : undefined,
-      revertTurnCount:
-        timelineEntry.message.role === "user"
-          ? revertTurnCountByUserMessageId.get(timelineEntry.message.id)
-          : undefined,
+      rewindable:
+        timelineEntry.message.role === "user" &&
+        input.supportsConversationRollback &&
+        input.rewindableMessageIds?.has(timelineEntry.message.id) === true,
     });
   }
 
@@ -2375,7 +2366,7 @@ function replaceStreamingMessageRows(
     expandedAttemptIds: previousExpandedAttempts,
     expandedWorkGroupIds: previousExpandedGroups,
     pendingApprovalRequestIds: previousPendingApprovalRequestIds,
-    availableRevertTurnCounts: previousAvailableRevertTurnCounts,
+    rewindableMessageIds: previousRewindableMessageIds,
     ...previousContext
   } = previous.input;
   const {
@@ -2386,7 +2377,7 @@ function replaceStreamingMessageRows(
     expandedAttemptIds,
     expandedWorkGroupIds,
     pendingApprovalRequestIds,
-    availableRevertTurnCounts,
+    rewindableMessageIds,
     ...context
   } = input;
   // Shell/checkpoint selectors rebuild summaries per event; compare contents.
@@ -2398,7 +2389,7 @@ function replaceStreamingMessageRows(
     !shallow(previousExpandedAttempts, expandedAttemptIds) ||
     !shallow(previousExpandedGroups, expandedWorkGroupIds) ||
     !shallow(previousPendingApprovalRequestIds, pendingApprovalRequestIds) ||
-    !shallow(previousAvailableRevertTurnCounts, availableRevertTurnCounts) ||
+    !shallow(previousRewindableMessageIds, rewindableMessageIds) ||
     !sameCheckpointSummaries(previousCheckpoints, turnDiffSummaries)
   ) {
     return null;
@@ -2609,7 +2600,7 @@ function isRowUnchanged(a: MessagesTimelineRow, b: MessagesTimelineRow): boolean
         a.showAssistantCopyButton === bm.showAssistantCopyButton &&
         a.assistantCopyStreaming === bm.assistantCopyStreaming &&
         a.assistantTurnDiffSummary === bm.assistantTurnDiffSummary &&
-        a.revertTurnCount === bm.revertTurnCount &&
+        a.rewindable === bm.rewindable &&
         a.groupedWithNext === bm.groupedWithNext &&
         a.groupedWithPrevious === bm.groupedWithPrevious &&
         a.continuesSteer === bm.continuesSteer

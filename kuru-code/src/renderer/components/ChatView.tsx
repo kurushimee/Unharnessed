@@ -1,3 +1,4 @@
+import { rewindableMessageIdsAtom } from "~/kuru/threadDetails";
 import { ChildThreadApprovals } from "./chat/ChildThreadApprovals";
 import { workspaceAreaProps } from "../lib/workspaceFocus";
 import { sourceControlClients } from "~/rt/sourceControlClients";
@@ -6,11 +7,7 @@ import { queuedRunEditBlockedReason } from "~/rt/queuedRunEdit";
 import { ScrollToEndButton, WorkspaceFileDropOverlay } from "./chat/TimelineOverlays";
 import { usePasteToFocusComposer } from "./chat/usePasteToFocusComposer";
 import { announcedRun, isDetailBehindShell } from "./chat/threadActivityAnnouncement";
-import {
-  deriveAvailableRevertTurnCounts,
-  deriveThreadPendingBackgroundTasks,
-  presentThreadShellFromProjection,
-} from "./ChatView.logic";
+import { deriveThreadPendingBackgroundTasks, presentThreadShellFromProjection } from "./ChatView.logic";
 import { usePullRequestDraftThread } from "./chat/usePullRequestDraftThread";
 import { useComposerSelection } from "./chat/useComposerSelection";
 import { useAttachmentPreviewHandoff } from "./chat/useAttachmentPreviewHandoff";
@@ -104,7 +101,6 @@ import {
   derivePhase,
   deriveActiveWorkStartedAt,
   deriveCanInterruptRunningThread,
-  findRevertCheckpoint,
   isLatestRunSettled,
 } from "../session-logic";
 import { type LegendListRef } from "@legendapp/list/react";
@@ -1081,11 +1077,10 @@ export default function ChatView(props: ChatViewProps) {
     panelAnimationDurationMs,
   );
   const turnDiffSummaries = useThreadCheckpointSummaries(routeThreadDetailRef);
-  const availableRevertTurnCounts = deriveAvailableRevertTurnCounts(serverProjection);
-  // A paged history window cannot identify the first loaded run as the thread start.
-  const threadStartCheckpointReady =
-    !serverThreadHistory.hasMoreHistory &&
-    findRevertCheckpoint(serverProjection?.checkpoints ?? [], 0) !== undefined;
+  // The prompts Unharnessed's agent can go back to before; read with the projection they come with.
+  const rewindableMessageIds = useAtomValue(
+    rewindableMessageIdsAtom(serverProjection === null ? null : serverProjection.thread.id),
+  ) as ReadonlySet<MessageId>;
 
   const workspaceMutationId = deriveWorkspaceMutationId(
     serverVisibleTurnItems,
@@ -2177,9 +2172,8 @@ export default function ChatView(props: ChatViewProps) {
                   parentThreadLink={parentThreadLink}
                   workflowOpening={workflowOpening}
                   supportsConversationRollback={supportsConversationRollback}
-                  threadStartCheckpointReady={threadStartCheckpointReady}
-                  availableRevertTurnCounts={availableRevertTurnCounts}
-                  onRevertToTurnCount={onRevertTimelineTurnStable}
+                  rewindableMessageIds={rewindableMessageIds}
+                  onRewindToMessage={onRevertTimelineTurnStable}
                   isRevertingCheckpoint={isRevertingCheckpoint}
                   onImageExpand={onExpandTimelineImageStable}
                   onFileOpen={openFileAttachmentStable}

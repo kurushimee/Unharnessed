@@ -2,7 +2,6 @@ import type { ThreadStructureRuntime } from "~/rt/state/models";
 import { resolveThreadWorkingStartedAt } from "~/rt/state/models";
 import {
   type AssetResource,
-  type OrchestrationV2Checkpoint,
   type OrchestrationV2ExecutionNode,
   type OrchestrationV2PlanArtifact,
   type OrchestrationV2ProjectedTurnItem,
@@ -26,15 +25,8 @@ import type { HtmlRenderReference } from "~/shared/htmlRender";
 import { turnItemDetailRevision } from "~/rt/work-log/itemDetail";
 import type { McpAppReference } from "~/shared/mcpApp";
 import { htmlRenderFromToolItem, mcpAppFromToolItem } from "~/shared/toolOutput";
-import {
-  contextCompactionLabel,
-  workEntryIndicatesToolFailure,
-} from "~/rt/work-log/presentation";
-import type { ThreadCheckpointSummary } from "~/rt/state/threadCheckpoints";
-import type {
-  ThreadPendingApproval,
-  ThreadPendingUserInput,
-} from "~/rt/state/threadRequests";
+import { contextCompactionLabel, workEntryIndicatesToolFailure } from "~/rt/work-log/presentation";
+import type { ThreadPendingApproval, ThreadPendingUserInput } from "~/rt/state/threadRequests";
 import type { ThreadRunSummary, ThreadRuntimeSummary } from "~/rt/state/models";
 import { threadRuntimeHasInterruptibleRun } from "~/rt/state/threadExecution";
 import { turnItemIsWorkspacePreparation } from "~/rt/state/turnItemPresentation";
@@ -986,74 +978,6 @@ export function deriveTimelineEntriesFromVisibleTurnItemsWithState(
       return before.attempt === entry.attempt ? before : { ...entry, message: before.message };
     }),
   };
-}
-
-// Run ordinals keep increasing after a rewind; only visible local runs define predecessors.
-export function deriveRevertTurnCountByUserMessageId(input: {
-  readonly timelineEntries: ReadonlyArray<TimelineEntry>;
-  readonly checkpoints: ReadonlyArray<ThreadCheckpointSummary>;
-  readonly threadStartCheckpointReady: boolean;
-  readonly availableRevertTurnCounts?: ReadonlySet<number> | undefined;
-  readonly unsettledRunId?: RunId | null;
-}): Map<ChatMessage["id"], number> {
-  const readyTurnCountByRunId = new Map<RunId, number>();
-  for (const checkpoint of input.checkpoints) {
-    if (checkpoint.status === "ready") {
-      readyTurnCountByRunId.set(checkpoint.runId, checkpoint.checkpointTurnCount);
-    }
-  }
-  const targetByRunId = new Map<RunId, number | undefined>();
-  const byUserMessageId = new Map<ChatMessage["id"], number>();
-  let previousRunId: RunId | null = null;
-  for (const entry of input.timelineEntries) {
-    // Inherited history belongs to the source thread, not our checkpoint scope.
-    if (entry.kind !== "message" && entry.kind !== "work") continue;
-    const projectedItem =
-      entry.kind === "message" ? entry.projectedItem : entry.entry.projectedItem;
-    if (projectedItem?.visibility === "inherited") continue;
-    const runId =
-      entry.kind === "message"
-        ? entry.message.runId
-        : entry.entry.itemType === "notification"
-          ? entry.entry.runId
-          : null;
-    if (runId == null) continue;
-    if (!targetByRunId.has(runId)) {
-      targetByRunId.set(
-        runId,
-        previousRunId === null
-          ? input.threadStartCheckpointReady
-            ? 0
-            : undefined
-          : readyTurnCountByRunId.get(previousRunId),
-      );
-      previousRunId = runId;
-    }
-    if (entry.kind !== "message") continue;
-    const { message } = entry;
-    if (message.role !== "user" || message.runId === input.unsettledRunId) continue;
-    if (message.inputIntent !== "turn_start" && message.inputIntent !== "queued_turn") continue;
-    const target = targetByRunId.get(runId);
-    if (
-      target !== undefined &&
-      (input.availableRevertTurnCounts === undefined || input.availableRevertTurnCounts.has(target))
-    )
-      byUserMessageId.set(message.id, target);
-  }
-  return byUserMessageId;
-}
-
-export function findRevertCheckpoint(
-  checkpoints: ReadonlyArray<OrchestrationV2Checkpoint>,
-  turnCount: number,
-): OrchestrationV2Checkpoint | undefined {
-  return checkpoints.findLast(
-    (checkpoint) =>
-      checkpoint.status === "ready" &&
-      (turnCount === 0
-        ? checkpoint.ordinalWithinScope === 0 && checkpoint.appRunOrdinal === null
-        : checkpoint.appRunOrdinal === turnCount),
-  );
 }
 
 export function derivePhase(runtime: ThreadStructureRuntime | null): SessionPhase {

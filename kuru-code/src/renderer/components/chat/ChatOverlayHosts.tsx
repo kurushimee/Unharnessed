@@ -129,7 +129,6 @@ export function BranchRestoreConfirmHost(props: {
 }
 
 interface PendingRevert {
-  readonly turnCount: number;
   readonly messageId: MessageId;
 }
 
@@ -141,13 +140,13 @@ export function openRevertConfirm(threadKey: string, pending: PendingRevert): vo
 
 export function RevertConfirmHost(props: {
   readonly threadKey: string;
-  readonly onConfirm: (turnCount: number, messageId: MessageId, restoreFiles: boolean) => void;
+  readonly onConfirm: (messageId: MessageId) => void;
 }) {
   const pending = useThreadOverlay(revertConfirmAtom, props.threadKey);
-  const confirm = (restoreFiles: boolean) => {
+  const confirm = () => {
     if (pending === null) return;
     closeThreadOverlay(revertConfirmAtom);
-    props.onConfirm(pending.turnCount, pending.messageId, restoreFiles);
+    props.onConfirm(pending.messageId);
   };
   return (
     <AlertDialog
@@ -161,15 +160,11 @@ export function RevertConfirmHost(props: {
           <AlertDialogTitle>Edit from here?</AlertDialogTitle>
           <AlertDialogDescription>
             Rewind chat to before this message. Your prompt and attachments return to the composer.
-            “Revert files too” also undoes your own edits.
           </AlertDialogDescription>
         </AlertDialogHeader>
         <AlertDialogFooter>
           <AlertDialogClose render={<Button variant="outline" />}>Cancel</AlertDialogClose>
-          <Button variant="destructive-outline" onClick={() => confirm(true)}>
-            Revert files too
-          </Button>
-          <Button onClick={() => confirm(false)}>Revert and keep changes</Button>
+          <Button onClick={confirm}>Rewind</Button>
         </AlertDialogFooter>
       </AlertDialogPopup>
     </AlertDialog>

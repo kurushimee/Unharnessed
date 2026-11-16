@@ -11,14 +11,13 @@ import {
 } from "~/contracts";
 import { useNavigate } from "@tanstack/react-router";
 import { readLocalApi } from "../../localApi";
-import { findRevertCheckpoint } from "../../session-logic";
 import { type ChatMessage } from "../../types";
 import { useComposerDraftStore } from "../../composerDraftStore";
-import { threadEnvironment } from "../../state/threads";
 import { openRevertConfirm } from "./ChatOverlayHosts";
+import { invoke } from "~/bridge";
+import { rewindableTurnOf } from "~/kuru/threadDetails";
 import { assetEnvironment } from "../../state/assets";
 import { readEnvironmentScope } from "../../state/session";
-import { useOrchestrationCommand } from "../../state/use-orchestration-command";
 import { useAtomQueryRunner } from "../../state/use-atom-query-runner";
 import { rewindToMessage } from "./chatViewSend";
 import { makeThreadErrorSetter } from "../ChatView.logic";
@@ -68,15 +67,7 @@ export function useTimelineRewind(input: TimelineRewindInput) {
     refresh: true,
   });
 
-  const revertThreadCheckpoint = useOrchestrationCommand(threadEnvironment.revertCheckpoint, {
-    reportFailure: false,
-  });
-
-  const onRevertToTurnCount = async (
-    turnCount: number,
-    messageId: MessageId,
-    restoreFiles?: boolean,
-  ) => {
+  const onRevertToTurnCount = async (messageId: MessageId, confirmed: boolean) => {
     const localApi = readLocalApi();
     if (
       !localApi ||
@@ -99,8 +90,14 @@ export function useTimelineRewind(input: TimelineRewindInput) {
       setThreadError(activeThread.id, "Interrupt the current turn before reverting checkpoints.");
       return;
     }
-    if (restoreFiles === undefined) {
-      openRevertConfirm(routeThreadKey, { turnCount, messageId });
+    // Unharnessed goes back to before a prompt its agent still holds.
+    const turn = rewindableTurnOf(activeThread.id, messageId);
+    if (turn === undefined) {
+      setThreadError(activeThread.id, "This message is no longer in the agent's conversation.");
+      return;
+    }
+    if (!confirmed) {
+      openRevertConfirm(routeThreadKey, { messageId });
       return;
     }
 
@@ -111,16 +108,13 @@ export function useTimelineRewind(input: TimelineRewindInput) {
     const rewind = await rewindToMessage({
       message,
       environmentId,
-      routeThreadRef,
-      threadId: activeThread.id,
-      turnCount,
-      restoreFiles,
-      // Keep the live checkpoint identity when command context refetches a bounded window.
-      checkpoint: findRevertCheckpoint(serverProjection?.checkpoints ?? [], turnCount),
       draftTarget: composerDraftTarget,
       composerHasPendingAttachments: composerRef.current?.hasPendingAttachments() === true,
       createAssetUrl: createAttachmentAssetUrl,
-      revertThreadCheckpoint,
+      rewind: async () => {
+        const error = await invoke<string | null>("threads.rewind", { id: activeThread.id, turn });
+        if (error !== null) throw new Error(`It could not go back to the message: ${error}`);
+      },
     });
     useComposerDraftStore.setState((store) => {
       const remaining = new Set(store.rewindingThreadKeys);
@@ -141,13 +135,13 @@ export function useTimelineRewind(input: TimelineRewindInput) {
     }
   };
   const onRevertToTurnCountStable = useStableCallback(onRevertToTurnCount);
-  const onConfirmRevert = (turnCount: number, messageId: MessageId, restoreFiles: boolean) => {
-    void onRevertToTurnCount(turnCount, messageId, restoreFiles);
+  const onConfirmRevert = (messageId: MessageId) => {
+    void onRevertToTurnCount(messageId, true);
   };
   const onConfirmRevertStable = useStableCallback(onConfirmRevert);
 
-  const onRevertTimelineTurn = (targetTurnCount: number, messageId: MessageId) => {
-    void onRevertToTurnCountStable(targetTurnCount, messageId);
+  const onRevertTimelineTurn = (messageId: MessageId) => {
+    void onRevertToTurnCountStable(messageId, false);
   };
   const onRevertTimelineTurnStable = useStableCallback(onRevertTimelineTurn);
   return {

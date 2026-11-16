@@ -219,12 +219,22 @@ export class ThreadProjector {
   private rows = new WeakMap<Item, OrchestrationV2ProjectedTurnItem>();
   /** Turns' prompts by the id the window sent them under. */
   private promptIds = new Map<number, MessageId>();
+  /** The turns the agent can go back to before, by their prompt's message: this projection's. */
+  private rewindable = new Map<MessageId, number>();
+  /** Their messages, the same set while they stay the same. */
+  rewindableMessageIds: ReadonlySet<MessageId> = new Set();
   private last: { chat: ChatState; source: ThreadProjectionSource; projection: OrchestrationV2ThreadProjection } | null =
     null;
+
+  /** The turn whose prompt is `messageId`, when the agent can go back to before it. */
+  rewindableTurn(messageId: string): number | undefined {
+    return this.rewindable.get(messageId as MessageId);
+  }
 
   project(chat: ChatState, source: ThreadProjectionSource): OrchestrationV2ThreadProjection {
     if (this.last?.chat === chat && this.last.source === source) return this.last.projection;
     const threadId = source.threadId;
+    this.rewindable = new Map();
     const instanceId = ProviderInstanceId.make(source.provider || "unharnessed");
     const modelSelection = { instanceId, model: source.model || "unknown" };
     const runs: OrchestrationV2Run[] = [];
@@ -321,6 +331,10 @@ export class ThreadProjector {
       visibleTurnItems,
       updatedAt: latest?.completedAt ?? updatedAt,
     };
+    const ids = this.rewindableMessageIds;
+    if (ids.size !== this.rewindable.size || [...this.rewindable.keys()].some((id) => !ids.has(id))) {
+      this.rewindableMessageIds = new Set(this.rewindable.keys());
+    }
     this.last = { chat, source, projection };
     return projection;
   }
@@ -343,6 +357,7 @@ export class ThreadProjector {
       if (sent !== null) this.promptIds.set(turn.id, sent);
     }
     const userMessageId = this.promptIds.get(turn.id) ?? MessageId.make(`${threadId}:prompt:${turn.id}`);
+    if (turn.rewindTo !== undefined) this.rewindable.set(userMessageId, turn.id);
     const at = utc(began);
 
     if (turn.prompt) {

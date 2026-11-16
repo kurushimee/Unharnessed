@@ -335,7 +335,6 @@ function UserTimelineRow({ row }: { row: Extract<TimelineRow, { kind: "message" 
   );
   const senderLabel = senderShell?.title.trim() || "Agent";
   const resolvedContext = resolveUserMessageContext({ ...row.message, text: userMessage.text });
-  const revertTurnCount = row.revertTurnCount;
   const attachmentReferences = collectComposerContextReferences(resolvedContext.text).flatMap(
     (occurrence) => {
       const record = asKnownContextRecord(resolvedContext.recordsById.get(occurrence.contextId));
@@ -633,8 +632,8 @@ function UserTimelineRow({ row }: { row: Extract<TimelineRow, { kind: "message" 
         </TooltipPopup>
       </Tooltip>
       <div className={cn("flex items-center gap-0.5", floatActions && "flex-wrap justify-end")}>
-        {typeof revertTurnCount === "number" && (
-          <RevertUserMessageButton turnCount={revertTurnCount} messageId={row.message.id} />
+        {row.rewindable === true && (
+          <RevertUserMessageButton messageId={row.message.id} />
         )}
         {copyText && (
           <MessageCopyButton
@@ -897,13 +896,7 @@ function UserMessageIntentMarker({
   );
 }
 
-function RevertUserMessageButton({
-  turnCount,
-  messageId,
-}: {
-  turnCount: number;
-  messageId: MessageId;
-}) {
+function RevertUserMessageButton({ messageId }: { messageId: MessageId }) {
   const ctx = use(TimelineRowCtx);
   const activity = use(TimelineRowActivityCtx);
 
@@ -916,7 +909,7 @@ function RevertUserMessageButton({
             size="xs"
             variant="ghost"
             disabled={activity.isRevertingCheckpoint || activity.isWorking}
-            onClick={() => ctx.onRevertToTurnCount(turnCount, messageId)}
+            onClick={() => ctx.onRewindToMessage(messageId)}
             aria-label="Edit from here"
           />
         }
