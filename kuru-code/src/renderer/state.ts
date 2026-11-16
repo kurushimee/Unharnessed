@@ -17,6 +17,7 @@ import type {
   VariablePreview,
 } from "@shared/protocol";
 import { DEFAULT_PREFS } from "@shared/protocol";
+import { toPaths, type Paths } from "@panel/mentions";
 import { onHostMessage, post } from "./bridge";
 
 export type Draft = { text: string; images: Attachment[] };
@@ -51,7 +52,7 @@ export type Store = {
   app: AppState | null;
   prefs: AppPrefs;
   /** The `@` menu's files of the thread's folder; `null` until asked. */
-  files: string[] | null;
+  paths: Paths | null;
   draft: Draft;
   /** A sent prompt being changed in the composer, or a waiting message, and the draft it pushed out. */
   editing: { id: number; saved: Draft; queued: boolean } | null;
@@ -79,7 +80,7 @@ export const useStore = create<Store>(() => ({
   kernel: { commands: [], variables: [] },
   app: null,
   prefs: DEFAULT_PREFS,
-  files: null,
+  paths: null,
   draft: { text: "", images: [] },
   editing: null,
   providerResult: null,
@@ -96,6 +97,7 @@ export const useStore = create<Store>(() => ({
 }));
 
 export const set = useStore.setState;
+(window as unknown as { __kuru: typeof useStore }).__kuru = useStore;
 export const get = useStore.getState;
 
 /** What changed, onto the conversation; what did not change keeps its identity (and its render). */
@@ -156,7 +158,7 @@ export function connect(): void {
           kernel: message.kernel,
           editing: null,
           draft: message.draft,
-          files: null,
+          paths: null,
           kernelTails: {},
           kernelPreviews: {},
           main: { kind: "thread" },
@@ -203,7 +205,7 @@ export function connect(): void {
         set({ settingResult: message });
         break;
       case "files":
-        set({ files: message.files });
+        set({ paths: toPaths(message.files, message.open) });
         break;
       case "kernelTail":
         set((state) => ({ kernelTails: { ...state.kernelTails, [message.id]: message.tail } }));

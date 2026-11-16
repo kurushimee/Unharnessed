@@ -1,4 +1,5 @@
-import { app, BrowserWindow, dialog, ipcMain, nativeTheme, Notification, screen, shell } from "electron";
+import { app, BrowserWindow, clipboard, dialog, ipcMain, nativeTheme, Notification, screen, shell } from "electron";
+import { spawn } from "node:child_process";
 import { existsSync } from "node:fs";
 import { homedir } from "node:os";
 import { join, resolve } from "node:path";
@@ -217,6 +218,7 @@ async function start(): Promise<void> {
         if (settings.skillFiles.includes(message.path)) void shell.openPath(message.path);
         break;
       case "copy":
+        clipboard.writeText(message.text);
         break;
       case "openCell": {
         const found = thread.chat.toolPart(message.id, message.part);
@@ -402,6 +404,7 @@ async function start(): Promise<void> {
     "shell.openExternal": ({ url }) => (/^https?:\/\//i.test(url) ? shell.openExternal(url) : undefined),
     "shell.openPath": ({ path }) => shell.openPath(path),
     "shell.showItemInFolder": ({ path }) => shell.showItemInFolder(path),
+    "open.in": ({ path, target }) => openIn(String(path), String(target)),
     "app.info": () => ({ version, electron: process.versions.electron, binary, log: log.file, userData: app.getPath("userData") }),
     "app.projectId": ({ path }) => projectId(path),
   };
@@ -515,4 +518,28 @@ function lastProject(store: Store, _threads: Threads, home: string): string {
 function inside(area: Electron.Rectangle, box: { x?: number; y?: number; width: number; height: number }): boolean {
   if (box.x === undefined || box.y === undefined) return true;
   return box.x < area.x + area.width && box.x + box.width > area.x && box.y < area.y + area.height && box.y + box.height > area.y;
+}
+
+/** A folder in Explorer, an editor or a terminal. */
+async function openIn(path: string, target: string): Promise<string | null> {
+  if (!existsSync(path)) return `${path} does not exist.`;
+  if (target === "explorer") {
+    const error = await shell.openPath(path);
+    return error || null;
+  }
+  const commands: Record<string, string> = {
+    vscode: `code "${path}"`,
+    cursor: `cursor "${path}"`,
+    terminal: `where wt >nul 2>nul && (wt -d "${path}") || (start "" /D "${path}" cmd)`,
+  };
+  const command = commands[target];
+  if (!command) return `Unknown target ${target}.`;
+  return new Promise((resolveOpen) => {
+    const child = spawn("cmd.exe", ["/d", "/s", "/c", `"${command}"`], { cwd: path, detached: true, stdio: "ignore", windowsHide: true, windowsVerbatimArguments: true });
+    child.on("error", (error) => resolveOpen(String(error)));
+    child.on("spawn", () => {
+      child.unref();
+      resolveOpen(null);
+    });
+  });
 }

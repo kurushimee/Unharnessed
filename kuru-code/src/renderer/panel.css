@@ -1,0 +1,101 @@
+/*
+ * The extension's panel (vscode/webview/styles.css) in the app: its own
+ * layer, under the app's components and utilities, and its tokens taken
+ * from T3 Code's theme, so the conversation, the composer and the settings
+ * share the window's colours, type and surfaces.
+ */
+@import "../../../vscode/webview/styles.css" layer(panel);
+
+@layer components {
+  .no-drag {
+    -webkit-app-region: no-drag;
+  }
+  body {
+    --uh-bg: var(--background);
+    --uh-raised: var(--card);
+    --uh-raised-2: var(--card);
+    --uh-ink-rgb: 24 24 27;
+    --uh-text: var(--foreground);
+    --uh-highlight: rgb(255 255 255 / 0);
+    --uh-shadow: rgb(0 0 0 / 0.08);
+    --uh-accent: var(--primary);
+    --uh-accent-rgb: 51 84 214;
+    --uh-on-accent: var(--primary-foreground);
+    --uh-danger: var(--error-foreground);
+    --uh-danger-rgb: 220 38 38;
+    --uh-font: var(--font-sans);
+    --uh-mono: var(--font-mono);
+    --uh-line: var(--border);
+    --uh-line-strong: var(--input);
+    --uh-code: var(--code-background);
+    color-scheme: light;
+    font-size: 13px;
+  }
+  html.dark body {
+    --uh-ink-rgb: 245 245 245;
+    --uh-shadow: rgb(0 0 0 / 0.6);
+    --uh-accent-rgb: 77 124 255;
+    --uh-danger-rgb: 248 113 113;
+    --uh-sunk: color-mix(in srgb, #fff 3%, var(--background));
+    --uh-code-head: color-mix(in srgb, #fff 6%, var(--background));
+    color-scheme: dark;
+  }
+
+  /* T3 Code's chat column: a centred reading width, the composer under it. */
+  .kuru-chat {
+    --kuru-column: var(--chat-content-max-width, 46rem);
+  }
+  .kuru-chat .transcript {
+    padding-inline: max(var(--workspace-gutter, 14px), calc((100% - var(--kuru-column)) / 2));
+    padding-top: 16px;
+    font-size: 14px;
+  }
+  .kuru-chat .dock {
+    width: 100%;
+    max-width: calc(var(--kuru-column) + 2 * var(--workspace-gutter, 14px));
+    margin-inline: auto;
+    padding-inline: var(--workspace-gutter, 14px);
+  }
+  .kuru-chat .composer-shell {
+    margin: 0 0 14px;
+  }
+  .kuru-chat .composer {
+    border-radius: 20px;
+    background: var(--card);
+    box-shadow:
+      0 0 0 1px var(--border),
+      var(--shadow-composer);
+  }
+  html.dark .kuru-chat .composer {
+    box-shadow:
+      0 0 0 1px var(--border),
+      var(--shadow-composer-dark);
+  }
+  .kuru-chat .composer:focus-within {
+    background: var(--card);
+    box-shadow:
+      0 0 0 1px var(--input),
+      var(--shadow-composer);
+  }
+  .kuru-chat .composer-glow {
+    display: none;
+  }
+  /* A user turn: T3 Code's message surface. */
+  .kuru-chat .user-text {
+    background: var(--message-surface);
+    color: var(--foreground);
+  }
+
+  /* Settings pages carry their own heading and navigation. */
+  .kuru-panel-page > .screen > .topbar,
+  .kuru-panel-page > .screen > .tabs {
+    display: none;
+  }
+  .kuru-panel-page > .screen {
+    animation: none;
+  }
+  .kuru-panel-page .content {
+    overflow: visible;
+    padding: 0;
+  }
+}
