@@ -22,6 +22,7 @@ import {
   WsRpcGroup,
   type PullRequestLinkedThreadsResult,
   type PullRequestRef,
+  type RepositoryIdentity,
 } from "~/contracts";
 import type { AppState } from "@shared/protocol";
 
@@ -65,7 +66,7 @@ export function createPullRequests(options: {
   const services = PullRequestService.layer.pipe(
     Layer.provide(PullRequestProviderRegistry.layer),
     Layer.provide(ProjectService.layer(() => options.app().projects)),
-    Layer.provide(RepositoryIdentityResolver.layer),
+    Layer.provideMerge(RepositoryIdentityResolver.layer),
     Layer.provide(PullRequestFilesViewed.layer(join(options.userData, "pull-request-files-viewed.json"))),
     Layer.provide(PullRequestReadCache.layer(join(options.userData, "cache", "pull-requests"))),
     Layer.provideMerge(SourceControlRateLimit.layer),
@@ -98,14 +99,18 @@ export function createPullRequests(options: {
     "pullRequests.routing": plain((pr, input) => pr.routing(input)),
     "pullRequests.summary": viewer((pr, input) => pr.summary(input)),
     "pullRequests.stack": viewer((pr, input) => pr.stack(input)),
-    // The threads on the pull request's branch: kuru code links a thread to the pull request
-    // of the branch it works on.
+    // The threads on the pull request's branch (kuru code links a thread to the pull request of
+    // the branch it works on), and those it was linked to by hand.
     "pullRequests.linkedThreads": (input: PullRequestRef) =>
       Effect.sync(
         (): PullRequestLinkedThreadsResult => ({
           threads: options
             .app()
-            .threads.filter((thread) => thread.pr !== undefined && sameThreadPullRequest(thread.pr.url, input))
+            .threads.filter(
+              (thread) =>
+                (thread.pr !== undefined && sameThreadPullRequest(thread.pr.url, input)) ||
+                (thread.links ?? []).some((link) => sameThreadPullRequest(link.url, input)),
+            )
             .map((thread) => ({
               id: thread.id as PullRequestLinkedThreadsResult["threads"][number]["id"],
               projectId: (thread.projectId ?? "scratch") as PullRequestLinkedThreadsResult["threads"][number]["projectId"],
@@ -161,6 +166,13 @@ export function createPullRequests(options: {
 
   return {
     handles: (tag: string) => tag in unary,
+
+    /** The repository of the folder `cwd`, as T3 Code's projects carry it; `null` without one. */
+    repositoryIdentity(cwd: string): Promise<RepositoryIdentity | null> {
+      return runtime.runPromise(
+        Effect.flatMap(RepositoryIdentityResolver.RepositoryIdentityResolver, (resolver) => resolver.resolve(cwd)),
+      );
+    },
     streams: (tag: string) => tag in streams,
 
     async call(tag: string, payload: unknown): Promise<Answer> {

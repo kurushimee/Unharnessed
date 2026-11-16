@@ -24,6 +24,8 @@ export type Project = {
   /** Its icon, when set (T3 Code's project icon override), and a chosen favicon file. */
   projectIcon?: ProjectIconOverride;
   faviconPath?: string;
+  /** Its git repository, as T3 Code's projects carry it (`RepositoryIdentity`), once resolved. */
+  repositoryIdentity?: object;
 };
 
 /** T3 Code's project icon override: a monogram, an emoji or a Lucide icon. */
@@ -40,6 +42,9 @@ export type PullRequestRef = {
   state: "open" | "closed" | "merged";
   draft: boolean;
 };
+
+/** A pull request linked to a thread by hand, and when. */
+export type LinkedPullRequest = PullRequestRef & { linkedAt: number };
 
 /** A thread mark: a turn runs in it, or one ended there and was not seen. */
 export type ThreadMark = "working" | "unread";
@@ -60,6 +65,8 @@ export type ThreadRow = {
   settled: boolean;
   pinned: boolean;
   pr?: PullRequestRef;
+  /** Pull requests the user linked to it, beside its branch's. */
+  links?: LinkedPullRequest[];
   /** When it was settled or pinned, ms. */
   settledAt?: number;
   pinnedAt?: number;

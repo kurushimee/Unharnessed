@@ -410,6 +410,7 @@ async function start(): Promise<void> {
 
   const pullRequests = createPullRequests({ userData: app.getPath("userData"), app: () => threads.app, log });
   app.on("will-quit", () => void pullRequests.dispose());
+  threads.resolveRepository = (cwd) => pullRequests.repositoryIdentity(cwd);
   const handlers: Record<string, (params: any) => unknown> = {
     "limits.get": () => limits.read(),
     "pullRequests.diff": (input) => pullRequests.diff(input),
@@ -477,6 +478,12 @@ async function start(): Promise<void> {
         Array.isArray(keep) ? keep.map(Number) : [],
         Array.isArray(images) ? images : [],
       ),
+    // T3 Code's thread pull request links: an error's text, or null.
+    "threads.linkPullRequest": async ({ id, url }) => (await threads.linkPullRequest(String(id), String(url))) ?? null,
+    "threads.unlinkPullRequest": ({ id, url }) => {
+      threads.unlinkPullRequest(String(id), String(url));
+      return null;
+    },
     "threads.cancel": ({ id }) => {
       threads.cancel(String(id));
       return null;

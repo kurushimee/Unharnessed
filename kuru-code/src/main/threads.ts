@@ -245,6 +245,61 @@ export class Threads {
     this.emit();
   }
 
+  /** Resolves a folder's git repository; set once T3 Code's pull request service runs. */
+  resolveRepository?: (cwd: string) => Promise<object | null>;
+  private repositories = new Map<string, object | null>();
+  private resolvingRepositories = new Set<string>();
+
+  /** The folder's repository when known; else it is looked up, and the app sent again after. */
+  private repositoryIdentityOf(path: string): object | null {
+    const known = this.repositories.get(path);
+    if (known !== undefined || !this.resolveRepository || this.resolvingRepositories.has(path)) return known ?? null;
+    this.resolvingRepositories.add(path);
+    void this.resolveRepository(path)
+      .catch((error: unknown) => {
+        this.log.warn(`threads: no repository for ${path}: ${error instanceof Error ? error.message : String(error)}`);
+        return null;
+      })
+      .then((identity) => {
+        this.repositories.set(path, identity);
+        this.resolvingRepositories.delete(path);
+        if (identity) this.emit();
+      });
+    return null;
+  }
+
+  /** A pull request linked to the thread `windowId` by its URL; why not, when it cannot be. */
+  async linkPullRequest(windowId: string, url: string): Promise<string | undefined> {
+    const id = this.resolve(windowId);
+    const meta = this.store.thread(id);
+    if (meta.links?.some((link) => samePullRequestUrl(link.url, url))) return undefined;
+    if (meta.pr && samePullRequestUrl(meta.pr.url, url)) {
+      this.store.setThread(id, { unlinkedPr: undefined });
+      this.emit();
+      return undefined;
+    }
+    const cwd = this.sessions.find((session) => session.id === id)?.cwd;
+    const found = await this.git.pullRequestAt(cwd && existsSync(cwd) ? cwd : this.home, url);
+    if (typeof found === "string") return found;
+    this.store.setThread(id, { links: [...(this.store.thread(id).links ?? []), { ...found, linkedAt: Date.now() }] });
+    this.log.info(`threads: ${id} linked to ${found.url}`);
+    this.emit();
+    return undefined;
+  }
+
+  /** The pull request at `url` no longer shown on the thread: a linked one, or its branch's. */
+  unlinkPullRequest(windowId: string, url: string): void {
+    const id = this.resolve(windowId);
+    const meta = this.store.thread(id);
+    const links = meta.links?.filter((link) => !samePullRequestUrl(link.url, url));
+    this.store.setThread(id, {
+      links: links?.length ? links : undefined,
+      ...(meta.pr && samePullRequestUrl(meta.pr.url, url) ? { unlinkedPr: meta.pr.url } : {}),
+    });
+    this.log.info(`threads: ${id} unlinked from ${url}`);
+    this.emit();
+  }
+
   /** The thread's sidebar state changed (settled, pinned, its order, unread...). */
   setMeta(windowId: string, change: Partial<ThreadMeta>): void {
     this.store.setThread(this.resolve(windowId), change);
@@ -258,7 +313,10 @@ export class Threads {
     const projects = this.store.projects(
       this.sessions.map((session) => session.cwd),
       this.home,
-    );
+    ).map((project) => {
+      const identity = this.repositoryIdentityOf(project.path);
+      return identity ? { ...project, repositoryIdentity: identity } : project;
+    });
     const known = new Set(projects.map((project) => project.id));
     const projectOf = (cwd: string) => {
       const id = projectId(cwd || this.home);
@@ -305,7 +363,8 @@ export class Threads {
       };
       if (working) row.mark = "working";
       else if (unread) row.mark = "unread";
-      if (meta.pr) row.pr = meta.pr;
+      if (meta.pr && !samePullRequestUrl(meta.pr.url, meta.unlinkedPr)) row.pr = meta.pr;
+      if (meta.links?.length) row.links = meta.links;
       return row;
     });
     return {
@@ -511,4 +570,10 @@ export class Threads {
     if (id && this.stopping.get(id) === stopped) this.stopping.delete(id);
     this.emit();
   }
+}
+
+/** The same pull request: GitHub's URLs differ in case and in a trailing part (`/files`...). */
+function samePullRequestUrl(left: string, right: string | undefined): boolean {
+  const key = (url: string) => /^https?:\/\/([^/]+\/[^/]+\/[^/]+\/pull\/\d+)/i.exec(url)?.[1]?.toLowerCase() ?? url.toLowerCase();
+  return right !== undefined && key(left) === key(right);
 }

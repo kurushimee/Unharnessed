@@ -3,7 +3,13 @@
 // sends the same RPCs, by the same tags and schemas, to its main process,
 // which answers those Unharnessed has an answer for (src/main/rpc.ts). Values
 // cross as the schemas encode them, so dates and branded ids come back whole.
-import { type EnvironmentAuthorizationError, type EnvironmentId, ORCHESTRATION_V2_WS_METHODS, WS_METHODS, WsRpcGroup } from "~/contracts";
+import {
+  type EnvironmentAuthorizationError,
+  type EnvironmentId,
+  ORCHESTRATION_V2_WS_METHODS,
+  WS_METHODS,
+  WsRpcGroup,
+} from "~/contracts";
 import * as Cause from "effect/Cause";
 import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
@@ -27,37 +33,11 @@ export type EnvironmentRpcTag = keyof WsRpcProtocolClient & string;
 type RpcMethod<TTag extends EnvironmentRpcTag> = WsRpcProtocolClient[TTag];
 
 export type EnvironmentSubscriptionRpcTag =
-  | typeof WS_METHODS.providerAuthSubscribe
-  | typeof WS_METHODS.providerInstallSubscribe
-  | typeof ORCHESTRATION_V2_WS_METHODS.subscribeShell
-  | typeof ORCHESTRATION_V2_WS_METHODS.subscribeThread
-  | typeof ORCHESTRATION_V2_WS_METHODS.subscribeCommandOutput
-  | typeof ORCHESTRATION_V2_WS_METHODS.subscribePromptSuggestion
-  | typeof ORCHESTRATION_V2_WS_METHODS.searchThreadStream
-  | typeof WS_METHODS.subscribeAuthAccess
-  | typeof WS_METHODS.subscribeServerConfig
-  | typeof WS_METHODS.subscribeServerLifecycle
-  | typeof WS_METHODS.scheduledTasksSubscribe
-  | typeof WS_METHODS.serverGetStorageCleanupReport
-  | typeof WS_METHODS.serverGetDatabaseStorage
-  | typeof WS_METHODS.subscribeTerminalMetadata
-  | typeof WS_METHODS.subscribePreviewEvents
-  | typeof WS_METHODS.subscribeDiscoveredLocalServers
-  | typeof WS_METHODS.subscribeDeviceState
-  | typeof WS_METHODS.subscribeResourceTelemetry
   | typeof WS_METHODS.pullRequestsSubscribeRefreshes
   | typeof WS_METHODS.subscribeVcsStatus
-  | typeof WS_METHODS.subscribeVcsBranch
-  | typeof WS_METHODS.subscribeWorktreeSetup
-  | typeof WS_METHODS.subscribeProjectClones
-  | typeof WS_METHODS.terminalAttach
-  | typeof WS_METHODS.terminalObserve;
+  | typeof WS_METHODS.subscribeVcsBranch;
 
-export type EnvironmentStreamCommandRpcTag =
-  | typeof WS_METHODS.chatGptHandoffSubscribe
-  | typeof WS_METHODS.cloudInstallRelayClient
-  | typeof WS_METHODS.serverUpdateServerWithProgress
-  | typeof WS_METHODS.gitRunStackedAction;
+export type EnvironmentStreamCommandRpcTag = typeof WS_METHODS.gitRunStackedAction;
 
 export type EnvironmentStreamRpcTag =
   | EnvironmentSubscriptionRpcTag

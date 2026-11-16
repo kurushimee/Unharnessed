@@ -79,6 +79,27 @@ export class Git {
     };
   }
 
+
+  /** The pull request at `url`, or why it cannot be read. */
+  async pullRequestAt(cwd: string, url: string): Promise<PullRequestSummary | string> {
+    const { code, stdout, stderr } = await gh(
+      cwd,
+      "pr", "view", url,
+      "--json", "number,title,url,state,isDraft,mergeable,baseRefName,headRefName",
+    );
+    const row = code === 0 ? parseJson<{ number: number; title: string; url: string; state: string; isDraft: boolean; mergeable: string; baseRefName: string; headRefName: string }>(stdout) : null;
+    if (!row) return stderr.trim() || `No pull request at ${url}.`;
+    return {
+      number: row.number,
+      title: row.title,
+      url: row.url,
+      state: prState(row.state),
+      draft: row.isDraft,
+      mergeable: row.mergeable as PullRequestSummary["mergeable"],
+      baseRefName: row.baseRefName,
+      headRefName: row.headRefName,
+    };
+  }
 }
 
 function prState(state: string): "open" | "closed" | "merged" {

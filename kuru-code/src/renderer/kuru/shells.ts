@@ -25,10 +25,10 @@ import {
   type EnvironmentThreadShell,
 } from "~/rt/state/models";
 import { createEnvironmentThreadShellAtoms } from "~/rt/state/threadShell";
-import type { ThreadPullRequestLink } from "~/contracts";
+import type { RepositoryIdentity, ThreadPullRequestLink } from "~/contracts";
 import { appAtomRegistry } from "~/rpc/atomRegistry";
 import { useStore } from "~/state";
-import type { AppState, Project as AppProject, ThreadRow } from "@shared/protocol";
+import type { AppState, Project as AppProject, PullRequestRef, ThreadRow } from "@shared/protocol";
 
 /** The project of threads with no project: Unharnessed sessions started in the home folder. */
 export const SCRATCH_PROJECT_ID = ProjectId.make("scratch");
@@ -50,6 +50,10 @@ function toProject(project: AppProject, createdAt: string): EnvironmentProject {
     pinnedAt: iso(project.pinnedAt),
     archivedAt: iso(project.archivedAt),
     ...(project.faviconPath ? { faviconPath: project.faviconPath } : {}),
+    // T3 Code's resolver in the main process made it (main/pullRequests.ts).
+    ...(project.repositoryIdentity
+      ? { repositoryIdentity: project.repositoryIdentity as RepositoryIdentity }
+      : {}),
     ...(project.projectIcon
       ? { projectIcon: project.projectIcon as NonNullable<EnvironmentProject["projectIcon"]> }
       : {}),
@@ -77,32 +81,44 @@ function scratchProject(home: string): EnvironmentProject {
 }
 
 /**
- * The thread's branch's pull request, as the link T3 Code's server keeps for a pull request a
- * thread created, with the snapshot kuru code's main process read from GitHub.
+ * A pull request of the thread, as the link T3 Code's server keeps, with the snapshot kuru
+ * code's main process read from GitHub: its branch's (a pull request the thread "created"),
+ * or one the user linked to it by hand.
  */
-function toPullRequest(row: ThreadRow): ThreadPullRequestLink | null {
-  if (!row.pr) return null;
-  const parsed = /^https?:\/\/([^/]+)\/([^/]+\/[^/]+)\/pull\//.exec(row.pr.url);
+function toPullRequest(
+  pr: PullRequestRef,
+  source: ThreadPullRequestLink["source"],
+  linkedAt: number,
+  branch: string | undefined,
+): ThreadPullRequestLink | null {
+  const parsed = /^https?:\/\/([^/]+)\/([^/]+\/[^/]+)\/pull\//.exec(pr.url);
   if (!parsed) return null;
-  const at = iso(row.updated) ?? new Date(0).toISOString();
+  const at = iso(linkedAt) ?? new Date(0).toISOString();
   return {
     host: parsed[1]!,
     repository: parsed[2]!,
-    number: row.pr.number,
-    url: row.pr.url,
-    source: "created",
+    number: pr.number,
+    url: pr.url,
+    source,
     linkedAt: at,
     snapshot: {
-      state: row.pr.state,
-      title: row.pr.title,
-      headBranch: row.branch ?? "",
+      state: pr.state,
+      title: pr.title,
+      headBranch: branch ?? "",
       baseBranch: "",
-      isDraft: row.pr.draft,
+      isDraft: pr.draft,
       updatedAt: null,
       syncedAt: at,
     },
     stack: null,
   };
+}
+
+function pullRequestsOf(row: ThreadRow): ThreadPullRequestLink[] {
+  return [
+    ...(row.pr ? [toPullRequest(row.pr, "created", row.updated, row.branch)] : []),
+    ...(row.links ?? []).map((link) => toPullRequest(link, "manual", link.linkedAt, undefined)),
+  ].filter((link) => link !== null);
 }
 
 /** The shell T3 Code's server would send for an Unharnessed thread. */
@@ -113,7 +129,6 @@ function toWireThread(row: ThreadRow): OrchestrationV2ThreadShell {
   const instanceId = ProviderInstanceId.make(row.provider || "unharnessed");
   const runId = RunId.make(`${row.id}:${row.workingSince ?? row.turnEndedAt ?? row.updated}`);
   const started = row.workingSince ?? updated;
-  const pullRequest = toPullRequest(row);
   const threadId = ThreadId.make(row.id);
   // A thread with an unseen ending was last seen before the ending.
   const visited = row.mark === "unread" ? created : (row.seenAt ?? (working ? undefined : (row.turnEndedAt ?? updated)));
@@ -131,7 +146,7 @@ function toWireThread(row: ThreadRow): OrchestrationV2ThreadShell {
     worktreePath: null,
     linkedPullRequest: null,
     branchPullRequest: null,
-    pullRequests: pullRequest === null ? [] : [pullRequest],
+    pullRequests: pullRequestsOf(row),
     lineage: rootThreadLineage(threadId),
     forkedFrom: null,
     activeProviderThreadId: null,

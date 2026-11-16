@@ -107,6 +107,9 @@ import {
 } from "~/rt/workspaceBasenameLookup";
 import { resolvePullRequestPreviewTarget } from "~/rt/changeRequestLinks";
 import { sourceControlClients } from "~/rt/sourceControlClients";
+import { usePullRequestLinking } from "~/hooks/usePullRequestLinking";
+import { readThreadShell } from "~/state/entities";
+import type { ThreadPullRequestKey } from "~/contracts";
 import { useOpenChangeRequestLink } from "~/lib/openPullRequestLink";
 import { useOpenLink } from "../browser/useOpenLink";
 import { writeTextToClipboard } from "../hooks/useCopyToClipboard";
@@ -452,6 +455,30 @@ function useChatMarkdownState({
     );
   };
   const openChangeRequestLink = useOpenChangeRequestLink(threadRef);
+  const pullRequestLinking = usePullRequestLinking(threadRef?.environmentId);
+  // A pull request link in a thread's message: T3 Code's link to (or unlink from) that thread.
+  const resolveThreadPullRequest = (
+    href: string,
+  ): (ThreadPullRequestKey & { readonly url: string }) | null => {
+    if (
+      threadRef === undefined ||
+      readThreadShell(threadRef) === null ||
+      !pullRequestLinking.canLink(href)
+    )
+      return null;
+    const parsed = sourceControlClients.parseChangeRequestUrl(href)?.link;
+    return parsed === undefined ? null : { ...parsed, url: href };
+  };
+  const linkedThreadPullRequestFor = (href: string) => {
+    if (threadRef === undefined || !pullRequestLinking.isLinked(readThreadShell(threadRef), href))
+      return null;
+    const parsed = sourceControlClients.parseChangeRequestUrl(href)?.link;
+    return parsed === undefined ? null : { ...parsed, url: href };
+  };
+  const updateThreadPullRequestLink = async (href: string, linked: boolean) => {
+    if (threadRef === undefined || (!linked && linkedThreadPullRequestFor(href) === null)) return;
+    await pullRequestLinking.changeLink(threadRef, href, linked);
+  };
   const openDeferredMarkdownLink = useOpenLink(threadRef);
   const mathEnabled = useClientSettings((settings) => settings.mathRenderingEnabled);
   // Keyed by the file links found, not the text, so streamed text that adds none keeps the
@@ -558,10 +585,13 @@ function useChatMarkdownState({
     openDeferredMarkdownLink,
     openMarkdownMedia,
     projects,
+    linkedThreadPullRequestFor,
+    resolveThreadPullRequest,
     resolvedTheme,
     pullRequestsEnabled,
     skills,
     threadRef,
+    updateThreadPullRequestLink,
   };
   return {
     componentState,
@@ -699,9 +729,12 @@ const CHAT_MARKDOWN_COMPONENTS = {
       openMarkdownMedia,
       openChangeRequestLink,
       openDeferredMarkdownLink,
-        projects,
+      projects,
+      linkedThreadPullRequestFor,
+      resolveThreadPullRequest,
       pullRequestsEnabled,
-        fileLinkChip,
+      updateThreadPullRequestLink,
+      fileLinkChip,
       renderContextReference,
     } = use(ChatMarkdownRendererContext);
     const text = use(ChatMarkdownTextContext);
@@ -811,14 +844,37 @@ const CHAT_MARKDOWN_COMPONENTS = {
             event.stopPropagation();
             const api = readLocalApi();
             if (!api) return;
+            const threadLinkAction =
+              linkedThreadPullRequestFor(href) !== null
+                ? "unlink-from-thread"
+                : resolveThreadPullRequest(href) === null
+                  ? undefined
+                  : "link-to-thread";
             void showExternalLinkContextMenu({
               href,
+              threadLinkAction,
               position: { x: event.clientX, y: event.clientY },
               showContextMenu: (items, position) => api.contextMenu.show(items, position),
               openExternal: (target) => api.shell.openExternal(target),
               copyLink: (target) => writeTextToClipboard(target, "link"),
+              updateThreadLink: updateThreadPullRequestLink,
               reportFailure: (operation, cause) => {
                 reportMarkdownActionFailure({ operation, target: href }, cause);
+                if (
+                  operation === "link-pull-request-to-thread" ||
+                  operation === "unlink-pull-request-from-thread"
+                ) {
+                  toastManager.add(
+                    stackedThreadToast({
+                      type: "error",
+                      title:
+                        operation === "link-pull-request-to-thread"
+                          ? "Unable to link pull request"
+                          : "Unable to unlink pull request",
+                      description: cause instanceof Error ? cause.message : "The request failed.",
+                    }),
+                  );
+                }
               },
             });
           }}

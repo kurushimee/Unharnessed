@@ -23,7 +23,6 @@ import type {
   ThreadId,
   ThreadEnvMode,
   UploadChatAttachment,
-  GuestMessageId,
 } from "~/contracts";
 
 export interface CommandMetadata {
@@ -196,33 +195,7 @@ export interface DismissThreadUserInputInput extends ThreadCommandInput {
   readonly requestId: RuntimeRequestId;
 }
 
-export interface RevertThreadCheckpointInput extends ThreadCommandInput {
-  readonly restoreFiles?: boolean;
-  readonly checkpointId?: string;
-  readonly scopeId?: string;
-  readonly turnCount?: number;
-}
-
 export type StopThreadSessionInput = ThreadCommandInput;
-
-export interface ForkThreadFromRunInput extends CommandMetadata {
-  readonly sourceThreadId: ThreadId;
-  readonly targetThreadId: ThreadId;
-  readonly runId: RunId;
-  readonly title?: string;
-}
-
-export interface ForkSideChatInput extends CommandMetadata {
-  readonly sourceThreadId: ThreadId;
-  readonly targetThreadId: ThreadId;
-  readonly title?: string;
-}
-
-export interface MergeThreadBackInput extends CommandMetadata {
-  readonly sourceThreadId: ThreadId;
-  readonly targetThreadId: ThreadId;
-  readonly runId: RunId;
-}
 
 export interface ResumeThreadQueueInput extends ThreadCommandInput {
   readonly runId?: RunId;
@@ -234,10 +207,6 @@ export interface PromoteQueuedRunInput extends ThreadCommandInput {
 }
 
 export interface CancelQueuedRunInput extends ThreadCommandInput {
-  readonly runId: RunId;
-}
-
-export interface RetryWorkspacePreparationInput extends ThreadCommandInput {
   readonly runId: RunId;
 }
 
@@ -255,18 +224,6 @@ export interface EditQueuedRunInput extends ThreadCommandInput {
   };
 }
 
-export type CloseGuestShareInput = ThreadCommandInput;
-
-export interface ResolveGuestMessageInput extends ThreadCommandInput {
-  readonly guestMessageId: GuestMessageId;
-  readonly decision: "send" | "dismiss";
-  readonly creationSource?: "web" | "mobile";
-}
-
-export interface SetThreadAutoSettleInput extends ThreadCommandInput {
-  readonly enabled: boolean;
-}
-
 export type LinkThreadPullRequestInput = Omit<
   Extract<OrchestrationV2Command, { type: "thread.pull-request.link" }>,
   "type" | "commandId"
@@ -279,8 +236,3 @@ export type UnlinkThreadPullRequestInput = Omit<
 > &
   CommandMetadata;
 
-export type WatchThreadPullRequestInput = Omit<
-  Extract<OrchestrationV2Command, { type: "thread.pull-request.watch" }>,
-  "type" | "commandId"
-> &
-  CommandMetadata;

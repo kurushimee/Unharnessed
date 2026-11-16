@@ -1,22 +1,12 @@
 import { resolvePullRequestDetailChecks } from "~/rt/pullRequestChecks";
-import {
-  capitalizeTerm,
-  sourceControlClients,
-} from "~/rt/sourceControlClients";
+import { capitalizeTerm, sourceControlClients } from "~/rt/sourceControlClients";
 import { PullRequestChangeBreakdownRows } from "../pullRequest/PullRequestChangeBreakdownStat";
 import { ThreadDetailsControl } from "./ThreadDetailsControl";
 import { PullRequestGlyph } from "../pullRequest/pullRequestIcons";
 import { selectEnvironmentQueryData } from "~/rt/state/runtime";
 import type { EnvironmentProject } from "~/rt/state/models";
 import type { EnvironmentId, ProjectId, PullRequestRef } from "~/contracts";
-import {
-  ArrowUpRightIcon,
-  EyeIcon,
-  EyeOffIcon,
-  FileDiffIcon,
-  GitBranchIcon,
-  TriangleAlertIcon,
-} from "lucide-react";
+import { ArrowUpRightIcon, FileDiffIcon, GitBranchIcon, TriangleAlertIcon } from "lucide-react";
 import { AsyncResult } from "effect/reactivity";
 import { useState, type MouseEvent as ReactMouseEvent } from "react";
 
@@ -54,11 +44,7 @@ import {
   usePullRequestDefaultMergeMethodResolver,
   usePullRequestHandoffs,
 } from "../pullRequest/usePullRequestActions";
-import {
-  ChangeRequestStatusIcon,
-  type PrStatusIndicator,
-  type ThreadPr,
-} from "../ThreadStatusIndicators";
+import { ChangeRequestStatusIcon, type PrStatusIndicator, type ThreadPr } from "../ThreadStatusIndicators";
 import {
   AlertDialog,
   AlertDialogClose,
@@ -70,12 +56,7 @@ import {
 } from "../ui/alert-dialog";
 import { Button } from "../ui/button";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
-import {
-  THREAD_DETAILS_PANEL_ICON_CLASS,
-  THREAD_DETAILS_PANEL_LABEL_CLASS,
-  THREAD_DETAILS_PANEL_SPLIT_GROUP_CLASS,
-  THREAD_DETAILS_PANEL_SPLIT_SEPARATOR_CLASS,
-} from "./threadDetailsPanelStyles";
+import { THREAD_DETAILS_PANEL_ICON_CLASS, THREAD_DETAILS_PANEL_LABEL_CLASS } from "./threadDetailsPanelStyles";
 
 // A null checks response is settled; polling cannot find checks.
 const isSettledWithoutChecks = (result: AsyncResult.AsyncResult<unknown, unknown>) =>
@@ -92,7 +73,6 @@ export function ThreadDetailsPrRow({
   openAriaLabel,
   onOpen,
   onActed,
-  onStopWatching,
 }: {
   environmentId: EnvironmentId;
   pr: ThreadPr;
@@ -104,7 +84,6 @@ export function ThreadDetailsPrRow({
   openAriaLabel: string;
   onOpen: (event: ReactMouseEvent<HTMLElement>) => void;
   onActed?: () => void;
-  onStopWatching?: (() => void) | undefined;
 }) {
   const serverConfigs = useServerConfigs();
   const supportsPullRequests = serverConfigs.get(environmentId) !== undefined;
@@ -361,43 +340,6 @@ export function ThreadDetailsPrRow({
               }
             : null;
 
-  const watching =
-    onStopWatching !== undefined && (detail?.state ?? pr?.state ?? "open") === "open";
-  const watchControl = (part: "secondary" | "icon") =>
-    watching ? (
-      <Tooltip>
-        <TooltipTrigger
-          render={
-            <ThreadDetailsControl
-              type="button"
-              variant="ghost"
-              size="sm"
-              part={part}
-              className="group/watch"
-              aria-label={`Stop watching #${number}`}
-              onClick={onStopWatching}
-            />
-          }
-        >
-          <EyeIcon
-            aria-hidden
-            className={cn(part === "icon" ? "size-3.5" : "size-4", "group-hover/watch:hidden")}
-          />
-          <EyeOffIcon
-            aria-hidden
-            className={cn(
-              part === "icon" ? "size-3.5" : "size-4",
-              "hidden group-hover/watch:block",
-            )}
-          />
-        </TooltipTrigger>
-        <TooltipPopup side="top">
-          Watching: the agent wakes when checks finish, someone comments, or the branch conflicts.
-          Click to stop.
-        </TooltipPopup>
-      </Tooltip>
-    ) : null;
-
   // The title row wraps to two lines; a conventional-commit prefix eats most of one line.
   const openRow = (text: string, part: "row" | "primary", wrap = false) => (
     <Tooltip>
@@ -436,7 +378,7 @@ export function ThreadDetailsPrRow({
 
   return (
     <>
-      {detail !== null && (showChecks || trailingAction !== null || watching) ? (
+      {detail !== null && (showChecks || trailingAction !== null) ? (
         <div className="pb-1.5">
           {openRow(detail.title, "row", true)}
           <div className="mt-1.5 flex h-5 min-w-0 items-center gap-0.5 ps-9 pe-2.5 text-xs text-muted-foreground">
@@ -449,7 +391,6 @@ export function ThreadDetailsPrRow({
                 render={<ThreadDetailsControl part="meta" />}
               />
             ) : null}
-            {watchControl("icon")}
             <span className="flex-1" />
             {trailingAction ? (
               <Tooltip>
@@ -473,12 +414,6 @@ export function ThreadDetailsPrRow({
               </Tooltip>
             ) : null}
           </div>
-        </div>
-      ) : watching ? (
-        <div className={THREAD_DETAILS_PANEL_SPLIT_GROUP_CLASS}>
-          {openRow(label, "primary")}
-          <span aria-hidden="true" className={THREAD_DETAILS_PANEL_SPLIT_SEPARATOR_CLASS} />
-          {watchControl("secondary")}
         </div>
       ) : (
         openRow(label, "row")

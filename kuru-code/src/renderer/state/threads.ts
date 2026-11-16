@@ -21,7 +21,6 @@ import type {
   CancelQueuedRunInput,
   DismissThreadUserInputInput,
   EditQueuedRunInput,
-  ForkThreadFromRunInput,
   InterruptThreadTurnInput,
   PromoteQueuedRunInput,
   RespondToThreadApprovalInput,
@@ -34,7 +33,6 @@ import type {
   VisitThreadInput,
   LinkThreadPullRequestInput,
   UnlinkThreadPullRequestInput,
-  WatchThreadPullRequestInput,
 } from "~/rt/operations/commands";
 import { appProjectIdOf, readThreadShell, shellSnapshotAtom } from "~/kuru/shells";
 import { forgetPromptSent, notePromptSent, queuedAttachmentId } from "~/kuru/projection";
@@ -243,7 +241,19 @@ const deleteThread = command<{ readonly threadId: ThreadId; readonly onlyIfUnuse
   },
 );
 
-const NO_LINK = "kuru code finds a thread's pull request from its branch.";
+/** A pull request linked to a thread by hand, beside its branch's; the main process reads it from GitHub. */
+const linkPullRequest = command<LinkThreadPullRequestInput, void>("link-pull-request", async (input) => {
+  const error = await invoke<string | null>("threads.linkPullRequest", { id: input.threadId, url: input.url });
+  if (error !== null) throw new Error(error);
+});
+
+/** A linked pull request, or the branch's, no longer shown on the thread. */
+const unlinkPullRequest = command<UnlinkThreadPullRequestInput, void>("unlink-pull-request", async (input) => {
+  await invoke("threads.unlinkPullRequest", {
+    id: input.threadId,
+    url: `https://${input.host}/${input.repository}/pull/${input.number}`,
+  });
+});
 
 export const threadEnvironment = {
   snapshotAtom: shellSnapshotAtom,
@@ -269,10 +279,8 @@ export const threadEnvironment = {
   respondToApproval: unsupported<RespondToThreadApprovalInput>("approval", "Unharnessed asks for no approvals."),
   respondToUserInput: unsupported<RespondToThreadUserInputInput>("user-input", "Unharnessed asks no questions."),
   dismissUserInput: unsupported<DismissThreadUserInputInput>("dismiss-user-input", "Unharnessed asks no questions."),
-  forkFromRun: unsupported<ForkThreadFromRunInput>("fork", "Unharnessed does not fork threads."),
-  linkPullRequest: unsupported<LinkThreadPullRequestInput>("link-pull-request", NO_LINK),
-  unlinkPullRequest: unsupported<UnlinkThreadPullRequestInput>("unlink-pull-request", NO_LINK),
-  watchPullRequest: unsupported<WatchThreadPullRequestInput>("watch-pull-request", NO_LINK),
+  linkPullRequest,
+  unlinkPullRequest,
 };
 
 export { environmentThreadDetails } from "~/kuru/threadDetails";

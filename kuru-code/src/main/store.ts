@@ -1,6 +1,6 @@
 import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
 import { basename, dirname, join, resolve } from "node:path";
-import { DEFAULT_PREFS, type AppPrefs, type Project, type ProjectIconOverride, type PullRequestRef } from "@shared/protocol";
+import { DEFAULT_PREFS, type AppPrefs, type Project, type ProjectIconOverride, type PullRequestRef, type LinkedPullRequest } from "@shared/protocol";
 
 /** What the app keeps of a thread beside its session file. */
 export type ThreadMeta = {
@@ -28,6 +28,9 @@ export type ThreadMeta = {
   /** Its branch's pull request, when last looked up. */
   pr?: PullRequestRef | null;
   prCheckedAt?: number;
+  /** Pull requests linked to it by hand; its branch's, when the user unlinked that one. */
+  links?: LinkedPullRequest[];
+  unlinkedPr?: string;
   /**
    * The id kuru code's window gave it before Unharnessed made its session: a
    * T3 Code draft names its thread before the first message creates it.

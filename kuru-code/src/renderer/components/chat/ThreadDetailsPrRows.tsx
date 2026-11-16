@@ -14,8 +14,6 @@ import { sourceControlClients } from "~/rt/sourceControlClients";
 import { findProjectOnChangeRequestHost } from "~/rt/changeRequestLinks";
 
 import { useProjects } from "~/state/entities";
-import { threadEnvironment } from "~/state/threads";
-import { useAtomCommand } from "~/state/use-atom-command";
 
 import { linkedPullRequestSnapshotStatus, prStatusIndicator } from "../ThreadStatusIndicators";
 
@@ -26,13 +24,11 @@ function ThreadDetailsPrLinkRow({
   link,
   onOpen,
   onActed,
-  onStopWatching,
 }: {
   environmentId: EnvironmentId;
   link: ThreadPullRequestLink;
   onOpen: (event: ReactMouseEvent<HTMLElement>) => void;
   onActed?: (() => void) | undefined;
-  onStopWatching?: (() => void) | undefined;
 }) {
   const projects = useProjects();
   const parsed = sourceControlClients.parseChangeRequestUrl(link.url)?.link;
@@ -56,7 +52,6 @@ function ThreadDetailsPrLinkRow({
       label={`#${link.number}${link.snapshot === null ? "" : `: ${link.snapshot.title}`}`}
       openAriaLabel={link.url}
       onOpen={onOpen}
-      onStopWatching={onStopWatching}
       {...(onActed ? { onActed } : {})}
     />
   );
@@ -75,22 +70,7 @@ export function ThreadDetailsPrRows({
   onOpenLink: (event: ReactMouseEvent<HTMLElement>, url: string) => void;
 }) {
   const [expanded, setExpanded] = useState(false);
-  const watch = useAtomCommand(threadEnvironment.watchPullRequest, { reportFailure: true });
-  const stopWatching = (link: ThreadPullRequestLink | null) =>
-    link?.watch === undefined
-      ? undefined
-      : () =>
-          void watch({
-            environmentId: threadRef.environmentId,
-            input: {
-              threadId: threadRef.threadId,
-              host: link.host,
-              repository: link.repository,
-              number: link.number,
-              watching: false,
-            },
-          });
-  const currentRow = <ThreadDetailsPrRow {...row} onStopWatching={stopWatching(currentLink)} />;
+  const currentRow = <ThreadDetailsPrRow {...row} />;
   const rest =
     currentLink === null
       ? []
@@ -111,7 +91,6 @@ export function ThreadDetailsPrRows({
               link={link}
               onOpen={(event) => onOpenLink(event, link.url)}
               onActed={row.onActed}
-              onStopWatching={stopWatching(link)}
             />
           ))}
         </div>

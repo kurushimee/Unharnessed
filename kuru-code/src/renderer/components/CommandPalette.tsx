@@ -140,6 +140,7 @@ import type { ChatComposerHandle } from "./chat/ChatComposer";
 import { pickableProjectGroups } from "~/rt/state/projectGrouping";
 import { buildSidebarProjectPickerEntries } from "../sidebarProjectGrouping";
 import { PullRequestGlyph } from "~/components/pullRequest/pullRequestIcons";
+import { openLinkPullRequestDialog } from "./pullRequest/LinkPullRequestDialog";
 import { readPullRequestListPreferences } from "~/components/pullRequest/pullRequestListPreferences";
 import { threadRecentUse } from "~/shared/paletteSearch";
 
@@ -689,6 +690,20 @@ function OpenCommandPaletteDialog(props: {
       icon: <LinkIcon className={ITEM_ICON_CLASS} />,
       shortcutCommand: "thread.copyReference",
       run: copyActiveThreadReference,
+    });
+  }
+
+  if (activeThread) {
+    const threadRef = scopeThreadRef(activeThread.environmentId, activeThread.id);
+    actionItems.push({
+      kind: "action",
+      value: "action:link-pull-request",
+      searchTerms: ["link", "pull request", "pr", "attach"],
+      title: "Link pull request to thread",
+      icon: <PullRequestGlyph.link className={ITEM_ICON_CLASS} />,
+      run: async () => {
+        openLinkPullRequestDialog(threadRef);
+      },
     });
   }
 
