@@ -38,6 +38,7 @@ import type {
   WatchThreadPullRequestInput,
 } from "~/rt/operations/commands";
 import { appProjectIdOf, readThreadShell, shellSnapshotAtom } from "~/kuru/shells";
+import { forgetPromptSent, notePromptSent } from "~/kuru/projection";
 import { LOCAL_ENVIRONMENT_ID } from "~/contracts";
 
 export interface ThreadMetadataUpdate {
@@ -129,13 +130,19 @@ const startTurn = command<StartThreadTurnInput, { readonly sequence?: number }>(
   const created = input.bootstrap?.createThread;
   const shell = readThreadShell({ environmentId: LOCAL_ENVIRONMENT_ID, threadId: input.threadId });
   const projectId = created?.projectId ?? shell?.projectId ?? null;
-  await invoke("threads.send", {
-    id: input.threadId,
-    projectId: projectId === null ? null : appProjectIdOf(projectId),
-    text: input.message.text,
-    images: toAttachments(input.message.attachments),
-    now: input.dispatchMode === "steer",
-  });
+  notePromptSent(input.threadId, input.message.messageId, input.message.text);
+  try {
+    await invoke("threads.send", {
+      id: input.threadId,
+      projectId: projectId === null ? null : appProjectIdOf(projectId),
+      text: input.message.text,
+      images: toAttachments(input.message.attachments),
+      now: input.dispatchMode === "steer",
+    });
+  } catch (error) {
+    forgetPromptSent(input.threadId, input.message.messageId);
+    throw error;
+  }
   return {};
 });
 

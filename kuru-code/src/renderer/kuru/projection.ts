@@ -53,6 +53,39 @@ const WAKES: Record<NonNullable<TurnHead["wake"]>, string> = {
 
 const utc = (ms: number) => DateTime.makeUnsafe(ms);
 
+/**
+ * The prompts the window sent each thread, oldest first, by the message id its timeline shows
+ * them under until the conversation has them. A new turn with that prompt takes the id, so
+ * T3 Code's timeline replaces its own copy with the turn's.
+ */
+const sentPrompts = new Map<ThreadId, Array<{ readonly messageId: MessageId; readonly text: string }>>();
+
+export function notePromptSent(threadId: ThreadId, messageId: MessageId, text: string): void {
+  const sent = sentPrompts.get(threadId) ?? [];
+  sent.push({ messageId, text });
+  sentPrompts.set(threadId, sent);
+}
+
+/** A send the main process refused: its prompt never becomes a turn. */
+export function forgetPromptSent(threadId: ThreadId, messageId: MessageId): void {
+  const sent = sentPrompts.get(threadId)?.filter((prompt) => prompt.messageId !== messageId);
+  if (sent && sent.length > 0) sentPrompts.set(threadId, sent);
+  else sentPrompts.delete(threadId);
+}
+
+/** The id the window sent `text` under, for a turn the agent just took. */
+function takeSentPrompt(threadId: ThreadId, text: string): MessageId | null {
+  const sent = sentPrompts.get(threadId);
+  const head = sent?.[0];
+  // The agent names a skill `/skill:name` where the window sent `/name`.
+  if (!sent || !head || (head.text.trim() !== text.trim() && !(head.text.startsWith("/") && text.startsWith("/")))) {
+    return null;
+  }
+  sent.shift();
+  if (sent.length === 0) sentPrompts.delete(threadId);
+  return head.messageId;
+}
+
 /** The run of a turn, as T3 Code names its states. */
 function runStatus(turn: TurnHead): OrchestrationV2Run["status"] {
   switch (turn.state) {
@@ -184,6 +217,8 @@ interface TurnProjection {
 export class ThreadProjector {
   private items = new WeakMap<TurnItem, { key: string; item: Item }>();
   private rows = new WeakMap<Item, OrchestrationV2ProjectedTurnItem>();
+  /** Turns' prompts by the id the window sent them under. */
+  private promptIds = new Map<number, MessageId>();
   private last: { chat: ChatState; source: ThreadProjectionSource; projection: OrchestrationV2ThreadProjection } | null =
     null;
 
@@ -303,13 +338,17 @@ export class ThreadProjector {
     const ended = turn.ms === undefined ? null : began + turn.ms;
     const items: Item[] = [];
     let ordinal = firstOrdinal;
-    const userMessageId = MessageId.make(`${threadId}:prompt:${turn.id}`);
+    if (turn.prompt && running && !this.promptIds.has(turn.id)) {
+      const sent = takeSentPrompt(threadId, turn.prompt.text);
+      if (sent !== null) this.promptIds.set(turn.id, sent);
+    }
+    const userMessageId = this.promptIds.get(turn.id) ?? MessageId.make(`${threadId}:prompt:${turn.id}`);
     const at = utc(began);
 
     if (turn.prompt) {
       const prompt = turn.prompt;
       items.push(
-        this.cached(prompt, "prompt", () => ({
+        this.cached(prompt, `prompt:${userMessageId}`, () => ({
           ...this.base(threadId, `prompt:${turn.id}`, runId, ordinal, at, at),
           type: "user_message",
           messageId: userMessageId,
@@ -345,11 +384,13 @@ export class ThreadProjector {
 
     const lastIndex = turn.items.length - 1;
     turn.items.forEach((source, index) => {
-      // Only the turn's last item can still be growing.
+      // Only the turn's last item can still be growing; once the turn is done, it ends when the
+      // turn did, which is how T3 Code's timeline times a turn that is not the latest.
       const live = running && index === lastIndex;
-      const key = `${live}`;
+      const closing = !running && index === lastIndex && ended !== null ? utc(ended) : null;
+      const key = closing === null ? `${live}` : `ended:${ended}`;
       const id = `turn:${turn.id}:${index}`;
-      const item = this.cached(source, key, () => {
+      const project = (): Item => {
         switch (source.kind) {
           case "thought": {
             const start = utc(source.started);
@@ -403,6 +444,10 @@ export class ThreadProjector {
                   message: source.text,
                 };
         }
+      };
+      const item = this.cached(source, key, () => {
+        const projected = project();
+        return closing === null ? projected : { ...projected, completedAt: closing, updatedAt: closing };
       });
       items.push(item);
       ordinal += 1;

@@ -4,7 +4,7 @@
 // conversation in the project's folder; its first prompt saves it.
 import { scopedProjectKey, scopeProjectRef } from "~/rt/environment/index";
 import { LOCAL_ENVIRONMENT_ID, ThreadId, type ScopedProjectRef } from "~/contracts";
-import { useRouter } from "@tanstack/react-router";
+import { type AnyRouter, useRouter } from "@tanstack/react-router";
 import * as Schema from "effect/Schema";
 import {
   DraftId,
@@ -34,7 +34,12 @@ const getProjectOrderKey = (project: EnvironmentProject) =>
   scopedProjectKey(scopeProjectRef(project.environmentId, project.id));
 
 export function useNewThreadHandler() {
-  const router = useRouter();
+  return createNewThreadHandler(useRouter());
+}
+
+export type NewThreadHandler = ReturnType<typeof createNewThreadHandler>;
+
+export function createNewThreadHandler(router: AnyRouter) {
   return async (
     projectRef: ScopedProjectRef,
     options?: {

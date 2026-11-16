@@ -7,15 +7,17 @@ import { stackedThreadToast, toastManager } from "~/components/ui/toast";
 import { SCRATCH_PROJECT_ID, readProject } from "~/kuru/shells";
 import { useServerConfigs } from "~/kuru/environment";
 import { usePrimaryEnvironmentId } from "~/state/environments";
-import { useNewThreadHandler } from "./useHandleNewThread";
+import { type NewThreadHandler, useNewThreadHandler } from "./useHandleNewThread";
 
-export function useScratchProject() {
-  const serverConfigs = useServerConfigs();
-  const primaryEnvironmentId = usePrimaryEnvironmentId();
-  const handleNewThread = useNewThreadHandler();
-  const scratchWorkspaceRootFor = (environmentId: EnvironmentId | null): string | null =>
-    environmentId === null ? null : (serverConfigs.get(environmentId)?.scratchWorkspaceRoot ?? null);
+/** The scratch project's actions, for callers outside React (shortcuts) and the hook below. */
+export function createScratchProjectActions(input: {
+  readonly scratchWorkspaceRootFor: (environmentId: EnvironmentId | null) => string | null;
+  readonly primaryEnvironmentId: () => EnvironmentId;
+  readonly handleNewThread: NewThreadHandler;
+}) {
+  const { scratchWorkspaceRootFor, handleNewThread } = input;
   const scratchEnvironmentId = (fallback: EnvironmentId | null): EnvironmentId | null => {
+    const primaryEnvironmentId = input.primaryEnvironmentId();
     if (scratchWorkspaceRootFor(primaryEnvironmentId) !== null) return primaryEnvironmentId;
     return fallback !== null && scratchWorkspaceRootFor(fallback) !== null ? fallback : null;
   };
@@ -33,4 +35,15 @@ export function useScratchProject() {
     );
   };
   return { scratchWorkspaceRootFor, scratchEnvironmentId, openScratchProject, startScratchThread };
+}
+
+export function useScratchProject() {
+  const serverConfigs = useServerConfigs();
+  const primaryEnvironmentId = usePrimaryEnvironmentId();
+  return createScratchProjectActions({
+    scratchWorkspaceRootFor: (environmentId) =>
+      environmentId === null ? null : (serverConfigs.get(environmentId)?.scratchWorkspaceRoot ?? null),
+    primaryEnvironmentId: () => primaryEnvironmentId,
+    handleNewThread: useNewThreadHandler(),
+  });
 }

@@ -11,7 +11,9 @@ import { applyAppearanceContrast } from "./appearanceContrast";
 import { applyAppearanceFontVariables, TYPOGRAPHY_ADVANCED_STORAGE_KEY } from "./appearanceFonts";
 import { retainThreadOverlaysForThread } from "./components/chat/threadOverlayRetention";
 import { startMainAppLocationTracking } from "./components/sidebar/mainAppLocation";
-import { useComposerDraftStore } from "./composerDraftStore";
+import { subscribeDraftThreadPromotion, useComposerDraftStore } from "./composerDraftStore";
+import { environmentThreadShells } from "./kuru/shells";
+import { appAtomRegistry } from "./rpc/atomRegistry";
 import { readLocalStorageValue, subscribeLocalStorageKey } from "./hooks/useLocalStorage";
 import { getClientSettings, subscribeClientSettings } from "./hooks/useSettings";
 import { syncBrowserChromeTheme } from "./hooks/useTheme";
@@ -20,6 +22,7 @@ import {
   syncDocumentWindowControlsOverlayClass,
 } from "./lib/windowControlsOverlay";
 import { startWorkspaceFocus } from "./lib/workspaceFocus";
+import { installChatRouteCommands } from "./shortcuts/chatRouteCommands";
 import { installCommandPaletteCommands } from "./shortcuts/commandPaletteCommands";
 import { resolveThreadRouteTarget } from "./threadRoutes";
 
@@ -119,8 +122,15 @@ export function startAppServices(router: AnyRouter): void {
 
   startClientAppearance();
   startBrowserChromeThemeSync(router);
+  installChatRouteCommands(router);
   installCommandPaletteCommands(router);
   startThreadOverlayRetention(router);
+  // Drafts promote as their threads arrive from the main process, wherever the user is.
+  subscribeDraftThreadPromotion({
+    registry: appAtomRegistry,
+    threadShellAtom: environmentThreadShells.quietThreadShellAtom,
+    threadRefsAtom: environmentThreadShells.threadRefsAtom,
+  });
   startMainAppLocationTracking(router);
   startWorkspaceFocus(router);
 }
