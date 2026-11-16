@@ -1,29 +1,8 @@
-import {
-  isProviderSendTurnSupportedImageMimeType,
-  PROVIDER_SEND_TURN_MAX_IMAGE_BYTES,
-} from "~/contracts";
+import { isProviderSendTurnSupportedImageMimeType } from "~/contracts";
 import * as Predicate from "effect/Predicate";
 
-import {
-  HTML_RENDER_TOOL_NAME,
-  readHtmlRenderReference,
-  type HtmlRenderReference,
-} from "./htmlRender";
-import {
-  claudeMcpToolName,
-  MCP_APP_OUTPUT_KEY,
-  readMcpAppReference,
-  type McpAppReference,
-} from "./mcpApp";
-import { resolveT3McpToolId } from "./t3McpToolPresentation";
-
-const MAX_PARSED_BYTES = 16_384;
-const MAX_METADATA_BYTES = 8_192;
-const MAX_ID_LENGTH = 256;
-const MAX_THREADS = 100;
 const MAX_CONTENT_BLOCKS = 32;
 const MAX_ENVELOPE_DEPTH = 4;
-const MAX_ENVELOPE_NODES = 128;
 const encoder = new TextEncoder();
 
 interface ResultReadBudget {
@@ -35,21 +14,6 @@ interface ResultReadBudget {
 interface ResultEnvelope {
   data?: Record<PropertyKey, unknown>;
   failed: boolean;
-}
-
-interface CompactToolOutput {
-  isError?: true;
-  threadId?: string;
-  messageId?: string;
-  taskId?: string;
-  scheduledTaskId?: string;
-  status?: "rolled_back";
-  htmlRender?: HtmlRenderReference;
-  [MCP_APP_OUTPUT_KEY]?: McpAppReference;
-  thread?: { threadId: string };
-  threads?: Array<{ threadId?: string; status?: "rolled_back" }>;
-  linkedCount?: number;
-  unlinkedCount?: number;
 }
 
 function readResult(value: unknown, budget: ResultReadBudget, depth = 0): ResultEnvelope {
@@ -108,122 +72,6 @@ function readResult(value: unknown, budget: ResultReadBudget, depth = 0): Result
   return { data: value, failed };
 }
 
-function boundedId(value: unknown): string | undefined {
-  if (typeof value !== "string" || value.length > MAX_ID_LENGTH || value.trim() === "") {
-    return undefined;
-  }
-  return Array.from(value).join("");
-}
-
-export function compactDynamicToolOutput(value: unknown): CompactToolOutput | undefined {
-  const budget: ResultReadBudget = {
-    remainingBytes: MAX_PARSED_BYTES,
-    remainingNodes: MAX_ENVELOPE_NODES,
-    exceeded: false,
-  };
-  const result = readResult(value, budget);
-  const output: CompactToolOutput = result.failed ? { isError: true } : {};
-  const data = budget.exceeded ? undefined : result.data;
-  if (data !== undefined) {
-    for (const key of ["threadId", "messageId", "taskId", "scheduledTaskId"] as const) {
-      const id = boundedId(data[key]);
-      if (id !== undefined) output[key] = id;
-    }
-    if (data.status === "rolled_back") output.status = "rolled_back";
-    for (const key of ["linkedCount", "unlinkedCount"] as const) {
-      const count = data[key];
-      if (typeof count === "number" && Number.isSafeInteger(count)) output[key] = count;
-    }
-    const htmlRender = readHtmlRenderReference(data.htmlRender);
-    if (htmlRender !== undefined) output.htmlRender = htmlRender;
-    const mcpApp = readMcpAppReference(data[MCP_APP_OUTPUT_KEY]);
-    if (mcpApp !== undefined) output[MCP_APP_OUTPUT_KEY] = mcpApp;
-    const nestedThreadId = Predicate.isObject(data.thread)
-      ? boundedId(data.thread.threadId)
-      : undefined;
-    if (nestedThreadId !== undefined) output.thread = { threadId: nestedThreadId };
-
-    if (Array.isArray(data.threads)) {
-      let complete = data.threads.length <= MAX_THREADS;
-      const threads: NonNullable<CompactToolOutput["threads"]> = [];
-      if (complete) {
-        for (const entry of data.threads) {
-          if (!Predicate.isObject(entry)) {
-            complete = false;
-            break;
-          }
-          const threadId = boundedId(entry.threadId);
-          const rolledBack = entry.status === "rolled_back";
-          if (threadId === undefined && !rolledBack) {
-            complete = false;
-            break;
-          }
-          threads.push({
-            ...(threadId === undefined ? {} : { threadId }),
-            ...(rolledBack ? { status: "rolled_back" as const } : {}),
-          });
-        }
-      }
-      if (complete) output.threads = threads;
-      else {
-        // Partial batches or top-level ids make the summary parser report a false creation count.
-        delete output.threadId;
-        delete output.status;
-      }
-    }
-  }
-  const oversized = () => encoder.encode(JSON.stringify(output)).byteLength > MAX_METADATA_BYTES;
-  if (oversized()) {
-    delete output.threads;
-    delete output.threadId;
-    delete output.status;
-  }
-  const app = output[MCP_APP_OUTPUT_KEY];
-  if (app?.csp !== undefined && oversized()) {
-    const { csp: _csp, ...rest } = app;
-    output[MCP_APP_OUTPUT_KEY] = rest;
-  }
-  if (oversized()) delete output[MCP_APP_OUTPUT_KEY];
-  return Object.keys(output).length === 0 ? undefined : output;
-}
-
-export function htmlRenderFromToolItem(item: {
-  readonly toolName: string | null | undefined;
-  readonly output?: unknown;
-}): HtmlRenderReference | undefined {
-  if (resolveT3McpToolId(item.toolName) !== HTML_RENDER_TOOL_NAME) return undefined;
-  const output = compactDynamicToolOutput(item.output);
-  return output?.isError ? undefined : output?.htmlRender;
-}
-
-/** The thread-owned file `preview_recording_stop` stored for the agent. */
-export function previewRecordingIdFromToolItem(item: {
-  readonly toolName: string | null | undefined;
-  readonly output?: unknown;
-}): string | undefined {
-  if (resolveT3McpToolId(item.toolName) !== "preview_recording_stop") return undefined;
-  const budget: ResultReadBudget = {
-    remainingBytes: MAX_PARSED_BYTES,
-    remainingNodes: MAX_ENVELOPE_NODES,
-    exceeded: false,
-  };
-  const result = readResult(item.output, budget);
-  return result.failed || budget.exceeded ? undefined : boundedId(result.data?.id);
-}
-
-/** Accept app references only when server and tool match the item, so tools cannot impersonate another app source. */
-export function mcpAppFromToolItem(item: {
-  readonly toolName: string | null | undefined;
-  readonly output?: unknown;
-}): McpAppReference | undefined {
-  const app = compactDynamicToolOutput(item.output)?.[MCP_APP_OUTPUT_KEY];
-  return app !== undefined &&
-    (item.toolName === `${app.server}.${app.tool}` ||
-      item.toolName === claudeMcpToolName(app.server, app.tool))
-    ? app
-    : undefined;
-}
-
 /** Some providers report completion even when command output describes a failure. */
 export function toolOutputIndicatesFailure(text: string): boolean {
   return (
@@ -265,9 +113,6 @@ function outputBlocks(value: unknown): ReadonlyArray<unknown> {
 
 export const MAX_TOOL_OUTPUT_IMAGES = 8;
 
-export const MAX_TOOL_OUTPUT_IMAGE_BASE64_LENGTH =
-  Math.ceil(PROVIDER_SEND_TURN_MAX_IMAGE_BYTES / 3) * 4;
-
 export function toolOutputImageBlocks(value: unknown): ReadonlyArray<unknown> {
   const blocks: unknown[] = [];
   for (const block of outputBlocks(value)) {
@@ -283,24 +128,3 @@ export function toolOutputImages(value: unknown): ReadonlyArray<ToolOutputImage>
   return toolOutputImageBlocks(value).flatMap((block) => readToolOutputImage(block) ?? []);
 }
 
-export function mcpToolResultOutput(result: {
-  readonly content?: unknown;
-  readonly structuredContent?: unknown;
-}): unknown {
-  if (result.structuredContent != null && toolOutputImages(result.content).length > 0) {
-    return { content: result.content, structuredContent: result.structuredContent };
-  }
-  return result.structuredContent ?? result.content;
-}
-
-export function omitToolOutputImageData(value: unknown): unknown {
-  const omit = (block: unknown) => {
-    const image = readToolOutputImage(block);
-    return image?.data === undefined ? block : { type: "image", mimeType: image.mimeType };
-  };
-  if (Array.isArray(value)) return value.map(omit);
-  if (Predicate.isObject(value) && Array.isArray(value.content)) {
-    return { ...value, content: value.content.map(omit) };
-  }
-  return omit(value);
-}

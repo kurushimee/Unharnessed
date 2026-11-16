@@ -263,7 +263,7 @@ export class ThreadProjector {
           this.cached(entry, `${entry.kind}`, () => ({
             ...this.base(threadId, `line:${entry.id}`, null, ordinal, at, at),
             type: "system_notice",
-            status: "completed",
+            status: entry.kind === "kernel" && !entry.restored ? "failed" : "completed",
             title: null,
             message: lineText(entry),
           })),
@@ -455,7 +455,7 @@ export class ThreadProjector {
           type: "system_notice",
           status: "completed",
           title: null,
-          message: WAKES[wake],
+          message: `The agent went on by itself: ${WAKES[wake]}`,
         })),
       );
       ordinal += 1;
@@ -631,7 +631,12 @@ export class ThreadProjector {
 }
 
 function lineText(line: Exclude<ChatEntry, Turn>): string {
-  return line.kind === "restart" ? "The agent restarted" : line.restored ? "The kernel came back" : "The kernel restarted";
+  // The extension's words for them (vscode/webview/Chat.tsx).
+  return line.kind === "restart"
+    ? "The agent restarted: it no longer remembers the messages above."
+    : line.restored
+      ? "Python kernel restored"
+      : "The Python kernel could not be restored";
 }
 
 function mimeOf(dataUrl: string): string {

@@ -13,7 +13,7 @@ import {
 import type { AsyncResult, Atom } from "effect/reactivity";
 import type { CommandOutputView } from "~/rt/state/commandOutput";
 import type { WorkflowOpening } from "~/rt/state/subagentRuntime";
-import { createContext, type MouseEvent, type ReactNode } from "react";
+import { createContext, type MouseEvent } from "react";
 import { type LegendListRef } from "@legendapp/list/react";
 import type { PendingApproval } from "../../session-logic";
 import { type ChatFileAttachment } from "../../types";
@@ -63,7 +63,6 @@ export interface TimelineRowSharedState {
    * Draws a published HTML visual. Unset, the row loads it from the environment; the guest page
    * loads it through its own route.
    */
-  renderHtmlRender: ((row: Extract<TimelineRow, { kind: "html-render" }>) => ReactNode) | undefined;
   /** Unset, expanded rows read detail and command output from the environment. */
   turnItemSource: TurnItemSource | undefined;
   onOpenThread: (threadId: OrchestrationV2TurnItem["threadId"]) => void;

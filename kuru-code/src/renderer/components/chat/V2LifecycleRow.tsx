@@ -40,7 +40,9 @@ import type { TimestampFormat } from "~/contracts";
 import {
   BotIcon,
   ChevronRightIcon,
+  CircleAlertIcon,
   CircleStopIcon,
+  InfoIcon,
   ArrowRightLeftIcon,
   ArrowRightIcon,
   EraserIcon,
@@ -75,6 +77,16 @@ export function V2LifecycleRow(props: {
   readonly onOpenThread: (threadId: ThreadId) => void;
 }) {
   const { item } = props;
+  if (item.type === "system_notice") {
+    return (
+      <TimelineSystemDivider
+        label={item.message}
+        tone={item.status === "failed" ? "danger" : "neutral"}
+        icon={item.status === "failed" ? CircleAlertIcon : InfoIcon}
+        wrapDetail
+      />
+    );
+  }
   if (item.type === "run_interrupt_result") {
     return (
       <TimelineSystemDivider

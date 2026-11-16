@@ -11,8 +11,6 @@ import {
   type ToolActivitySurface,
   type ToolActivityIcon,
   type ToolActivitySource,
-  type ThreadId,
-  type TurnItemId,
 } from "~/contracts";
 import { extractToolActivityPresentation } from "~/rt/work-log/toolPresentation";
 import {
@@ -21,10 +19,6 @@ import {
   formatReadToolLabel,
   formatSearchToolLabel,
 } from "~/shared/toolActivity";
-import type { HtmlRenderReference } from "~/shared/htmlRender";
-import { turnItemDetailRevision } from "~/rt/work-log/itemDetail";
-import type { McpAppReference } from "~/shared/mcpApp";
-import { htmlRenderFromToolItem, mcpAppFromToolItem } from "~/shared/toolOutput";
 import { contextCompactionLabel, workEntryIndicatesToolFailure } from "~/rt/work-log/presentation";
 import type { ThreadPendingApproval, ThreadPendingUserInput } from "~/rt/state/threadRequests";
 import type { ThreadRunSummary, ThreadRuntimeSummary } from "~/rt/state/models";
@@ -107,23 +101,6 @@ export type TimelineEntry = (
       readonly kind: "proposed-plan";
       readonly createdAt: string;
       readonly proposedPlan: ProposedPlan;
-    }
-  | {
-      readonly id: string;
-      readonly kind: "html-render";
-      readonly createdAt: string;
-      readonly runId: RunId | null;
-      readonly htmlRender: HtmlRenderReference;
-    }
-  | {
-      readonly id: string;
-      readonly kind: "mcp-app";
-      readonly createdAt: string;
-      readonly runId: RunId | null;
-      readonly sourceThreadId: ThreadId;
-      readonly itemId: TurnItemId;
-      readonly revision: string;
-      readonly mcpApp: McpAppReference;
     }
   | {
       readonly id: string;
@@ -222,6 +199,8 @@ export function derivePendingUserInputs(
 }
 
 const STANDALONE_V2_ITEM_TYPES = new Set<OrchestrationV2ProjectedTurnItem["item"]["type"]>([
+  // kuru code's lines between turns (the agent restarted, the kernel came back): dividers.
+  "system_notice",
   "fork",
   "handoff",
   "run_interrupt_request",
@@ -617,38 +596,6 @@ export function deriveTimelineEntriesFromVisibleTurnItems(
         kind: "proposed-plan",
         createdAt,
         proposedPlan,
-        ...attemptMetadata,
-      });
-      continue;
-    }
-
-    const htmlRender =
-      item.type === "dynamic_tool" && item.status === "completed"
-        ? htmlRenderFromToolItem(item)
-        : undefined;
-    if (htmlRender !== undefined) {
-      entries.push({
-        id: item.id,
-        kind: "html-render",
-        createdAt,
-        runId: item.runId,
-        htmlRender,
-        ...attemptMetadata,
-      });
-      continue;
-    }
-
-    const mcpApp = item.type === "dynamic_tool" ? mcpAppFromToolItem(item) : undefined;
-    if (mcpApp !== undefined) {
-      entries.push({
-        id: item.id,
-        kind: "mcp-app",
-        createdAt,
-        runId: item.runId,
-        sourceThreadId: row.sourceThreadId,
-        itemId: row.sourceItemId,
-        revision: turnItemDetailRevision(item),
-        mcpApp,
         ...attemptMetadata,
       });
       continue;

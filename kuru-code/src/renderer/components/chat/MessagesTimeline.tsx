@@ -237,7 +237,6 @@ interface MessagesTimelineProps {
   /** Off where another region already speaks the thread's status, like a subagent's bar. */
   announceTurnStatus?: boolean;
   onOpenThread: (threadId: OrchestrationV2TurnItem["threadId"]) => void;
-  renderHtmlRender?: TimelineRowSharedState["renderHtmlRender"];
   turnItemSource?: TimelineRowSharedState["turnItemSource"];
   /**
    * The thread this one is a subagent or side chat of; `open` is absent when it cannot be
@@ -333,7 +332,6 @@ const ConversationTimeline = memo(function ConversationTimeline({
   displayThreadKey,
   announceTurnStatus = true,
   onOpenThread,
-  renderHtmlRender,
   turnItemSource,
   parentThreadLink = null,
   workflowOpening = null,
@@ -981,8 +979,7 @@ const ConversationTimeline = memo(function ConversationTimeline({
     onFileDownload,
     openPullRequest,
     onOpenThread,
-    renderHtmlRender,
-    turnItemSource,
+      turnItemSource,
     workflowOpening,
     onToggleTurnFold,
     onToggleAttemptFold,
@@ -1062,13 +1059,7 @@ const ConversationTimeline = memo(function ConversationTimeline({
     const scrollNode: HTMLElement | null = list?.getScrollableNode() ?? null;
     registerTimeline?.(scrollNode);
     const viewport = scrollNode
-      ? attachTimelineViewport(scrollNode, (frame) => {
-          const rowId = frame.closest<HTMLElement>("[data-timeline-row-id]")?.dataset.timelineRowId;
-          if (rowId && list) {
-            list.cancelScroll();
-            list.anchorVisibleContent({ key: rowId });
-          }
-        })
+      ? attachTimelineViewport(scrollNode)
       : null;
     viewportRef.current = viewport;
     const detachViewport = viewport ? onViewportAttach?.(viewport) : undefined;
@@ -1393,8 +1384,6 @@ const TimelineRowContent = memo(function TimelineRowContent({ row }: { row: Time
                     !row.showAssistantMeta) ||
                   row.kind === "event" ||
                   row.kind === "attempt-fold" ||
-                  row.kind === "html-render" ||
-                  row.kind === "mcp-app" ||
                   row.kind === "viewed-images"
                 ? "pb-2"
                 : "pb-4",

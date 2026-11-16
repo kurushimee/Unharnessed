@@ -49,15 +49,10 @@ import {
   type RunAttemptId,
   type RuntimeRequestId,
   RunId,
-  type ThreadId,
-  type TurnItemId,
 } from "~/contracts";
 import type { ThreadRunSummary } from "~/rt/state/models";
 import type { ToolCallVisibility } from "~/contracts";
 import { resolveT3McpToolDefinition } from "~/shared/t3McpToolPresentation";
-import { compactDynamicToolOutput } from "~/shared/toolOutput";
-import { htmlRenderReferencesEqual, type HtmlRenderReference } from "~/shared/htmlRender";
-import { mcpAppReferencesEqual, type McpAppReference } from "~/shared/mcpApp";
 import { dynamicToolTitle } from "~/shared/toolActivity";
 import { formatWorkspaceRelativePath } from "../../filePathDisplay";
 import { collectToolFilePaths, formatReadToolLabel, formatSearchToolLabel } from "~/shared/toolActivity";
@@ -70,7 +65,6 @@ export function timelineEntryRunId(entry: TimelineEntry): RunId | null {
   if (entry.kind === "proposed-plan") {
     return entry.proposedPlan.runId;
   }
-  if (entry.kind === "html-render" || entry.kind === "mcp-app") return entry.runId;
   return entry.kind === "work" ? (entry.entry.runId ?? null) : null;
 }
 
@@ -573,7 +567,6 @@ type MessagesTimelineRowContent =
       message: ChatMessage;
       projectedItem?: OrchestrationV2ProjectedTurnItem;
       showAssistantMeta: boolean;
-      suppressEmptyResponse?: boolean;
       showAssistantCopyButton: boolean;
       assistantCopyStreaming: boolean;
       assistantTurnDiffSummary?: TurnDiffSummary | undefined;
@@ -609,21 +602,7 @@ type MessagesTimelineRowContent =
       createdAt: string;
       proposedPlan: ProposedPlan;
     }
-  | {
-      kind: "html-render";
-      id: string;
-      createdAt: string;
-      htmlRender: HtmlRenderReference;
-    }
-  | {
-      kind: "mcp-app";
-      id: string;
-      createdAt: string;
-      sourceThreadId: ThreadId;
-      itemId: TurnItemId;
-      revision: string;
-      mcpApp: McpAppReference;
-    };
+;
 
 export interface StableMessagesTimelineRowsState {
   byId: Map<string, MessagesTimelineRow>;
@@ -788,8 +767,6 @@ function deriveSupersededAttemptFolds(
       unfoldedRunIds.has(entry.attempt.runId) ||
       (entry.kind === "message" && entry.message.role === "user") ||
       (entry.kind === "event" && entry.projectedItem.item.type === "handoff") ||
-      entry.kind === "html-render" ||
-      entry.kind === "mcp-app" ||
       timelineEntryIsPersistentResourceCard(entry) ||
       liveSubagentEntryIds.has(entry.id) ||
       (entry.kind === "work" && entry.entry.itemType === "system_notice")
@@ -1305,36 +1282,6 @@ function attachTrailingToolGroupsToAssistant(
   return result;
 }
 
-// Hide delegation rows only when task ids identify durable child cards; prompts can repeat.
-function withoutSubagentDelegationRows(entries: ReadonlyArray<TimelineEntry>) {
-  const childrenByRun = new Map<RunId, Set<string>>();
-  for (const entry of entries) {
-    if (entry.kind !== "event" || entry.projectedItem.item.type !== "subagent") continue;
-    const item = entry.projectedItem.item;
-    if (item.origin !== "app_owned" || item.runId === null) continue;
-    const children = childrenByRun.get(item.runId) ?? new Set<string>();
-    children.add(item.subagentId);
-    childrenByRun.set(item.runId, children);
-  }
-  return entries.filter((entry) => {
-    if (entry.kind !== "work" || workEntryDisplayIndicatesToolFailure(entry.entry)) return true;
-    const item = entry.entry.projectedItem?.item ?? entry.entry.structuredPayload;
-    if (
-      item?.type !== "dynamic_tool" ||
-      item.runId === null ||
-      (item.status !== "running" && item.status !== "completed") ||
-      resolveT3McpToolDefinition(item.toolName)?.summaryAction !== "delegate"
-    )
-      return true;
-    const output = compactDynamicToolOutput(item.output);
-    if (output?.isError) return true;
-    if (output?.taskId !== undefined) {
-      return !childrenByRun.get(item.runId)?.has(output.taskId);
-    }
-    return true;
-  });
-}
-
 const supersededReasoningEntries = new WeakMap<TimelineEntry, TimelineEntry>();
 
 function settleSupersededReasoning(entries: ReadonlyArray<TimelineEntry>) {
@@ -1456,7 +1403,7 @@ function timelineRowEntries(
         entry.kind !== "work" || !workEntryHiddenByToolCallVisibility(entry.entry, visibility),
     );
   }
-  return withoutSubagentDelegationRows(settleSupersededReasoning(shown));
+  return settleSupersededReasoning(shown);
 }
 
 function deriveTimelineTurnFolds(
@@ -1511,12 +1458,6 @@ export function deriveMessagesTimelineRows(input: {
   revealedMessageId?: MessageId | null;
 }): MessagesTimelineRow[] {
   const timelineEntries = timelineRowEntries(input);
-  const embeddedResultRunIds = new Set<RunId>();
-  for (const entry of timelineEntries) {
-    if ((entry.kind === "html-render" || entry.kind === "mcp-app") && entry.runId !== null) {
-      embeddedResultRunIds.add(entry.runId);
-    }
-  }
   const isPendingApproval = (entry: WorkLogEntry) => {
     const item = entry.projectedItem?.item;
     return (
@@ -2075,29 +2016,6 @@ export function deriveMessagesTimelineRows(input: {
       continue;
     }
 
-    if (timelineEntry.kind === "html-render") {
-      nextRows.push({
-        kind: "html-render",
-        id: timelineEntry.id,
-        createdAt: timelineEntry.createdAt,
-        htmlRender: timelineEntry.htmlRender,
-      });
-      continue;
-    }
-
-    if (timelineEntry.kind === "mcp-app") {
-      nextRows.push({
-        kind: "mcp-app",
-        id: timelineEntry.id,
-        createdAt: timelineEntry.createdAt,
-        sourceThreadId: timelineEntry.sourceThreadId,
-        itemId: timelineEntry.itemId,
-        revision: timelineEntry.revision,
-        mcpApp: timelineEntry.mcpApp,
-      });
-      continue;
-    }
-
     if (timelineEntry.kind === "event") {
       const previous = nextRows.at(-1);
       if (
@@ -2167,10 +2085,6 @@ export function deriveMessagesTimelineRows(input: {
         ? {}
         : { projectedItem: timelineEntry.projectedItem }),
       showAssistantMeta,
-      suppressEmptyResponse:
-        timelineEntry.message.role === "assistant" &&
-        timelineEntry.message.runId != null &&
-        embeddedResultRunIds.has(timelineEntry.message.runId),
       showAssistantCopyButton: showAssistantMeta,
       assistantCopyStreaming: timelineEntry.message.streaming || assistantResponseStillInProgress,
       assistantTurnDiffSummary:
@@ -2531,21 +2445,6 @@ function isRowUnchanged(a: MessagesTimelineRow, b: MessagesTimelineRow): boolean
       );
     }
 
-    case "html-render": {
-      // Tool updates rebuild entries; preserve frames for unchanged pages.
-      const bh = b as typeof a;
-      return a.createdAt === bh.createdAt && htmlRenderReferencesEqual(a.htmlRender, bh.htmlRender);
-    }
-
-    case "mcp-app": {
-      const bm = b as typeof a;
-      return (
-        a.createdAt === bm.createdAt &&
-        a.revision === bm.revision &&
-        mcpAppReferencesEqual(a.mcpApp, bm.mcpApp)
-      );
-    }
-
     case "event":
       return (
         a.projectedItem === (b as typeof a).projectedItem &&
@@ -2596,7 +2495,6 @@ function isRowUnchanged(a: MessagesTimelineRow, b: MessagesTimelineRow): boolean
         a.message === bm.message &&
         a.projectedItem === bm.projectedItem &&
         a.showAssistantMeta === bm.showAssistantMeta &&
-        a.suppressEmptyResponse === bm.suppressEmptyResponse &&
         a.showAssistantCopyButton === bm.showAssistantCopyButton &&
         a.assistantCopyStreaming === bm.assistantCopyStreaming &&
         a.assistantTurnDiffSummary === bm.assistantTurnDiffSummary &&
