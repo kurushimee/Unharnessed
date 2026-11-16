@@ -1544,7 +1544,6 @@ export function PullRequestDetailPanel({
                         checks={detail.checks}
                         stale={checksStale}
                         checksState={checksState}
-                        threadRef={threadRef}
                       />
                     ) : (
                       <CircleDotIcon aria-hidden className="size-3.5" />

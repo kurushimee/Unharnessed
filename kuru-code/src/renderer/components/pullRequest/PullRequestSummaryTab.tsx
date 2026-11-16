@@ -30,7 +30,7 @@ import { useEffect, useEffectEvent, useRef, useState, type ReactNode } from "rea
 import { pullRequestEnvironment } from "~/state/pullRequests";
 import { useLocalStorage } from "~/hooks/useLocalStorage";
 import { cn } from "~/lib/utils";
-import { useOpenLink } from "~/browser/useOpenLink";
+import { openExternalLink } from "~/browser/useOpenLink";
 import { RelativeTime } from "~/components/RelativeTime";
 
 import { Button } from "../ui/button";
@@ -543,9 +543,8 @@ export function PullRequestSummaryTab({
       })),
   ];
 
-  const openLink = useOpenLink(threadRef);
   const openCheck = (url: string) => {
-    void openLink(url).catch((error: unknown) => {
+    void openExternalLink(url).catch((error: unknown) => {
       console.error(error);
       toastManager.add({ type: "error", title: "Unable to open check details" });
     });

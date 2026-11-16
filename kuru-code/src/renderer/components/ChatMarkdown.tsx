@@ -111,7 +111,7 @@ import { usePullRequestLinking } from "~/hooks/usePullRequestLinking";
 import { readThreadShell } from "~/state/entities";
 import type { ThreadPullRequestKey } from "~/contracts";
 import { useOpenChangeRequestLink } from "~/lib/openPullRequestLink";
-import { useOpenLink } from "../browser/useOpenLink";
+import { openExternalLink } from "../browser/useOpenLink";
 import { writeTextToClipboard } from "../hooks/useCopyToClipboard";
 import { PullRequestLinkPreview } from "./pullRequest/PullRequestLinkPreview";
 import { MarkdownCodeBlock, SuspenseShikiCodeBlock } from "./chat/MarkdownCodeBlock";
@@ -479,7 +479,6 @@ function useChatMarkdownState({
     if (threadRef === undefined || (!linked && linkedThreadPullRequestFor(href) === null)) return;
     await pullRequestLinking.changeLink(threadRef, href, linked);
   };
-  const openDeferredMarkdownLink = useOpenLink(threadRef);
   const mathEnabled = useClientSettings((settings) => settings.mathRenderingEnabled);
   // Keyed by the file links found, not the text, so streamed text that adds none keeps the
   // renderer context, and every block reading it, unchanged.
@@ -582,7 +581,6 @@ function useChatMarkdownState({
     markdownFileLinkMetaByHref,
     onTaskListChange,
     openChangeRequestLink,
-    openDeferredMarkdownLink,
     openMarkdownMedia,
     projects,
     linkedThreadPullRequestFor,
@@ -721,14 +719,13 @@ const CHAT_MARKDOWN_COMPONENTS = {
   },
   a: function MarkdownAnchor({ node, href, children, title: _title, ...props }) {
     const {
-          cwd,
+      cwd,
       environmentId,
       imageBaseDir,
       markdownFileLinkMetaByHref,
       threadRef,
       openMarkdownMedia,
       openChangeRequestLink,
-      openDeferredMarkdownLink,
       projects,
       linkedThreadPullRequestFor,
       resolveThreadPullRequest,
@@ -911,7 +908,7 @@ const CHAT_MARKDOWN_COMPONENTS = {
                 environmentId ?? undefined,
               )
             }
-            onOpenFallback={openDeferredMarkdownLink}
+            onOpenFallback={openExternalLink}
           />
         );
       }
