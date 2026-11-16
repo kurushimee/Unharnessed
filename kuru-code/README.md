@@ -27,12 +27,19 @@ log) elsewhere; `UNHARNESSED_BIN` picks another agent binary.
 ## What comes from where
 
 - `src/main/`: the Electron main process: threads (`threads.ts`), projects
-  and preferences (`store.ts`), git and GitHub through `git`/`gh` (`git.ts`),
-  the Usage page's figures from the session files (`usage.ts`), the
-  subscriptions' limits (`limits.ts`), and the renderer's RPC (`rpc.ts`).
+  and preferences (`store.ts`), a thread's branch and its pull request
+  through `git`/`gh` (`git.ts`), the Usage page's figures from the session
+  files (`usage.ts`), the subscriptions' limits (`limits.ts`), and the
+  renderer's RPC (`rpc.ts`).
+- `src/main/t3/`: T3 Code's pull request service (its server's
+  `pullRequest/`, the `source-control-core` and `source-control-github`
+  packages), reading GitHub with the `gh` login only, GitHub's other hosts
+  and its app sign-in cut. `pullRequests.ts` answers the window's
+  `pullRequests.*` RPCs with it, as T3 Code's `ws.ts` does.
 - `src/renderer/`: T3 Code's `apps/web/src`, file for file
-  (`T3_ORIGIN.json` maps each file to its source); `contracts/` and `rt/`
-  hold the parts of T3 Code's `packages/` it needs.
+  (`T3_ORIGIN.json` maps each file, `src/main/t3/` included, to its
+  source); `contracts/` and `rt/` hold the parts of T3 Code's `packages/`
+  it needs.
 - `src/renderer/kuru/`: what replaces T3 Code's server: the projection of
   Unharnessed sessions into T3 Code's thread state, providers, settings and
   keybindings.

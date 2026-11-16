@@ -1,5 +1,4 @@
 import { app, BrowserWindow, clipboard, dialog, ipcMain, nativeTheme, Notification, screen, shell } from "electron";
-import { spawn } from "node:child_process";
 import { existsSync, mkdirSync } from "node:fs";
 import { readFile, rename, writeFile } from "node:fs/promises";
 import { homedir } from "node:os";
@@ -12,6 +11,7 @@ import type { Conversation } from "../../../vscode/src/conversations";
 import type { AppPrefs, HostMessage, WebviewMessage } from "@shared/protocol";
 import { showContextMenu } from "./contextMenu";
 import { Git } from "./git";
+import { createPullRequests } from "./pullRequests";
 import { createRpc } from "./rpc";
 import { FAVICON_EXTENSIONS, projectFavicon } from "./favicons";
 import { Files } from "./files";
@@ -20,7 +20,6 @@ import { createLog } from "./log";
 import { Limits } from "./limits";
 import { projectId, Store, type ProjectChange, type ThreadMeta } from "./store";
 import { Threads } from "./threads";
-import { usageReport } from "./usage";
 import { writeCommitMessage } from "./writer";
 
 const READ_MEDIA_MAX_BYTES = 256 * 1024 * 1024;
@@ -406,45 +405,12 @@ async function start(): Promise<void> {
     }
   });
 
+  const pullRequests = createPullRequests({ userData: app.getPath("userData"), app: () => threads.app, log });
+  app.on("will-quit", () => void pullRequests.dispose());
   const handlers: Record<string, (params: any) => unknown> = {
-    "git.status": ({ cwd }) => git.status(cwd),
-    "git.branches": ({ cwd }) => git.branches(cwd),
-    "git.checkout": async ({ cwd, branch, create }) => {
-      const error = await git.checkout(cwd, branch, create);
-      void threads.refresh();
-      return error ?? null;
-    },
-    "git.branch": ({ cwd }) => git.branch(String(cwd)).then((name) => name ?? null),
-    "git.init": ({ cwd }) => git.init(cwd).then((error) => error ?? null),
-    "git.act": (request) => git.act(request, (cwd) => writeCommitMessage(binary, cwd, log)),
-    "git.changedFiles": ({ cwd, against }) => git.changedFiles(cwd, against),
-    "git.diff": ({ cwd, against, path }) => git.diff(cwd, against, path),
-    "prs.list": ({ state }) => git.pullRequests(threads.app.projects.filter((project) => !project.missing).map((project) => project.path), state),
-    "prs.get": ({ repo, number }) => git.pullRequest(repo, number),
-    "prs.diff": ({ repo, number }) => git.pullRequestDiff(repo, number),
-    "prs.comment": ({ repo, number, body }) => git.comment(repo, number, body).then((error) => error ?? null),
-    "prs.checkout": async ({ repo, number }) => {
-      for (const project of threads.app.projects) {
-        if ((await git.githubAll(project.path)).some((found) => found.toLowerCase() === String(repo).toLowerCase())) {
-          const error = await git.checkoutPullRequest(project.path, number, String(repo));
-          return error ? { error } : { cwd: project.path, projectId: project.id };
-        }
-      }
-      return { error: `No project here is a clone of ${repo}.` };
-    },
-    "prs.repoProject": async ({ repo }) => {
-      for (const project of threads.app.projects) {
-        if ((await git.githubAll(project.path)).some((found) => found.toLowerCase() === String(repo).toLowerCase())) return project.id;
-      }
-      return null;
-    },
-    "usage.get": ({ days }) => usageReport(days),
     "limits.get": () => limits.read(),
+    "pullRequests.diff": (input) => pullRequests.diff(input),
     "shell.openExternal": ({ url }) => (/^https?:\/\//i.test(url) ? shell.openExternal(url) : undefined),
-    "shell.openPath": ({ path }) => shell.openPath(path),
-    "shell.showItemInFolder": ({ path }) => shell.showItemInFolder(path),
-    "open.in": ({ path, target }) => openIn(String(path), String(target)),
-    "app.info": () => ({ version, electron: process.versions.electron, binary, log: log.file, userData: app.getPath("userData") }),
     // T3 Code's add project: the folder is made when it is missing.
     "projects.add": ({ path }) => {
       const folder = resolve(String(path));
@@ -469,7 +435,6 @@ async function start(): Promise<void> {
       const picked = owner ? await dialog.showOpenDialog(owner, options) : await dialog.showOpenDialog(options);
       return picked.canceled ? null : (picked.filePaths[0] ?? null);
     },
-    "app.projectId": ({ path }) => projectId(path),
     "projects.update": ({ id, change }) => {
       const project = threads.app.projects.find((candidate) => candidate.id === id);
       if (!project) return "That project is gone.";
@@ -561,7 +526,7 @@ async function start(): Promise<void> {
       return picked.canceled ? null : (picked.filePaths[0] ?? null);
     },
   };
-  const rpc = createRpc({ git, log, writeMessage: (cwd) => writeCommitMessage(binary, cwd, log), changed: () => void threads.refresh() });
+  const rpc = createRpc({ git, log, writeMessage: (cwd) => writeCommitMessage(binary, cwd, log), changed: () => void threads.refresh(), pullRequests });
   ipcMain.handle("rpc", (_event, tag: string, payload: unknown) => rpc.call(tag, payload));
   ipcMain.handle("rpc-subscribe", (event, id: string, tag: string, payload: unknown) => rpc.subscribe(event.sender, id, tag, payload));
   ipcMain.on("rpc-unsubscribe", (_event, id: string) => rpc.unsubscribe(id));
@@ -687,30 +652,6 @@ function lastProject(store: Store, _threads: Threads, home: string): string {
 function inside(area: Electron.Rectangle, box: { x?: number; y?: number; width: number; height: number }): boolean {
   if (box.x === undefined || box.y === undefined) return true;
   return box.x < area.x + area.width && box.x + box.width > area.x && box.y < area.y + area.height && box.y + box.height > area.y;
-}
-
-/** A folder in Explorer, an editor or a terminal. */
-async function openIn(path: string, target: string): Promise<string | null> {
-  if (!existsSync(path)) return `${path} does not exist.`;
-  if (target === "explorer") {
-    const error = await shell.openPath(path);
-    return error || null;
-  }
-  const commands: Record<string, string> = {
-    vscode: `code "${path}"`,
-    cursor: `cursor "${path}"`,
-    terminal: `where wt >nul 2>nul && (wt -d "${path}") || (start "" /D "${path}" cmd)`,
-  };
-  const command = commands[target];
-  if (!command) return `Unknown target ${target}.`;
-  return new Promise((resolveOpen) => {
-    const child = spawn("cmd.exe", ["/d", "/s", "/c", `"${command}"`], { cwd: path, detached: true, stdio: "ignore", windowsHide: true, windowsVerbatimArguments: true });
-    child.on("error", (error) => resolveOpen(String(error)));
-    child.on("spawn", () => {
-      child.unref();
-      resolveOpen(null);
-    });
-  });
 }
 
 /** The sidebar state the window may set on a thread; `null` clears a field. */

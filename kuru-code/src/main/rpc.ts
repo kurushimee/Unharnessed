@@ -3,7 +3,8 @@
 // window sends them here over IPC (renderer rt/rpc/client.ts), payloads and
 // answers encoded by T3 Code's schemas. The ones answered here are those
 // Unharnessed's machine has an answer for: git through `git`, GitHub through
-// `gh`. Any other answers `unsupported`, which the window shows as such.
+// `gh`, pull requests through T3 Code's own service (pullRequests.ts). Any
+// other answers `unsupported`, which the window shows as such.
 import type { WebContents } from "electron";
 import type { LogOutputChannel } from "vscode";
 import type { Dirent } from "node:fs";
@@ -11,6 +12,7 @@ import { readdir, stat } from "node:fs/promises";
 import { homedir, hostname } from "node:os";
 import { basename, dirname, extname, join, resolve } from "node:path";
 import { type Git, run } from "./git";
+import { createPullRequests } from "./pullRequests";
 import { usagePricing, usageSummary } from "./usage";
 
 type Answer = { ok: true; value: unknown } | { ok: false; error: unknown; unsupported?: boolean };
@@ -445,7 +447,10 @@ export function createRpc(options: {
   writeMessage: (cwd: string) => Promise<string>;
   /** After a command that changes a checkout: threads read their branch again. */
   changed: () => void;
+  /** T3 Code's pull request service, which answers `pullRequests.*`. */
+  pullRequests: ReturnType<typeof createPullRequests>;
 }) {
+  const { pullRequests } = options;
   const { git: gitService, log, writeMessage } = options;
   /** Status watchers by folder: a refresh reads it again and tells each. */
   const statusWatchers = new Map<string, Set<() => void>>();
@@ -610,6 +615,7 @@ export function createRpc(options: {
 
   return {
     async call(tag: string, payload: unknown): Promise<Answer> {
+      if (pullRequests.handles(tag)) return pullRequests.call(tag, payload);
       const handler = unary[tag];
       if (!handler) return { ok: false, error: `kuru code does not answer ${tag}.`, unsupported: true };
       try {
@@ -621,7 +627,9 @@ export function createRpc(options: {
       }
     },
     subscribe(sender: WebContents, id: string, tag: string, payload: unknown): Answer {
-      const streamer = streams[tag];
+      const streamer: Streamer | undefined = pullRequests.streams(tag)
+        ? (input, emit, end) => pullRequests.subscribe(tag, input, emit, end)
+        : streams[tag];
       if (!streamer) return { ok: false, error: `kuru code does not answer ${tag}.`, unsupported: true };
       const send = (message: object) => {
         if (!sender.isDestroyed()) sender.send("rpc-event", { id, ...message });
