@@ -6,23 +6,12 @@ import {
   getQuestionTextPreview,
   hasQuestionAnswer,
 } from "~/rt/work-log/userInput";
-import {
-  ORCHESTRATION_V2_WORKSPACE_PREPARATION_FAILURE_CODE,
-  type EnvironmentId,
-  ThreadId,
-} from "~/contracts";
+import { type EnvironmentId, ThreadId } from "~/contracts";
 import { scopeThreadRef } from "~/rt/environment/index";
 import { Link } from "@tanstack/react-router";
 import { notificationChildThreadId } from "~/rt/state/threadExecution";
-import {
-  resolveViewedImageAsset,
-  toolGroupAction,
-  workEntryViewedImagePath,
-} from "~/rt/work-log/presentation";
-import {
-  turnItemHasDetail,
-  turnItemNeedsDetailFetch,
-} from "~/rt/work-log/itemDetail";
+import { resolveViewedImageAsset, toolGroupAction, workEntryViewedImagePath } from "~/rt/work-log/presentation";
+import { turnItemHasDetail, turnItemNeedsDetailFetch } from "~/rt/work-log/itemDetail";
 import { claudeSkillInvocation } from "~/shared/toolActivity";
 import { memo, use, useState, type KeyboardEvent } from "react";
 import {
@@ -32,8 +21,8 @@ import {
 } from "../../session-logic";
 import ChatMarkdown from "../ChatMarkdown";
 import { ChatMarkdownAssetImage } from "./ChatMarkdownMedia";
-import { ChevronRightIcon, CircleAlertIcon, XIcon, RotateCcwIcon } from "lucide-react";
-import { Button, InlineButton } from "../ui/button";
+import { ChevronRightIcon, CircleAlertIcon, XIcon } from "lucide-react";
+import { InlineButton } from "../ui/button";
 import { useAssetUrls } from "../../assets/assetUrls";
 import { useThreadShell } from "../../state/entities";
 import {
@@ -55,11 +44,7 @@ import {
   type TimelineWorkEntry,
 } from "./timelineRowContext";
 import { MESSAGE_HEADING_LEVEL, TimelineRowTimestamp } from "./TimelineRowParts";
-import {
-  failedToolIconClassName,
-  toolIconAcceptsTint,
-  ToolActivityIconView,
-} from "./TimelineToolActivityIcon";
+import { failedToolIconClassName, toolIconAcceptsTint, ToolActivityIconView } from "./TimelineToolActivityIcon";
 import {
   workToneIcon,
   workEntryRawCommand,
@@ -134,7 +119,6 @@ export function ReasoningTraceContent({ entries }: { entries: ReadonlyArray<Time
           skills={ctx.skills}
           isStreaming={isStreaming(entry)}
           headingLevelOffset={MESSAGE_HEADING_LEVEL}
-          onUseArtifactTemplate={ctx.onUseArtifactTemplate}
           onImageExpand={ctx.onImageExpand}
           lineBreaks
         />
@@ -207,7 +191,6 @@ function WorkEntryLogRow(props: WorkEntryRowProps) {
   const { workEntry, workspaceRoot, displayLabel } = props;
   const ctx = use(TimelineRowCtx);
   const { threadRef, onImageExpand, timestampFormat } = ctx;
-  const { retryableWorkspacePreparationRunIds, onRetryWorkspacePreparation } = ctx;
   const threadTarget = useThreadReadTarget(workEntry, ctx.activeThreadEnvironmentId);
   const createdThread =
     workEntry.projectedItem?.item.type === "thread_created"
@@ -250,12 +233,6 @@ function WorkEntryLogRow(props: WorkEntryRowProps) {
     const label = warning
       ? `Usage limit reached.${resetTime ? ` Retry after ${resetTime}.` : ""}`
       : workEntry.label;
-    const retryRunId =
-      failureItem.runId !== null &&
-      retryableWorkspacePreparationRunIds.has(failureItem.runId) &&
-      failureItem.failure.code === ORCHESTRATION_V2_WORKSPACE_PREPARATION_FAILURE_CODE
-        ? failureItem.runId
-        : null;
     return (
       <WorkLogRow
         data-v2-item-type="error"
@@ -285,19 +262,6 @@ function WorkEntryLogRow(props: WorkEntryRowProps) {
           <p className="ms-7 whitespace-pre-wrap break-words py-1 text-sm leading-relaxed text-foreground/80">
             {failureItem.failure.message}
           </p>
-        ) : null}
-        {retryRunId !== null && onRetryWorkspacePreparation ? (
-          <div className="ms-7 pb-1">
-            <Button
-              type="button"
-              size="xs"
-              variant="outline"
-              onClick={() => onRetryWorkspacePreparation(retryRunId)}
-            >
-              <RotateCcwIcon aria-hidden />
-              Retry
-            </Button>
-          </div>
         ) : null}
       </WorkLogRow>
     );
@@ -574,7 +538,6 @@ function WorkEntryLogRow(props: WorkEntryRowProps) {
               environmentId={ctx.activeThreadEnvironmentId}
               cwd={ctx.markdownCwd}
               workspaceRoot={workspaceRoot}
-              onOpenToolDiff={ctx.onOpenToolDiff}
               onImageExpand={ctx.onImageExpand}
               source={ctx.turnItemSource}
             />

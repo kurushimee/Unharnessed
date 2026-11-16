@@ -131,9 +131,6 @@ export function goalNowItem(input: {
 export function runStopNowItem(input: {
   readonly threadId: ThreadId;
   readonly stop: RunStopPresentation;
-  readonly canForceStop: boolean;
-  readonly forceStopping: boolean;
-  readonly onForceStop: () => void;
 }): ThreadNowItem {
   const unresponsive = input.stop.state === "unresponsive";
   const requestedAtMs = Date.parse(input.stop.requestedAt);
@@ -145,24 +142,14 @@ export function runStopNowItem(input: {
       <CircleStopIcon />
     ),
     title: unresponsive ? "Agent not responding to Stop" : "Stopping",
-    description: unresponsive
-      ? "It may be short on memory. Force stop kills its processes."
-      : undefined,
     actions: (
-      <>
-        <span
-          ref={tickTextContent(
-            (nowMs) => formatDuration(Math.max(1_000, nowMs - requestedAtMs)),
-            true,
-          )}
-          className="tabular-nums"
-        />
-        {unresponsive && input.canForceStop ? (
-          <InlineButton disabled={input.forceStopping} onClick={input.onForceStop}>
-            {input.forceStopping ? "Force stopping..." : "Force stop"}
-          </InlineButton>
-        ) : null}
-      </>
+      <span
+        ref={tickTextContent(
+          (nowMs) => formatDuration(Math.max(1_000, nowMs - requestedAtMs)),
+          true,
+        )}
+        className="tabular-nums"
+      />
     ),
   };
 }

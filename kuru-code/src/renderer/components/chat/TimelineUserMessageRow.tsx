@@ -2,24 +2,12 @@ import { InlineAudioPreview } from "../files/InlineAudioPreview";
 import { filePreviewKind } from "~/shared/filePreview";
 import { remarkEnableOrderedListNumbers } from "~/shared/markdownPipeline";
 import { findRevealRef } from "./markdownFindContext";
-import {
-  type EnvironmentId,
-  type MessageId,
-  type ScheduledTaskId,
-  type ServerProviderSkill,
-  ThreadId,
-} from "~/contracts";
+import { type MessageId, type ServerProviderSkill, ThreadId } from "~/contracts";
 import { resolveUserMessagePresentation } from "~/rt/userMessage";
-import { Link } from "@tanstack/react-router";
 import { useQuietThreadShell } from "../../state/entities";
-import { useEnvironmentQuery } from "../../state/query";
-import { serverEnvironment } from "../../state/server";
 import { replaceComposerContextReferences } from "~/shared/composerContextReferences";
 import { memo, use, useState, type ReactNode } from "react";
-import {
-  createMessageAttachmentPreviewProjector,
-  selectMessageImageResources,
-} from "../../session-logic";
+import { createMessageAttachmentPreviewProjector, selectMessageImageResources } from "../../session-logic";
 import {
   type ChatFileAttachment,
   isFileAttachment,
@@ -28,7 +16,6 @@ import {
 } from "../../types";
 import ChatMarkdown from "../ChatMarkdown";
 import {
-  CalendarClockIcon,
   ChevronDownIcon,
   DownloadIcon,
   EyeIcon,
@@ -48,11 +35,6 @@ import {
   buildAttachmentVideoPreview,
   buildExpandedImagePreview,
 } from "./ExpandedImagePreview";
-import {
-  SNAP_SHOT_ATTACHMENT_FRAME_CLASS,
-  SnapShotAttachmentDetails,
-} from "./SnapShotAttachmentDetails";
-import { GuestMessageName, guestBubbleClassName } from "./guestMessageStyle";
 import { MessageCopyButton } from "./MessageCopyButton";
 import { promptLinkFor } from "../promptLinks/copyPromptLink";
 import { PierreEntryIcon } from "./PierreEntryIcon";
@@ -64,10 +46,7 @@ import {
   resolveUserMessageContext,
   selectedMessageContextFragment,
 } from "~/lib/composerContextRecords";
-import {
-  collectComposerContextReferences,
-  formatComposerContextReference,
-} from "~/shared/composerContextReferences";
+import { collectComposerContextReferences, formatComposerContextReference } from "~/shared/composerContextReferences";
 import {
   COMPOSER_CONTEXT_CLIPBOARD_MIME,
   encodeComposerContextClipboardHtml,
@@ -81,16 +60,9 @@ import { useMediaQuery } from "~/hooks/useMediaQuery";
 import { formatChatTimestampTooltip, formatDayAwareTimestamp } from "../../timestampFormat";
 import { WorkflowOpeningBlock } from "./WorkflowOpeningBlock";
 import { TimelineRowCtx, TimelineRowActivityCtx, type TimelineRow } from "./timelineRowContext";
-import {
-  MESSAGE_HEADING_LEVEL,
-  MessageAuthorHeading,
-  TimelineRowTimestamp,
-} from "./TimelineRowParts";
+import { MESSAGE_HEADING_LEVEL, MessageAuthorHeading } from "./TimelineRowParts";
 import { UserMessageContextReferenceChip } from "./UserMessageContextChips";
-import {
-  resolvePreviewAnnotationImage,
-  userMessageFileLabel,
-} from "./TimelineUserMessageRow.logic";
+import { userMessageFileLabel } from "./TimelineUserMessageRow.logic";
 
 // Drawn inside the media so dark screenshots keep an edge on the dark background.
 const MEDIA_EDGE_CLASS_NAME =
@@ -270,112 +242,9 @@ function UserMessageContent({ row }: { row: Extract<TimelineRow, { kind: "messag
       environmentId={ctx.activeThreadEnvironmentId}
       onOpenThread={(threadId) => ctx.onOpenThread(ThreadId.make(threadId))}
     />
-  ) : resolveUserMessagePresentation(row.message).attribution === "automation" ? (
-    <AutomationMessageRow row={row} />
   ) : (
     <UserTimelineRow row={row} />
   );
-}
-
-/** Automation prompts are long, repeated runbooks; a folded bubble keeps them out of the way. */
-function AutomationMessageRow({ row }: { row: Extract<TimelineRow, { kind: "message" }> }) {
-  const ctx = use(TimelineRowCtx);
-  const [expanded, setExpanded] = useState(false);
-  const revealRef = findRevealRef(() => setExpanded(true));
-  const { text, scheduledTaskId } = resolveUserMessagePresentation(row.message);
-  const summary =
-    useScheduledTaskTitle(ctx.activeThreadEnvironmentId, scheduledTaskId) ??
-    text.trim().split(/\r?\n/, 1)[0] ??
-    "";
-
-  const revertTurnCount = row.revertTurnCount;
-  const promptLink = promptLinkFor(text);
-  // Find reads the DOM, so a folded prompt stays mounted but hidden while find is open.
-  const bodyMounted = expanded || ctx.findActive;
-
-  return (
-    <div className="group flex flex-col items-end gap-1" data-user-message-attribution="automation">
-      {row.message.inputIntent === "steer" ||
-      row.message.inputIntent === "promoted_queued_to_steer" ? (
-        <UserMessageIntentMarker
-          intent={row.message.inputIntent}
-          unread={row.projectedItem?.item.status === "pending"}
-        />
-      ) : null}
-      <div
-        className={cn(
-          "min-w-0 max-w-[80%] rounded-2xl bg-message text-message-foreground",
-          BUBBLE_CHIP_CLASS_NAME,
-          expanded && "w-full",
-        )}
-      >
-        <MessageAuthorHeading>Automation</MessageAuthorHeading>
-        <FoldedMessageHeader
-          icon={CalendarClockIcon}
-          label="Automation"
-          summary={summary}
-          expanded={expanded}
-          onToggle={() => setExpanded((value) => !value)}
-        />
-        {bodyMounted ? (
-          // `beforematch` does not bubble, so the reveal listener sits on the hidden fold itself.
-          <div
-            ref={revealRef}
-            hidden={!expanded}
-            className={cn("px-3 pb-3", !ctx.findActive && "max-h-96 overflow-auto")}
-            data-thread-find-text="true"
-          >
-            <UserMessageBody text={text} skills={ctx.skills} markdownCwd={ctx.markdownCwd} />
-          </div>
-        ) : null}
-      </div>
-      <UserMessageProjectedStatus row={row} />
-      {expanded ? (
-        <div className="flex w-full max-w-[80%] items-center justify-end pe-1 text-xs tabular-nums opacity-0 transition-opacity duration-200 pointer-coarse:opacity-100 focus-within:opacity-100 group-hover:opacity-100">
-          <div className="flex shrink-0 items-center gap-2">
-            {scheduledTaskId ? (
-              <Link
-                to="/settings/scheduled-tasks"
-                search={{ environmentId: ctx.activeThreadEnvironmentId, taskId: scheduledTaskId }}
-                className="rounded-sm text-xs text-muted-foreground hover:underline focus-visible:outline-2 focus-visible:outline-ring"
-              >
-                Open automation
-              </Link>
-            ) : null}
-            <TimelineRowTimestamp
-              createdAt={row.message.createdAt}
-              timestampFormat={ctx.timestampFormat}
-              alwaysVisible
-            />
-            <div className="flex items-center gap-0.5">
-              {typeof revertTurnCount === "number" && (
-                <RevertUserMessageButton turnCount={revertTurnCount} messageId={row.message.id} />
-              )}
-              <MessageCopyButton text={text} variant="ghost" />
-              {promptLink !== null && (
-                <MessageCopyButton
-                  text={promptLink}
-                  label="Copy prompt link"
-                  icon={LinkIcon}
-                  variant="ghost"
-                />
-              )}
-            </div>
-          </div>
-        </div>
-      ) : null}
-    </div>
-  );
-}
-
-export function useScheduledTaskTitle(
-  environmentId: EnvironmentId,
-  scheduledTaskId: ScheduledTaskId | undefined,
-): string | undefined {
-  const tasksQuery = useEnvironmentQuery(
-    scheduledTaskId ? serverEnvironment.scheduledTasksLive({ environmentId, input: {} }) : null,
-  );
-  return tasksQuery.data?.tasks.find((task) => task.id === scheduledTaskId)?.title;
 }
 
 export function FoldedMessageHeader(props: {
@@ -466,7 +335,6 @@ function UserTimelineRow({ row }: { row: Extract<TimelineRow, { kind: "message" 
   );
   const senderLabel = senderShell?.title.trim() || "Agent";
   const resolvedContext = resolveUserMessageContext({ ...row.message, text: userMessage.text });
-  const previewImages = userImages.filter((image) => image.name.startsWith("preview-annotation-"));
   const revertTurnCount = row.revertTurnCount;
   const attachmentReferences = collectComposerContextReferences(resolvedContext.text).flatMap(
     (occurrence) => {
@@ -485,12 +353,11 @@ function UserTimelineRow({ row }: { row: Extract<TimelineRow, { kind: "message" 
   const chippedAttachmentIds = new Set(
     attachmentReferences.map((reference) => reference.attachmentId),
   );
-  const regularImages = userImages.filter((image) => !image.name.startsWith("preview-annotation-"));
+  const regularImages = userImages;
   const unchippedFiles = otherUserFiles.filter((file) => !chippedAttachmentIds.has(file.id));
   // Images or videos sent without words show as media, not as a bubble around them.
   const mediaOnly =
     !folded &&
-    userMessage.attribution !== "guest" &&
     resolvedContext.text.trim() === "" &&
     userAudio.length === 0 &&
     unchippedFiles.length === 0 &&
@@ -499,7 +366,6 @@ function UserTimelineRow({ row }: { row: Extract<TimelineRow, { kind: "message" 
   // Media sent with words sits above the bubble as its own shape, like a chat app.
   const mediaAboveText =
     !folded &&
-    userMessage.attribution !== "guest" &&
     !mediaOnly &&
     regularImages.length + userVideos.length > 0;
   const standaloneMedia = mediaOnly || mediaAboveText;
@@ -509,8 +375,7 @@ function UserTimelineRow({ row }: { row: Extract<TimelineRow, { kind: "message" 
   const collage =
     standaloneMedia &&
     userVideos.length === 0 &&
-    regularImages.length > 1 &&
-    regularImages.every((image) => image.source?.kind !== "snap-shot");
+    regularImages.length > 1;
   // Corners that touch the bubble or a neighbouring message tighten, like the bubble's.
   const mediaCornerClassName = cn(
     row.groupedWithPrevious && "rounded-tr-md",
@@ -519,7 +384,6 @@ function UserTimelineRow({ row }: { row: Extract<TimelineRow, { kind: "message" 
   // Files sent without words show as cards, not as a bubble around a name chip.
   const fileCardsOnly =
     !folded &&
-    userMessage.attribution !== "guest" &&
     otherUserFiles.length > 0 &&
     regularImages.length + userVideos.length + userAudio.length + unknownAttachments.length === 0 &&
     replaceComposerContextReferences(resolvedContext.text, (reference) =>
@@ -533,7 +397,6 @@ function UserTimelineRow({ row }: { row: Extract<TimelineRow, { kind: "message" 
     ).trim() === "";
   const audioOnly =
     !folded &&
-    userMessage.attribution !== "guest" &&
     userAudio.length > 0 &&
     regularImages.length + userVideos.length + otherUserFiles.length + unknownAttachments.length ===
       0 &&
@@ -546,9 +409,6 @@ function UserTimelineRow({ row }: { row: Extract<TimelineRow, { kind: "message" 
         ? ""
         : reference.label,
     ).trim() === "";
-  const annotationRecordIds = resolvedContext.records
-    .filter((record) => record.kind === "preview-annotation")
-    .map((record) => record.contextId);
   const plainText = replaceComposerContextReferences(
     resolvedContext.text,
     (reference) => reference.label,
@@ -624,16 +484,6 @@ function UserTimelineRow({ row }: { row: Extract<TimelineRow, { kind: "message" 
     const record = asKnownContextRecord(resolvedContext.recordsById.get(reference.contextId));
     if (record?.kind === "file" && userAudio.some((file) => file.id === record.attachmentId))
       return null;
-    const annotationImage =
-      record?.kind === "preview-annotation"
-        ? resolvePreviewAnnotationImage({
-            record,
-            recordsById: resolvedContext.recordsById,
-            userImages,
-            previewImages,
-            annotationRecordIds,
-          })
-        : null;
     const attachment =
       record?.kind === "image"
         ? (userImages.find((image) => image.id === record.attachmentId) ?? null)
@@ -645,7 +495,6 @@ function UserTimelineRow({ row }: { row: Extract<TimelineRow, { kind: "message" 
         <UserMessageContextReferenceChip
           reference={reference}
           record={record}
-          annotationImage={annotationImage}
           attachment={attachment}
           onExpandImage={(image) => {
             const preview = buildExpandedImagePreview(userImages, image.id);
@@ -691,18 +540,7 @@ function UserTimelineRow({ row }: { row: Extract<TimelineRow, { kind: "message" 
             key={image.id}
             className={cn(
               "bg-background/70",
-              image.source?.kind === "snap-shot" && image.previewUrl
-                ? cn(
-                    "col-span-2",
-                    standaloneMedia
-                      ? cn(
-                          MEDIA_EDGE_CLASS_NAME,
-                          "min-h-16 justify-self-end overflow-hidden rounded-2xl",
-                          loneImage && mediaCornerClassName,
-                        )
-                      : SNAP_SHOT_ATTACHMENT_FRAME_CLASS,
-                  )
-                : loneImage
+              loneImage
                   ? cn(MEDIA_EDGE_CLASS_NAME, "overflow-hidden rounded-2xl", mediaCornerClassName)
                   : collage
                     ? cn(
@@ -739,9 +577,7 @@ function UserTimelineRow({ row }: { row: Extract<TimelineRow, { kind: "message" 
                   loading="lazy"
                   className={cn(
                     "block transform-gpu",
-                    standaloneMedia && image.source?.kind === "snap-shot"
-                      ? "h-auto max-h-48 w-auto min-w-24 max-w-full object-contain"
-                      : loneImage
+                    loneImage
                         ? "h-48 w-auto min-w-24 max-w-full object-cover"
                         : "size-full object-cover",
                   )}
@@ -758,9 +594,6 @@ function UserTimelineRow({ row }: { row: Extract<TimelineRow, { kind: "message" 
                 {image.name}
               </div>
             )}
-            {image.previewUrl && image.source?.kind === "snap-shot" ? (
-              <SnapShotAttachmentDetails source={image.source} />
-            ) : null}
           </div>
         ))}
         {userVideos.map((file) => (
@@ -832,20 +665,6 @@ function UserTimelineRow({ row }: { row: Extract<TimelineRow, { kind: "message" 
       className="group @container flex flex-col items-end gap-1"
       data-user-message-attribution={folded ? "agent" : undefined}
     >
-      {userMessage.attribution === "t3code" ? (
-        <p
-          className="me-1 text-2xs text-muted-foreground/70"
-          data-user-message-attribution="t3code"
-        >
-          Sent by T3 Code
-        </p>
-      ) : null}
-      {/* The row's heading already names the guest for screen readers. */}
-      {userMessage.guestName !== undefined ? (
-        <div aria-hidden>
-          <GuestMessageName name={userMessage.guestName} />
-        </div>
-      ) : null}
       {(row.message.inputIntent === "steer" ||
         row.message.inputIntent === "promoted_queued_to_steer") &&
       !row.continuesSteer ? (
@@ -867,9 +686,7 @@ function UserTimelineRow({ row }: { row: Extract<TimelineRow, { kind: "message" 
           (mediaAboveText || row.groupedWithPrevious) && "rounded-tr-md",
           row.groupedWithNext && "rounded-br-md",
           BUBBLE_CHIP_CLASS_NAME,
-          userMessage.attribution === "guest"
-            ? guestBubbleClassName(false)
-            : !mediaOnly && !fileCardsOnly && !audioOnly && "bg-message",
+          !mediaOnly && !fileCardsOnly && !audioOnly && "bg-message",
           !folded && !mediaOnly && !fileCardsOnly && !audioOnly && "p-3",
           folded && expanded && "w-full",
         )}
@@ -877,11 +694,7 @@ function UserTimelineRow({ row }: { row: Extract<TimelineRow, { kind: "message" 
         {/* Outside the fold so a collapsed message still has a heading to navigate to. */}
         {mediaAboveText ? null : (
           <MessageAuthorHeading>
-            {folded
-              ? senderLabel
-              : userMessage.guestName === undefined
-                ? "You"
-                : `${userMessage.guestName} (guest)`}
+            {folded ? senderLabel : "You"}
           </MessageAuthorHeading>
         )}
         {folded ? (

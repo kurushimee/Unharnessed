@@ -21,15 +21,12 @@ import type {
   CancelQueuedRunInput,
   DismissThreadUserInputInput,
   EditQueuedRunInput,
-  ForkSideChatInput,
   ForkThreadFromRunInput,
   InterruptThreadTurnInput,
-  MergeThreadBackInput,
   PromoteQueuedRunInput,
   RespondToThreadApprovalInput,
   RespondToThreadUserInputInput,
   ResumeThreadQueueInput,
-  RetryWorkspacePreparationInput,
   RevertThreadCheckpointInput,
   SetThreadInteractionModeInput,
   SetThreadRuntimeModeInput,
@@ -40,7 +37,7 @@ import type {
   UnlinkThreadPullRequestInput,
   WatchThreadPullRequestInput,
 } from "~/rt/operations/commands";
-import { appProjectIdOf, readThreadShell } from "~/kuru/shells";
+import { appProjectIdOf, readThreadShell, shellSnapshotAtom } from "~/kuru/shells";
 import { LOCAL_ENVIRONMENT_ID } from "~/contracts";
 
 export interface ThreadMetadataUpdate {
@@ -212,6 +209,7 @@ const deleteThread = command<{ readonly threadId: ThreadId; readonly onlyIfUnuse
 const NO_LINK = "kuru code finds a thread's pull request from its branch.";
 
 export const threadEnvironment = {
+  snapshotAtom: shellSnapshotAtom,
   updateMetadata,
   loadEarlierHistory,
   startTurn,
@@ -236,10 +234,6 @@ export const threadEnvironment = {
   dismissUserInput: unsupported<DismissThreadUserInputInput>("dismiss-user-input", "Unharnessed asks no questions."),
   revertCheckpoint: unsupported<RevertThreadCheckpointInput>("revert", "Unharnessed keeps no checkpoints."),
   forkFromRun: unsupported<ForkThreadFromRunInput>("fork", "Unharnessed does not fork threads."),
-  forkSideChat: unsupported<ForkSideChatInput>("side-chat", "Unharnessed has no side chats."),
-  mergeBack: unsupported<MergeThreadBackInput>("merge-back", "Unharnessed has no side chats."),
-  retryWorkspacePreparation: unsupported<RetryWorkspacePreparationInput>("retry-workspace", "Unharnessed prepares no worktrees."),
-  uploadFeedback: unsupported<unknown>("feedback", "Unharnessed takes no feedback uploads."),
   linkPullRequest: unsupported<LinkThreadPullRequestInput>("link-pull-request", NO_LINK),
   unlinkPullRequest: unsupported<UnlinkThreadPullRequestInput>("unlink-pull-request", NO_LINK),
   watchPullRequest: unsupported<WatchThreadPullRequestInput>("watch-pull-request", NO_LINK),

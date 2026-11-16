@@ -21,7 +21,6 @@ import { Popover, PopoverPopup, PopoverTrigger } from "../ui/popover";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
 import { cn } from "~/lib/utils";
 import { ModelPickerContent, resolveModelPickerSelectedModel } from "./ModelPickerContent";
-import { ChatGptSharingControl } from "./ChatGptSharingControl";
 import { ProviderInstanceIcon } from "./ProviderInstanceIcon";
 import { ModelEsque, getDisplayModelName, getTriggerDisplayModelName } from "./providerIconUtils";
 import { shouldShowInstanceBadge, type ProviderInstanceEntry } from "../../providerInstances";
@@ -89,8 +88,6 @@ export const ProviderModelPicker = memo(function ProviderModelPicker(props: {
   environmentId: EnvironmentId | null;
   activeInstanceId: ProviderInstanceId;
   model: string;
-  selectedModels?: ReadonlyArray<{ instanceId: ProviderInstanceId; model: string }>;
-  onToggleModel?: (instanceId: ProviderInstanceId, model: string) => void;
   lockedProvider: ProviderDriverKind | null;
   lockedContinuationGroupKey?: string | null;
   instanceEntries: ReadonlyArray<ProviderInstanceEntry>;
@@ -102,7 +99,6 @@ export const ProviderModelPicker = memo(function ProviderModelPicker(props: {
   compact?: boolean;
   isComposerOwned?: boolean;
   disabled?: boolean;
-  terminalOpen?: boolean;
   open?: boolean;
   popupAlign?: "start" | "end";
   triggerClassName?: string;
@@ -202,14 +198,8 @@ export const ProviderModelPicker = memo(function ProviderModelPicker(props: {
     row?.scrollIntoView({ block: "nearest" });
     return row != null;
   };
-  const openTarget = (target: "effort" | "permissions") => {
-    if (target === "effort") {
-      focusEffort("any");
-      return;
-    }
-    popupRef.current
-      ?.querySelector<HTMLButtonElement>("[data-composer-permissions-trigger]")
-      ?.click();
+  const openTarget = (_target: "effort") => {
+    focusEffort("any");
   };
 
   const handleInstanceModelChange = (instanceId: ProviderInstanceId, model: string) => {
@@ -226,45 +216,15 @@ export const ProviderModelPicker = memo(function ProviderModelPicker(props: {
   const shortcutLabel = props.keybindings
     ? shortcutLabelForCommand(props.keybindings, "modelPicker.toggle")
     : null;
-  const selectedEntries = props.selectedModels?.map((selection) => {
-    const entry = props.instanceEntries.find(
-      (candidate) => candidate.instanceId === selection.instanceId,
-    );
-    const model = resolveModelPickerSelectedModel({
-      driverKind: entry?.driverKind,
-      model: selection.model,
-      options: props.modelOptionsByInstance.get(selection.instanceId) ?? [],
-    });
-    const unavailable = model?.isUnavailable ? " (Unavailable)" : "";
-    return {
-      ...selection,
-      entry,
-      label: model
-        ? `${getTriggerDisplayModelName(model, entry?.driverKind)}${unavailable}`
-        : selection.model,
-      fullLabel: model ? `${getDisplayModelName(model)}${unavailable}` : selection.model,
-    };
-  });
-  const multipleLabel = selectedEntries
-    ? selectedEntries.length === 0
-      ? "Choose models"
-      : `${selectedEntries
-          .slice(0, 2)
-          .map((selection) => selection.label)
-          .join(", ")}${selectedEntries.length > 2 ? `, ${selectedEntries.length - 2} more` : ""}`
-    : undefined;
-  const allModelNames = selectedEntries
-    ? selectedEntries.map((selection) => selection.fullLabel).join(", ") || "Choose models"
-    : undefined;
   const triggerTooltipContent = [
-    props.triggerLabel ?? allModelNames ?? triggerLabel,
+    props.triggerLabel ?? triggerLabel,
     props.triggerDetail,
     shortcutLabel,
   ]
     .filter(Boolean)
     .join(" · ");
 
-  const triggerText = props.triggerLabel ?? multipleLabel ?? triggerTitle;
+  const triggerText = props.triggerLabel ?? triggerTitle;
   const triggerTextProps = {
     className: cn(
       "min-w-0 flex-1 overflow-hidden truncate",
@@ -280,20 +240,11 @@ export const ProviderModelPicker = memo(function ProviderModelPicker(props: {
       environmentId={props.environmentId}
       activeInstanceId={activeInstanceId}
       model={props.model}
-      {...(props.selectedModels !== undefined ? { selectedModels: props.selectedModels } : {})}
-      {...(props.onToggleModel
-        ? {
-            onToggleModel: (instanceId: ProviderInstanceId, model: string) => {
-              if (!props.disabled) props.onToggleModel?.(instanceId, model);
-            },
-          }
-        : {})}
       lockedProvider={props.lockedProvider}
       lockedContinuationGroupKey={props.lockedContinuationGroupKey ?? null}
       instanceEntries={props.instanceEntries}
       {...(props.keybindings ? { keybindings: props.keybindings } : {})}
       modelOptionsByInstance={props.modelOptionsByInstance}
-      terminalOpen={props.terminalOpen ?? false}
       onRequestClose={() => setIsMenuOpen(false)}
       {...(props.onOpenProviderSetup ? { onOpenProviderSetup: props.onOpenProviderSetup } : {})}
       getModelDisabledReason={(instanceId, model) =>
@@ -306,10 +257,6 @@ export const ProviderModelPicker = memo(function ProviderModelPicker(props: {
         ? {
             docked,
             onFocusEffort: () => void focusEffort("any"),
-            // Inside the fixed height, so switching to or from a ChatGPT plan never resizes it.
-            ...(props.selectedModels === undefined
-              ? { listFooter: <ChatGptSharingControl provider={activeEntry?.snapshot ?? null} /> }
-              : {}),
           }
         : {})}
     />
@@ -335,7 +282,7 @@ export const ProviderModelPicker = memo(function ProviderModelPicker(props: {
           <ComposerControl
             ref={triggerRef}
             aria-label={[
-              props.triggerAriaLabel ?? props.triggerLabel ?? allModelNames ?? triggerLabel,
+              props.triggerAriaLabel ?? props.triggerLabel ?? triggerLabel,
               props.triggerDetail,
             ]
               .filter(Boolean)
@@ -367,35 +314,7 @@ export const ProviderModelPicker = memo(function ProviderModelPicker(props: {
         <span
           className={cn("flex min-w-0 flex-1 items-center", size === "xs" ? "gap-1" : "gap-1.5")}
         >
-          {selectedEntries && props.triggerLabel === undefined ? (
-            <span
-              data-chat-provider-model-picker-icon
-              className="flex shrink-0 items-center -space-x-1"
-              aria-hidden="true"
-            >
-              {selectedEntries
-                .slice(0, 3)
-                .map((selection) =>
-                  selection.entry ? (
-                    <ProviderInstanceIcon
-                      key={`${selection.instanceId}:${selection.model}`}
-                      driverKind={selection.entry.driverKind}
-                      displayName={selection.entry.displayName}
-                      accentColor={selection.entry.accentColor}
-                      acpRegistryAgentId={selection.entry.acpRegistryAgentId}
-                      acpRegistryIconUrl={selection.entry.acpRegistryIconUrl}
-                      className="size-4 rounded-full bg-(--chat-composer-glass-surface,var(--background)) ring-2 ring-(--chat-composer-glass-surface,var(--background))"
-                      iconClassName="size-4"
-                    />
-                  ) : null,
-                )}
-              {selectedEntries.length > 3 ? (
-                <span className="relative z-30 flex size-4 items-center justify-center rounded-full bg-(--chat-composer-glass-surface,var(--background)) text-3xs ring-2 ring-(--chat-composer-glass-surface,var(--background))">
-                  +{selectedEntries.length - 3}
-                </span>
-              ) : null}
-            </span>
-          ) : activeEntry && props.triggerLabel === undefined ? (
+          {activeEntry && props.triggerLabel === undefined ? (
             // Narrow compacted composers hide the provider icon before truncating the name.
             <span data-chat-provider-model-picker-icon className="contents">
               <ProviderInstanceIcon
@@ -424,7 +343,7 @@ export const ProviderModelPicker = memo(function ProviderModelPicker(props: {
             </Tooltip>
           )}
           {props.triggerSuffix}
-          {selectedModel?.isUnavailable && !selectedEntries && props.triggerLabel === undefined ? (
+          {selectedModel?.isUnavailable && props.triggerLabel === undefined ? (
             <Badge variant="outline" size="sm">
               Unavailable
             </Badge>
@@ -479,9 +398,6 @@ export const ProviderModelPicker = memo(function ProviderModelPicker(props: {
         ) : (
           picker
         )}
-        {props.selectedModels === undefined && !docked ? (
-          <ChatGptSharingControl provider={activeEntry?.snapshot ?? null} />
-        ) : null}
       </PopoverPopup>
     </Popover>
   );

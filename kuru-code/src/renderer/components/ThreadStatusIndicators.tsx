@@ -170,7 +170,7 @@ export function ThreadPullRequestBadgeControl({
   number?: number | undefined;
   url?: string | undefined;
   status: PrStatusIndicator | null;
-  onOpenList: () => void;
+  onOpenList?: (() => void) | undefined;
   onOpenPullRequest: (event: MouseEvent<HTMLElement>, url?: string) => void;
 }) {
   const presentation = resolveThreadPullRequestBadgePresentation({ badge, number, url, status });
@@ -208,14 +208,14 @@ function PullRequestBadge({
   number: number | undefined;
   status: PrStatusIndicator | null;
   pullRequests: ReadonlyArray<ThreadPullRequestLink>;
-  onOpenList: () => void;
+  onOpenList?: (() => void) | undefined;
   onOpenPullRequest: (event: MouseEvent<HTMLElement>, url?: string) => void;
 }) {
   const onClick = opensList
     ? (event: MouseEvent<HTMLElement>) => {
         event.preventDefault();
         event.stopPropagation();
-        onOpenList();
+        onOpenList?.();
       }
     : onOpenPullRequest;
   const element = opensList ? (

@@ -1,4 +1,3 @@
-import { clientHostEnvironmentAtom } from "../state/clientHostEnvironment";
 import { buildFileLinkParentSuffixByPath, fileLinkLabel } from "~/shared/fileLinks";
 import {
   isWindowsDrivePathHref,
@@ -8,69 +7,37 @@ import {
   inlineCodeFilePathCandidate,
 } from "~/shared/markdownLinks";
 import { taskListMarkerOffset } from "~/shared/markdownTaskList";
-import { isHostPath, resolveWorkspaceFilePath } from "~/shared/path";
-import { usePullRequestLinking } from "~/hooks/usePullRequestLinking";
-import {
-  AuthFilesystemReadScope,
-  AuthOrchestrationOperateScope,
-  SOURCE_CONTROL_MEDIA_ASSET,
-} from "~/contracts";
+import { resolveWorkspaceFilePath } from "~/shared/path";
+import { AuthFilesystemReadScope, SOURCE_CONTROL_MEDIA_ASSET } from "~/contracts";
 import {
   CHAT_MARKDOWN_REMARK_PLUGINS,
   CHAT_MARKDOWN_REMARK_PLUGINS_WITH_BREAKS,
   CHAT_MARKDOWN_REHYPE_PLUGINS,
 } from "~/shared/markdownPipeline";
 import { useAtomValue } from "@effect/atom-react";
+import { COMPOSER_CONTEXT_CLIPBOARD_MIME, encodeComposerContextClipboardHtml } from "~/shared/composerContextClipboard";
 import {
-  COMPOSER_CONTEXT_CLIPBOARD_MIME,
-  encodeComposerContextClipboardHtml,
-} from "~/shared/composerContextClipboard";
-import {
-  FileSpreadsheetIcon,
-  FileTextIcon,
-  GlobeIcon,
-  ImageIcon,
   InfoIcon,
   LightbulbIcon,
-  MailIcon,
-  MessageSquareIcon,
   MessageSquareWarningIcon,
   OctagonAlertIcon,
-  PresentationIcon,
   TriangleAlertIcon,
-  type LucideIcon,
 } from "lucide-react";
 import {
   AssetWorkspaceAssetNotFoundError,
-  AuthPreviewOperateScope,
-  type EditorId,
   type EnvironmentId,
   type ServerConfig,
   type ScopedThreadRef,
   type ServerProviderSkill,
-  type ThreadPullRequestKey,
 } from "~/contracts";
-import {
-  isAtomCommandInterrupted,
-  squashAtomCommandFailure,
-} from "~/rt/state/runtime";
-import {
-  codexArtifactTemplatePresentationLabel,
-  type CodexArtifactTemplate,
-  type CodexArtifactTemplateKind,
-} from "~/shared/codexArtifactTemplates";
-import {
-  classifyMarkdownImageSource,
-  markdownImageSourceFragment,
-} from "~/rt/markdownImages";
+import { classifyMarkdownImageSource, markdownImageSourceFragment } from "~/rt/markdownImages";
 import { mediaUrlReference } from "~/rt/mediaReference";
 import { mediaKindFromPath, mediaMimeTypeFromExtension } from "~/shared/mediaPreview";
 import { InlineAudioPreview } from "./files/InlineAudioPreview";
 import { HostImageUrlContext } from "./chat/hostImageUrl";
-import * as Cause from "effect/Cause";
 import * as Option from "effect/Option";
 import * as Schema from "effect/Schema";
-import { AsyncResult, Atom } from "effect/reactivity";
+import { Atom } from "effect/reactivity";
 import React, {
   Suspense,
   type ComponentProps,
@@ -98,38 +65,17 @@ import { AssistantCitationChip } from "./chat/AssistantCitationChip";
 import { MarkdownThreadLink } from "./chat/MarkdownThreadLink";
 import { mathKind } from "~/shared/markdownMath";
 import remarkMath from "remark-math";
-import {
-  artifactTemplateFromHastProperties,
-  renderCodexInlineDirectivesAsMarkdown,
-} from "~/shared/codexMarkdownDirectives";
+import { renderCodexInlineDirectivesAsMarkdown } from "~/shared/codexMarkdownDirectives";
 import { renderSkillInlineMarkdownChildren } from "./chat/SkillInlineText";
 import { MarkdownMath } from "./chat/MarkdownMath";
-import {
-  resolveMarkdownMediaPreview,
-  type ExpandedImagePreview,
-} from "./chat/ExpandedImagePreview";
+import { resolveMarkdownMediaPreview, type ExpandedImagePreview } from "./chat/ExpandedImagePreview";
 import { ExpandedImageDialog } from "./chat/ExpandedImageDialog";
 import { markdownImageGallery } from "./chat/markdownImageGallery";
 import { type MediaActionSource } from "./media/MediaActions";
 import { resolveProtocolRelativeMediaUrl } from "./media/mediaContent";
-import {
-  revealInFileExplorerLabelForKind,
-  revealInFileExplorerLabelForOs,
-} from "./preview/fileExplorerLabel";
-import {
-  resolveExternalWebLinkHost,
-  showExternalLinkContextMenu,
-} from "./chat/externalLinkContextMenu";
+import { resolveExternalWebLinkHost, showExternalLinkContextMenu } from "./chat/externalLinkContextMenu";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "./ui/tooltip";
-import { Button } from "./ui/button";
 import { stackedThreadToast, toastManager } from "./ui/toast";
-import { recordVisitForThread } from "../browserHistoryStore";
-import {
-  PreferredEditorEnvironmentRequiredError,
-  useOpenInPreferredEditor,
-  usePreferredEditor,
-} from "../editorPreferences";
-import { openInEditorMenuLabel } from "../editorLabels";
 import { resolveDiffThemeName } from "../lib/diffRendering";
 import { RenderErrorBoundary } from "./RenderErrorBoundary";
 import { useRenderedAppearance } from "../hooks/useTheme";
@@ -142,33 +88,18 @@ import {
   rewriteMarkdownFileUriHref,
   type MarkdownFileLinkMeta,
 } from "../markdown-links";
-import {
-  markdownFileCopyPaths,
-  markdownFileEditorTarget,
-  resolveMarkdownFileHostPath,
-} from "../markdownFileHostPath";
+import { markdownFileCopyPaths, resolveMarkdownFileHostPath } from "../markdownFileHostPath";
 import { isMarkdownFileLinkLabel } from "~/shared/markdownLinks";
-import { isElectron } from "../env";
 import { readLocalApi } from "../localApi";
 import { cn } from "../lib/utils";
-import { resolveRemoteOpenState, useRemoteOpenResolution } from "../remoteOpen";
-import { useRightPanelStore } from "../rightPanelStore";
-import { readThreadShell, useProjects } from "../state/entities";
+import { useProjects } from "../state/entities";
 import { serverEnvironment } from "../state/server";
-import { shellEnvironment } from "../state/shell";
 import { assetEnvironment } from "../state/assets";
-import {
-  readEnvironmentScope,
-  readPreparedConnection,
-  useEnvironmentScope,
-} from "../state/session";
-import { previewEnvironment } from "../state/preview";
-import { useAtomCommand } from "../state/use-atom-command";
+import { readEnvironmentScope, readPreparedConnection } from "../state/session";
 import { useAtomQueryRunner } from "../state/use-atom-query-runner";
 import { projectEnvironment } from "../state/projects";
 import { filesystemEnvironment } from "../state/filesystem";
 import {
-  claimWorkspaceBasenameLookup,
   needsWorkspaceBasenameLookup,
   pickWorkspaceLinkMatch,
   WORKSPACE_BASENAME_LOOKUP_LIMIT,
@@ -179,15 +110,6 @@ import { sourceControlClients } from "~/rt/sourceControlClients";
 import { useOpenChangeRequestLink } from "~/lib/openPullRequestLink";
 import { useOpenLink } from "../browser/useOpenLink";
 import { writeTextToClipboard } from "../hooks/useCopyToClipboard";
-import { isPreviewAvailableFor } from "../browser/previewRuntime";
-import {
-  isBrowserPreviewFile,
-  openFileInPreview,
-  openUrlInPreview,
-  BrowserPreviewUnavailableError,
-  isBrowserSettingsReadError,
-} from "../browser/openFileInPreview";
-import { resolveLinkTarget } from "../browser/browserLinkTarget";
 import { PullRequestLinkPreview } from "./pullRequest/PullRequestLinkPreview";
 import { MarkdownCodeBlock, SuspenseShikiCodeBlock } from "./chat/MarkdownCodeBlock";
 import { createMarkdownRenderer } from "./chat/markdownRenderer";
@@ -206,7 +128,6 @@ import {
 } from "./chat/ChatMarkdownMedia";
 import { MarkdownExternalLinkContent } from "./chat/MarkdownExternalLink";
 import { MarkdownFileLink } from "./chat/MarkdownFileLink";
-import { canUseMarkdownFileShellActions } from "./chat/MarkdownFileLink.logic";
 import { rehypeChipPunctuation } from "./chat/markdownChipPunctuation";
 import { handleMarkdownFragmentClick, rehypeHeadingIds } from "./chat/markdownFragments";
 import { rehypeTextDirection } from "./chat/markdownTextDirection";
@@ -237,8 +158,6 @@ interface ChatMarkdownProps {
   className?: string;
   lineBreaks?: boolean;
   parseRawHtml?: boolean;
-  onUseArtifactTemplate?: ((template: CodexArtifactTemplate) => void) | undefined;
-  onRunShellCommand?: ((command: string) => void) | undefined;
   imageBaseDir?: string | undefined;
   workspaceMutationId?: string | null | undefined;
   onImageExpand?: ((preview: ExpandedImagePreview) => void) | undefined;
@@ -262,62 +181,6 @@ export interface ChatMarkdownContextReference {
 const EMPTY_MARKDOWN_SKILLS: ReadonlyArray<ServerProviderSkill> = [];
 const EMPTY_REMARK_PLUGINS: NonNullable<ReactMarkdownOptions["remarkPlugins"]> = [];
 
-const ARTIFACT_TEMPLATE_ICON_BY_KIND = {
-  document: FileTextIcon,
-  presentation: PresentationIcon,
-  spreadsheet: FileSpreadsheetIcon,
-  site: GlobeIcon,
-  "google-docs": FileTextIcon,
-  "google-slides": PresentationIcon,
-  "google-sheets": FileSpreadsheetIcon,
-  image: ImageIcon,
-  email: MailIcon,
-  slack: MessageSquareIcon,
-} satisfies Record<CodexArtifactTemplateKind, LucideIcon>;
-
-function CodexArtifactTemplateCard(props: {
-  readonly template: CodexArtifactTemplate;
-  readonly onUse?: ((template: CodexArtifactTemplate) => void) | undefined;
-}) {
-  const Icon = ARTIFACT_TEMPLATE_ICON_BY_KIND[props.template.artifactKind];
-  const presentationLabel = codexArtifactTemplatePresentationLabel(props.template.artifactKind);
-
-  return (
-    <div
-      role="group"
-      aria-label={`${props.template.displayName} template`}
-      data-chat-markdown-artifact-template
-      className="my-[0.65rem] flex w-full min-w-0 items-center gap-3 rounded-xl border border-border/70 bg-card/60 px-3 py-2.5 text-foreground shadow-xs"
-      data-artifact-kind={props.template.artifactKind}
-      data-markdown-copy={`${props.template.displayName} (${presentationLabel})\n\n`}
-      data-skill-name={props.template.skillName}
-    >
-      <div className="flex min-w-0 flex-1 items-center gap-3">
-        <span className="flex size-9 shrink-0 items-center justify-center rounded-lg border border-border/70 bg-background text-muted-foreground shadow-xs">
-          <Icon aria-hidden className="size-5" />
-        </span>
-        <div className="min-w-0">
-          <div className="truncate text-sm font-medium text-foreground">
-            {props.template.displayName}
-          </div>
-          <div className="text-xs text-muted-foreground">{presentationLabel}</div>
-        </div>
-      </div>
-      {props.onUse ? (
-        <Button
-          data-thread-find-ignore
-          type="button"
-          size="sm"
-          variant="outline"
-          className="shrink-0"
-          onClick={() => props.onUse?.(props.template)}
-        >
-          Use template
-        </Button>
-      ) : null}
-    </div>
-  );
-}
 
 const WINDOWS_DRIVE_PATH_REGEX = /^[A-Za-z]:[\\/]/;
 
@@ -405,35 +268,17 @@ function markdownUrlTransform(href: string) {
   return rewriteMarkdownFileUriHref(href) ?? defaultUrlTransform(href);
 }
 
-const NO_MARKDOWN_EDITORS: ReadonlyArray<EditorId> = [];
-
 type MarkdownServerConfigFields = ReturnType<typeof markdownServerConfigFields>;
 
 function markdownServerConfigFields(config: ServerConfig | null) {
-  return {
-    pullRequestsEnabled: config !== null,
-    isMacOS: config?.environment.platform.os === "darwin",
-    availableEditors: config?.availableEditors ?? NO_MARKDOWN_EDITORS,
-    revealInFileManagerLabel:
-      config?.shellRevealInFileManager === true && config.availableEditors.includes("file-manager")
-        ? config.shellRevealInFileManagerKind === undefined
-          ? revealInFileExplorerLabelForOs(config.environment.platform.os)
-          : revealInFileExplorerLabelForKind(config.shellRevealInFileManagerKind)
-        : undefined,
-  };
+  return { pullRequestsEnabled: config !== null };
 }
 
 function markdownServerConfigFieldsEqual(
   previous: MarkdownServerConfigFields,
   next: MarkdownServerConfigFields,
 ): boolean {
-  return (
-    previous.pullRequestsEnabled === next.pullRequestsEnabled &&
-    previous.isMacOS === next.isMacOS &&
-    previous.revealInFileManagerLabel === next.revealInFileManagerLabel &&
-    previous.availableEditors.length === next.availableEditors.length &&
-    previous.availableEditors.every((editor, index) => editor === next.availableEditors[index])
-  );
+  return previous.pullRequestsEnabled === next.pullRequestsEnabled;
 }
 
 // Compare only markdown config fields to avoid rerendering replies on every provider status push.
@@ -493,8 +338,6 @@ function useChatMarkdownState({
   onTaskListChange,
   isStreaming = false,
   skills = EMPTY_MARKDOWN_SKILLS,
-  onUseArtifactTemplate,
-  onRunShellCommand,
   imageBaseDir,
   workspaceMutationId,
   onImageExpand,
@@ -548,18 +391,7 @@ function useChatMarkdownState({
     reportFailure: false,
     refresh: true,
   });
-  const openPreview = useAtomCommand(previewEnvironment.open, {
-    reportFailure: false,
-  });
-  const pullRequestLinking = usePullRequestLinking(threadRef?.environmentId);
   const environmentId = threadRef?.environmentId ?? explicitEnvironmentId ?? null;
-  const canOperateHost = useEnvironmentScope(environmentId, AuthOrchestrationOperateScope);
-  const canOperatePreview = useEnvironmentScope(environmentId, AuthPreviewOperateScope);
-  const isClientHost = useAtomValue(clientHostEnvironmentAtom(environmentId));
-  const remoteOpen = useRemoteOpenResolution(environmentId);
-  const canUseShellActions =
-    canOperateHost &&
-    canUseMarkdownFileShellActions(environmentId, remoteOpen.state.mode, remoteOpen.isResolved);
   const openMarkdownMedia = (
     source: string,
     resolvedFilePath?: string,
@@ -576,9 +408,6 @@ function useChatMarkdownState({
       httpBaseUrl:
         environmentId === null ? undefined : readPreparedConnection(environmentId)?.httpBaseUrl,
       createAssetUrl,
-      onOpenFile: threadRef
-        ? (path) => useRightPanelStore.getState().openFile(threadRef, path)
-        : undefined,
     }).then(
       (preview) => {
         if (preview && mediaRequestId.current === requestId) {
@@ -592,29 +421,10 @@ function useChatMarkdownState({
       },
       (error: unknown) => {
         if (mediaRequestId.current !== requestId) return;
-        let description =
+        const description =
           error instanceof Error
             ? error.message
             : "The file could not be loaded. It may have been moved or deleted.";
-        if (
-          isAssetNotFoundError(error) &&
-          error.resource._tag === "media-file" &&
-          environmentId !== null
-        ) {
-          // The connection may resolve while the media lookup is pending.
-          const target = readPreparedConnection(environmentId)?.target ?? null;
-          if (
-            target !== null &&
-            resolveRemoteOpenState({
-              target,
-              sshTarget: null,
-              remoteOpenTargets: undefined,
-              isDesktopRenderer: window.desktopBridge !== undefined,
-            }).mode !== "local-exec"
-          ) {
-            description = `The file was not found on ${target.label} at ${error.checkedPath ?? error.resource.path}.`;
-          }
-        }
         toastManager.add(
           stackedThreadToast({
             type: "error",
@@ -625,36 +435,8 @@ function useChatMarkdownState({
       },
     );
   };
-  const { pullRequestsEnabled, availableEditors, revealInFileManagerLabel, isMacOS } = useAtomValue(
-    markdownServerConfigFieldsAtom(environmentId),
-  );
+  const { pullRequestsEnabled } = useAtomValue(markdownServerConfigFieldsAtom(environmentId));
   const projects = useProjects();
-  const [preferredEditor] = usePreferredEditor(availableEditors);
-  const preferredEditorMenuLabel = openInEditorMenuLabel(preferredEditor);
-  const openInPreferredEditor = useOpenInPreferredEditor(environmentId, availableEditors);
-  const openInEditor = useAtomCommand(shellEnvironment.openInEditor, {
-    reportFailure: false,
-  });
-  const revealFileInFileManager = (filePath: string) => {
-    if (environmentId === null) {
-      return Promise.resolve(
-        AsyncResult.failure<void, PreferredEditorEnvironmentRequiredError>(
-          Cause.fail(new PreferredEditorEnvironmentRequiredError({ targetPath: filePath })),
-        ),
-      );
-    }
-    if (!readEnvironmentScope(environmentId, AuthOrchestrationOperateScope)) {
-      return Promise.resolve(
-        AsyncResult.failure<void, Error>(
-          Cause.fail(new Error("This connection cannot reveal files on this environment.")),
-        ),
-      );
-    }
-    return openInEditor({
-      environmentId,
-      input: { cwd: filePath, editor: "file-manager", reveal: true },
-    });
-  };
   const diffThemeName = resolveDiffThemeName(resolvedTheme);
   const handleCopy = (event: ReactClipboardEvent<HTMLElement>) => {
     const selection = window.getSelection();
@@ -682,80 +464,6 @@ function useChatMarkdownState({
   const fileLinksKey = `${fileLinkSourcesKey(text, cwd, imageBaseDir)}`;
   const { markdownFileLinkMetaByHref, inlineCodeFileLinkMetaByText, fileLinkParentSuffixByPath } =
     resolveFileLinkSources(fileLinksKey, cwd, imageBaseDir);
-  const resolveThreadPullRequest = (
-    href: string,
-  ): (ThreadPullRequestKey & { readonly url: string }) | null => {
-    if (
-      threadRef === undefined ||
-      readThreadShell(threadRef) === null ||
-      !pullRequestLinking.canLink(href)
-    )
-      return null;
-    const parsed = sourceControlClients.parseChangeRequestUrl(href)?.link;
-    return parsed === undefined ? null : { ...parsed, url: href };
-  };
-  const linkedThreadPullRequestFor = (href: string) => {
-    if (threadRef === undefined || !pullRequestLinking.isLinked(readThreadShell(threadRef), href))
-      return null;
-    const parsed = sourceControlClients.parseChangeRequestUrl(href)?.link;
-    return parsed === undefined ? null : { ...parsed, url: href };
-  };
-  const updateThreadPullRequestLink = async (href: string, linked: boolean) => {
-    if (threadRef === undefined || (!linked && linkedThreadPullRequestFor(href) === null)) return;
-    if (!readEnvironmentScope(threadRef.environmentId, AuthOrchestrationOperateScope)) return;
-    await pullRequestLinking.changeLink(threadRef, href, linked);
-  };
-  const openExternalLinkInPreview = (url: string) => {
-    if (!threadRef || !canOperatePreview) {
-      return Promise.resolve(
-        AsyncResult.failure<void, BrowserPreviewUnavailableError>(
-          Cause.fail(
-            new BrowserPreviewUnavailableError({
-              message: "Preview access is unavailable for this client.",
-            }),
-          ),
-        ),
-      );
-    }
-    return openUrlInPreview({ threadRef, url, openPreview }).then((result) => {
-      if (result._tag === "Success") recordVisitForThread(threadRef, url);
-      else if (!isAtomCommandInterrupted(result)) {
-        const error = squashAtomCommandFailure(result);
-        if (isBrowserSettingsReadError(error)) {
-          toastManager.add(
-            stackedThreadToast({
-              type: "error",
-              title: "Unable to open link in browser",
-              description: error.message,
-            }),
-          );
-        }
-      }
-      return result;
-    });
-  };
-  const openMarkdownFileInPreview = (path: string) => {
-    const preparedConnection = threadRef ? readPreparedConnection(threadRef.environmentId) : null;
-    if (!threadRef || !canOperatePreview || preparedConnection === null) {
-      return Promise.resolve(
-        AsyncResult.failure<void, BrowserPreviewUnavailableError>(
-          Cause.fail(
-            new BrowserPreviewUnavailableError({
-              message: "Environment is not connected.",
-            }),
-          ),
-        ),
-      );
-    }
-    return openFileInPreview({
-      threadRef,
-      filePath: path,
-      workspaceRoot: cwd,
-      httpBaseUrl: preparedConnection.httpBaseUrl,
-      createAssetUrl,
-      openPreview,
-    });
-  };
   const findWorkspaceFileMatch = async (fileLinkMeta: MarkdownFileLinkMeta) => {
     const workspaceRelativePath = fileLinkMeta.workspaceLookupPath;
     if (
@@ -785,26 +493,6 @@ function useChatMarkdownState({
       ? pickWorkspaceLinkMatch(workspaceRelativePath, cwd, result.value.entries)
       : null;
   };
-  const openFileInPanel = (fileLinkMeta: MarkdownFileLinkMeta, panelPath: string) => {
-    if (!threadRef) return;
-    // Every open supersedes pending lookups, including synchronous opens.
-    const isLatestLookup = claimWorkspaceBasenameLookup();
-    const openAt = (path: string) =>
-      useRightPanelStore.getState().openFile(threadRef, path, fileLinkMeta.line);
-    if (
-      fileLinkMeta.workspaceLookupPath === null ||
-      !cwd ||
-      workspaceLinkLookupQuery(panelPath, cwd) === null
-    ) {
-      openAt(panelPath);
-      return;
-    }
-    void (async () => {
-      const match = await findWorkspaceFileMatch(fileLinkMeta);
-      if (!isLatestLookup()) return;
-      openAt(match ?? panelPath);
-    })();
-  };
   const fileLinkChip = (
     fileLinkMeta: MarkdownFileLinkMeta,
     copyMarkdown: string,
@@ -816,36 +504,19 @@ function useChatMarkdownState({
         cwd,
         findWorkspaceMatch: () => findWorkspaceFileMatch(fileLinkMeta),
       });
-    const isAppBundle = isMacOS && fileLinkMeta.filePath.endsWith(".app");
-    const canOpenApp =
-      environmentId !== null &&
-      isAppBundle &&
-      isClientHost &&
-      canOperateHost &&
-      availableEditors.includes("file-manager");
     const mediaPath = mediaSource ?? fileLinkMeta.filePath;
     const canPreviewMedia =
       mediaMimeTypeFromExtension(
         fileLinkMeta.basename.slice(fileLinkMeta.basename.lastIndexOf(".")),
       ) !== null;
-    const panelPath =
-      fileLinkMeta.workspaceRelativePath ??
-      (!canPreviewMedia && isHostPath(fileLinkMeta.filePath) ? fileLinkMeta.filePath : null);
 
     return (
       <MarkdownFileLink
         environmentId={environmentId}
         href={fileLinkMeta.targetPath}
         targetPath={fileLinkMeta.targetPath}
-        iconPath={
-          isAppBundle && cwd
-            ? resolveWorkspaceFilePath(fileLinkMeta.filePath, cwd)
-            : fileLinkMeta.filePath
-        }
-        isAppBundle={isAppBundle}
+        iconPath={fileLinkMeta.filePath}
         workspaceRelativePath={fileLinkMeta.workspaceRelativePath}
-        panelPath={isAppBundle ? null : panelPath}
-        line={fileLinkMeta.line}
         label={fileLinkLabel(
           {
             path: fileLinkMeta.filePath,
@@ -857,43 +528,12 @@ function useChatMarkdownState({
         )}
         copyMarkdown={copyMarkdown}
         theme={resolvedTheme}
-        threadRef={threadRef}
-        onOpen={
-          canOpenApp
-            ? async () =>
-                openInEditor({
-                  environmentId,
-                  input: { cwd: (await resolveHostPath()).absolutePath, editor: "file-manager" },
-                })
-            : canUseShellActions
-              ? async () =>
-                  openInPreferredEditor(
-                    markdownFileEditorTarget(fileLinkMeta, await resolveHostPath()),
-                  )
-              : undefined
-        }
         resolveCopyPaths={async () =>
           markdownFileCopyPaths(fileLinkMeta, await resolveHostPath(), cwd)
         }
-        onOpenInPanel={(path) => openFileInPanel(fileLinkMeta, path)}
         onOpenMedia={
           threadRef && canPreviewMedia
             ? () => openMarkdownMedia(mediaPath, fileLinkMeta.filePath)
-            : undefined
-        }
-        openInEditorMenuLabel={canOpenApp ? "Open app" : preferredEditorMenuLabel}
-        onReveal={
-          canUseShellActions && revealInFileManagerLabel !== undefined
-            ? async () => revealFileInFileManager((await resolveHostPath()).absolutePath)
-            : undefined
-        }
-        revealLabel={revealInFileManagerLabel}
-        onOpenInBrowser={
-          threadRef &&
-          canOperatePreview &&
-          isPreviewAvailableFor(threadRef.environmentId) &&
-          isBrowserPreviewFile(fileLinkMeta.filePath)
-            ? () => openMarkdownFileInPreview(fileLinkMeta.filePath)
             : undefined
         }
       />
@@ -901,8 +541,6 @@ function useChatMarkdownState({
   };
 
   const componentState = {
-    canOperateHost,
-    canOperatePreview,
     cwd,
     diffThemeName,
     environmentId,
@@ -921,20 +559,14 @@ function useChatMarkdownState({
     linkTargetPreference,
     markdownFileLinkMetaByHref,
     onTaskListChange,
-    onUseArtifactTemplate,
-    onRunShellCommand,
     openChangeRequestLink,
     openDeferredMarkdownLink,
-    openExternalLinkInPreview,
     openMarkdownMedia,
     projects,
-    linkedThreadPullRequestFor,
-    resolveThreadPullRequest,
     resolvedTheme,
     pullRequestsEnabled,
     skills,
     threadRef,
-    updateThreadPullRequestLink,
   };
   return {
     componentState,
@@ -980,16 +612,6 @@ const CHAT_MARKDOWN_COMPONENTS = {
   h4: markdownHeadingRenderer(4),
   h5: markdownHeadingRenderer(5),
   h6: markdownHeadingRenderer(6),
-  div: function MarkdownDiv({ node, children, ...props }) {
-    const { onUseArtifactTemplate } = use(ChatMarkdownRendererContext);
-    const artifactTemplate = artifactTemplateFromHastProperties(node?.properties);
-    if (artifactTemplate) {
-      return (
-        <CodexArtifactTemplateCard template={artifactTemplate} onUse={onUseArtifactTemplate} />
-      );
-    }
-    return <div {...props}>{children}</div>;
-  },
   p: function MarkdownParagraph({ node: _node, children, ...props }) {
     const { skills, threadRef, environmentId } = use(ChatMarkdownRendererContext);
     return (
@@ -1074,9 +696,7 @@ const CHAT_MARKDOWN_COMPONENTS = {
   },
   a: function MarkdownAnchor({ node, href, children, title: _title, ...props }) {
     const {
-      canOperateHost,
-      canOperatePreview,
-      cwd,
+          cwd,
       environmentId,
       imageBaseDir,
       markdownFileLinkMetaByHref,
@@ -1085,13 +705,9 @@ const CHAT_MARKDOWN_COMPONENTS = {
       openChangeRequestLink,
       openDeferredMarkdownLink,
       linkTargetPreference,
-      openExternalLinkInPreview,
-      projects,
-      linkedThreadPullRequestFor,
-      resolveThreadPullRequest,
+        projects,
       pullRequestsEnabled,
-      updateThreadPullRequestLink,
-      fileLinkChip,
+        fileLinkChip,
       renderContextReference,
     } = use(ChatMarkdownRendererContext);
     const text = use(ChatMarkdownTextContext);
@@ -1150,8 +766,6 @@ const CHAT_MARKDOWN_COMPONENTS = {
         : null;
       const isSameDocumentLink = href?.startsWith("#") ?? false;
       const onClick = props.onClick;
-      const canOpenInPreview =
-        canOperatePreview && Boolean(threadRef && isPreviewAvailableFor(threadRef.environmentId));
       const linkChildren = <MarkdownLinkContext value>{children}</MarkdownLinkContext>;
       const link = (
         <a
@@ -1196,41 +810,6 @@ const CHAT_MARKDOWN_COMPONENTS = {
             ) {
               return;
             }
-            if (event.defaultPrevented) return;
-            if (
-              resolveLinkTarget({
-                url: href,
-                event,
-                preference: linkTargetPreference,
-                canOpenInApp: canOpenInPreview,
-              }) !== "app"
-            ) {
-              // Open desktop Alt-clicks before Chromium downloads them so link routers can read the held key.
-              if (isElectron && event.altKey) {
-                event.preventDefault();
-                event.stopPropagation();
-                void readLocalApi()
-                  ?.shell.openExternal(href)
-                  .catch((cause) =>
-                    reportMarkdownActionFailure(
-                      { operation: "open-link-external", target: href },
-                      cause,
-                    ),
-                  );
-              }
-              return;
-            }
-            event.preventDefault();
-            event.stopPropagation();
-            void openExternalLinkInPreview(href).then((result) => {
-              if (result._tag === "Success" || isAtomCommandInterrupted(result)) return;
-              reportMarkdownActionFailure(
-                { operation: "open-link-in-preview", target: href },
-                result.cause,
-              );
-              if (isBrowserSettingsReadError(squashAtomCommandFailure(result))) return;
-              void readLocalApi()?.shell.openExternal(href);
-            });
           }}
           onContextMenu={(event) => {
             if (!href || !faviconHost) return;
@@ -1238,48 +817,14 @@ const CHAT_MARKDOWN_COMPONENTS = {
             event.stopPropagation();
             const api = readLocalApi();
             if (!api) return;
-            const threadLinkAction = !canOperateHost
-              ? undefined
-              : linkedThreadPullRequestFor(href) !== null
-                ? "unlink-from-thread"
-                : resolveThreadPullRequest(href) === null
-                  ? undefined
-                  : "link-to-thread";
             void showExternalLinkContextMenu({
               href,
-              canOpenInPreview,
-              threadLinkAction,
               position: { x: event.clientX, y: event.clientY },
               showContextMenu: (items, position) => api.contextMenu.show(items, position),
-              openInPreview: async (target) => {
-                const result = await openExternalLinkInPreview(target);
-                if (result._tag === "Failure" && !isAtomCommandInterrupted(result)) {
-                  reportMarkdownActionFailure(
-                    { operation: "open-link-in-preview", target },
-                    result.cause,
-                  );
-                }
-              },
               openExternal: (target) => api.shell.openExternal(target),
               copyLink: (target) => writeTextToClipboard(target, "link"),
-              updateThreadLink: updateThreadPullRequestLink,
               reportFailure: (operation, cause) => {
                 reportMarkdownActionFailure({ operation, target: href }, cause);
-                if (
-                  operation === "link-pull-request-to-thread" ||
-                  operation === "unlink-pull-request-from-thread"
-                ) {
-                  toastManager.add(
-                    stackedThreadToast({
-                      type: "error",
-                      title:
-                        operation === "link-pull-request-to-thread"
-                          ? "Unable to link pull request"
-                          : "Unable to unlink pull request",
-                      description: cause instanceof Error ? cause.message : "The request failed.",
-                    }),
-                  );
-                }
               },
             });
           }}
@@ -1447,7 +992,6 @@ const CHAT_MARKDOWN_COMPONENTS = {
                   threadId: threadRef.threadId,
                   path: filePath,
                 },
-                onOpen: () => useRightPanelStore.getState().openFile(threadRef, filePath),
               }
             : imageSource._tag === "Direct"
               ? { src: resolveProtocolRelativeMediaUrl(imageSource.uri) }
@@ -1589,7 +1133,6 @@ const CHAT_MARKDOWN_COMPONENTS = {
       diffThemeName,
       expandMedia,
       isStreaming,
-      onRunShellCommand,
       inline,
       mathEnabled,
     } = use(ChatMarkdownRendererContext);
@@ -1655,11 +1198,6 @@ const CHAT_MARKDOWN_COMPONENTS = {
         language={language}
         fenceTitle={fenceTitle}
         theme={resolvedTheme}
-        onRunShellCommand={
-          onRunShellCommand && !isStreaming && isClosedCodeFence(node, text, codeBlock.code)
-            ? onRunShellCommand
-            : undefined
-        }
         isStreaming={isStreaming}
       >
         {highlightedCode}

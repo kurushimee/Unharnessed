@@ -1,9 +1,4 @@
-import type { ToolCallDiffTarget } from "../../diffPanelStore";
-import type {
-  ProviderApprovalDecision,
-  RuntimeRequestId,
-  WorktreeSetupSnapshot,
-} from "~/contracts";
+import type { ProviderApprovalDecision, RuntimeRequestId } from "~/contracts";
 import {
   type EnvironmentId,
   type MessageId,
@@ -20,7 +15,6 @@ import type { CommandOutputView } from "~/rt/state/commandOutput";
 import type { WorkflowOpening } from "~/rt/state/subagentRuntime";
 import { createContext, type MouseEvent, type ReactNode } from "react";
 import { type LegendListRef } from "@legendapp/list/react";
-import type { CodexArtifactTemplate } from "~/shared/codexArtifactTemplates";
 import type { PendingApproval } from "../../session-logic";
 import { type ChatFileAttachment } from "../../types";
 import { ExpandedImagePreview } from "./ExpandedImagePreview";
@@ -61,16 +55,10 @@ export interface TimelineRowSharedState {
   runs: ReadonlyArray<HandoffTimelineRun>;
   activeThreadEnvironmentId: EnvironmentId;
   onRevertToTurnCount: (targetTurnCount: number, messageId: MessageId) => void;
-  onUseArtifactTemplate: (template: CodexArtifactTemplate) => void;
-  onSendAppMessage: ((text: string) => Promise<void>) | undefined;
   onAppFullscreenChange: (rowId: string, fullscreen: boolean) => void;
-  onRunShellCommand: ((command: string) => void) | undefined;
   findActive: boolean;
   onImageExpand: (preview: ExpandedImagePreview) => void;
   displayThreadKey?: string;
-  onOpenToolDiff: ((target: ToolCallDiffTarget) => void) | undefined;
-  /** Unset where there is no diff to open, so the timeline shows no "Open diff" button. */
-  onOpenTurnDiff: ((runId: RunId, filePath?: string) => void) | undefined;
   /**
    * Draws a published HTML visual. Unset, the row loads it from the environment; the guest page
    * loads it through its own route.
@@ -80,10 +68,6 @@ export interface TimelineRowSharedState {
   turnItemSource: TurnItemSource | undefined;
   onOpenThread: (threadId: OrchestrationV2TurnItem["threadId"]) => void;
   workflowOpening: WorkflowOpening | null;
-  /** Absent hides "Fork from this response", as in the guest view. */
-  onForkFromRun:
-    | ((input: { readonly sourceThreadId: ThreadId; readonly runId: RunId }) => Promise<void>)
-    | undefined;
   onToggleTurnFold: (runId: RunId) => void;
   onToggleAttemptFold: (attemptId: RunAttemptId) => void;
   onFileOpen: (attachment: ChatFileAttachment) => void;
@@ -91,11 +75,6 @@ export interface TimelineRowSharedState {
   openPullRequest: (event: MouseEvent<HTMLElement>, url: string) => void;
   onToggleWorkGroup: (groupId: string, anchorKey: string) => void;
   onToggleWorkEntry: (anchorKey: string, collapsed: boolean) => void;
-  onCancelWorktreeSetup: (() => void) | null;
-  retryableWorkspacePreparationRunIds: ReadonlySet<RunId>;
-  onRetryWorkspacePreparation: ((runId: RunId) => void) | null;
-  onWorktreeSetupWorkLocally: (() => void) | null;
-  onOpenWorktreeSetupTerminal: ((terminalId: string) => void) | null;
   workGroupViewState: WorkGroupViewState;
 }
 
@@ -104,9 +83,7 @@ export interface TimelineRowActivityState {
   isCompacting: boolean;
   isRevertingCheckpoint: boolean;
   awaitingUser: boolean;
-  isPreparingWorktree: boolean;
   latestRunId: RunId | null;
-  backgroundWorktreeSetup: WorktreeSetupSnapshot | null;
   liveAnswerPreview: string | null;
 }
 

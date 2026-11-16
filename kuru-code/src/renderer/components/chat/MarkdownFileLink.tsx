@@ -1,51 +1,30 @@
-import { useAssetUrlState } from "../../assets/assetUrls";
 import { formatFilePathForClipboard } from "~/rt/mediaActions";
-import {
-  isAtomCommandInterrupted,
-  squashAtomCommandFailure,
-  type AtomCommandResult,
-} from "~/rt/state/runtime";
-import type { EnvironmentId, ScopedThreadRef } from "~/contracts";
-import { memo, useState, type MouseEvent as ReactMouseEvent } from "react";
+import type { EnvironmentId } from "~/contracts";
+import { memo, type MouseEvent as ReactMouseEvent } from "react";
 
 import { readLocalApi } from "../../localApi";
 import { cn } from "../../lib/utils";
-import { shouldOpenMarkdownFileLinkInEditor } from "../../markdown-links";
 import type { markdownFileCopyPaths } from "../../markdownFileHostPath";
 import { documentChipKindForFileName } from "../../pierre-icons";
 import { ContextChip } from "../ContextChip";
 import { stackedThreadToast, toastManager } from "../ui/toast";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
 import { FileTagChipContent } from "./FileTagChip";
-import {
-  hasMarkdownFilePrimaryAction,
-  markdownFileCopyMenuItems,
-  shouldUseMarkdownFileBrowserPrimaryAction,
-} from "./MarkdownFileLink.logic";
+import { markdownFileCopyMenuItems } from "./MarkdownFileLink.logic";
 import { reportMarkdownActionFailure } from "./markdownActionFailure";
-import { WorkspaceEntryIcon, WorkspaceEntryTooltip } from "./WorkspaceEntryIcon";
+import { WorkspaceEntryTooltip } from "./WorkspaceEntryIcon";
 
 interface MarkdownFileLinkProps {
   environmentId: EnvironmentId | null;
   href: string;
   targetPath: string;
   iconPath: string;
-  isAppBundle?: boolean;
   workspaceRelativePath: string | null;
-  panelPath: string | null;
-  line?: number | undefined;
   label: string;
   copyMarkdown: string;
   theme: "light" | "dark";
-  threadRef?: ScopedThreadRef | undefined;
-  onOpen?: (() => Promise<AtomCommandResult<unknown, unknown>>) | undefined;
-  onOpenInPanel: (panelPath: string, line: number | undefined) => void;
   resolveCopyPaths: () => Promise<ReturnType<typeof markdownFileCopyPaths>>;
-  openInEditorMenuLabel: string;
-  onOpenInBrowser?: (() => Promise<AtomCommandResult<unknown, unknown>>) | undefined;
   onOpenMedia?: (() => void) | undefined;
-  onReveal?: (() => Promise<AtomCommandResult<unknown, unknown>>) | undefined;
-  revealLabel?: string | undefined;
 }
 
 const MARKDOWN_FILE_LINK_CLASS_NAME = "chat-markdown-file-link";
@@ -55,149 +34,13 @@ export const MarkdownFileLink = memo(function MarkdownFileLink({
   href,
   targetPath,
   iconPath,
-  isAppBundle = false,
   workspaceRelativePath,
-  panelPath,
-  line,
   label,
   copyMarkdown,
   theme,
-  threadRef,
-  onOpen,
-  onOpenInPanel,
-  openInEditorMenuLabel,
-  onOpenInBrowser,
   onOpenMedia,
-  onReveal,
-  revealLabel,
   resolveCopyPaths,
 }: MarkdownFileLinkProps) {
-  const handleOpenInEditor = () => {
-    if (!onOpen) {
-      return;
-    }
-    void (async () => {
-      try {
-        const result = await onOpen();
-        if (result._tag === "Success" || isAtomCommandInterrupted(result)) {
-          return;
-        }
-        reportMarkdownActionFailure(
-          { operation: "open-file-in-editor", target: targetPath },
-          result.cause,
-        );
-        const error = squashAtomCommandFailure(result);
-        toastManager.add(
-          stackedThreadToast({
-            type: "error",
-            title: "Unable to open file",
-            description: error instanceof Error ? error.message : "An error occurred.",
-          }),
-        );
-      } catch (cause) {
-        reportMarkdownActionFailure(
-          { operation: "open-file-in-editor", target: targetPath },
-          cause,
-        );
-        toastManager.add(
-          stackedThreadToast({
-            type: "error",
-            title: "Unable to open file",
-            description: cause instanceof Error ? cause.message : "An error occurred.",
-          }),
-        );
-      }
-    })();
-  };
-
-  const handleOpenInFilePreview = () => {
-    if (threadRef && panelPath) {
-      onOpenInPanel(panelPath, line);
-      return;
-    }
-    if (onOpenMedia) {
-      onOpenMedia();
-      return;
-    }
-    handleOpenInEditor();
-  };
-
-  const handleOpenInBrowser = () => {
-    if (!onOpenInBrowser) {
-      return;
-    }
-    void (async () => {
-      try {
-        const result = await onOpenInBrowser();
-        if (result._tag === "Success" || isAtomCommandInterrupted(result)) {
-          return;
-        }
-        reportMarkdownActionFailure(
-          { operation: "open-file-in-browser", target: targetPath },
-          result.cause,
-        );
-        const error = squashAtomCommandFailure(result);
-        toastManager.add(
-          stackedThreadToast({
-            type: "error",
-            title: "Unable to open file in browser",
-            description: error instanceof Error ? error.message : "An error occurred.",
-          }),
-        );
-      } catch (cause) {
-        reportMarkdownActionFailure(
-          { operation: "open-file-in-browser", target: targetPath },
-          cause,
-        );
-        toastManager.add(
-          stackedThreadToast({
-            type: "error",
-            title: "Unable to open file in browser",
-            description: cause instanceof Error ? cause.message : "An error occurred.",
-          }),
-        );
-      }
-    })();
-  };
-
-  const handleRevealInFileManager = () => {
-    if (!onReveal) {
-      return;
-    }
-    void (async () => {
-      try {
-        const result = await onReveal();
-        if (result._tag === "Success" || isAtomCommandInterrupted(result)) {
-          return;
-        }
-        reportMarkdownActionFailure(
-          { operation: "reveal-file-in-file-manager", target: targetPath },
-          result.cause,
-        );
-        const error = squashAtomCommandFailure(result);
-        toastManager.add(
-          stackedThreadToast({
-            type: "error",
-            title: "Unable to reveal file",
-            description: error instanceof Error ? error.message : "An error occurred.",
-          }),
-        );
-      } catch (cause) {
-        reportMarkdownActionFailure(
-          { operation: "reveal-file-in-file-manager", target: targetPath },
-          cause,
-        );
-        toastManager.add(
-          stackedThreadToast({
-            type: "error",
-            title: "Unable to reveal file",
-            description: cause instanceof Error ? cause.message : "An error occurred.",
-          }),
-        );
-      }
-    })();
-  };
-
   const handleCopy = (resolveValue: () => Promise<string>, title: string) => {
     if (typeof window === "undefined" || !navigator.clipboard?.writeText) {
       toastManager.add(
@@ -253,11 +96,6 @@ export const MarkdownFileLink = memo(function MarkdownFileLink({
       const clicked = await api.contextMenu.show(
         [
           ...(onOpenMedia ? ([{ id: "preview-media", label: "Preview media" }] as const) : []),
-          ...(onOpen ? ([{ id: "open", label: openInEditorMenuLabel }] as const) : []),
-          ...(onOpenInBrowser
-            ? ([{ id: "open-in-browser", label: "Open in integrated browser" }] as const)
-            : []),
-          ...(onReveal && revealLabel ? ([{ id: "reveal", label: revealLabel }] as const) : []),
           ...copyItems.map(({ id, label }) => ({ id, label })),
         ] as const,
         position,
@@ -265,18 +103,6 @@ export const MarkdownFileLink = memo(function MarkdownFileLink({
 
       if (clicked === "preview-media") {
         onOpenMedia?.();
-        return;
-      }
-      if (clicked === "open") {
-        handleOpenInEditor();
-        return;
-      }
-      if (clicked === "open-in-browser") {
-        handleOpenInBrowser();
-        return;
-      }
-      if (clicked === "reveal") {
-        handleRevealInFileManager();
         return;
       }
       if (clicked === "copy-relative" || clicked === "copy-full") {
@@ -309,28 +135,13 @@ export const MarkdownFileLink = memo(function MarkdownFileLink({
     void showFileContextMenu(position);
   };
 
-  const canOpenInEditor = onOpen !== undefined;
-  const canOpenInBrowser = onOpenInBrowser !== undefined;
-  const canOpenInPanel = threadRef !== undefined && Boolean(panelPath);
-  const hasPrimaryAction = hasMarkdownFilePrimaryAction({
-    canOpenInEditor,
-    canOpenInBrowser,
-    canOpenInPanel,
-    canOpenMedia: onOpenMedia !== undefined,
-  });
-  const useBrowserPrimaryAction = shouldUseMarkdownFileBrowserPrimaryAction({
-    iconPath,
-    canOpenInEditor,
-    canOpenInBrowser,
-    canOpenInPanel,
-  });
   const chipKind = documentChipKindForFileName(iconPath) ?? "mention";
 
   return (
     <Tooltip>
       <TooltipTrigger
         render={
-          hasPrimaryAction ? (
+          onOpenMedia ? (
             <ContextChip
               kind={chipKind}
               dir="ltr"
@@ -340,24 +151,11 @@ export const MarkdownFileLink = memo(function MarkdownFileLink({
               onClick={(event) => {
                 event.preventDefault();
                 event.stopPropagation();
-                if (onOpen && shouldOpenMarkdownFileLinkInEditor(event)) {
-                  handleOpenInEditor();
-                  return;
-                }
-                if (useBrowserPrimaryAction) {
-                  handleOpenInBrowser();
-                  return;
-                }
-                handleOpenInFilePreview();
+                onOpenMedia();
               }}
               onContextMenu={handleContextMenu}
             >
               <FileTagChipContent
-                icon={
-                  isAppBundle ? (
-                    <AppBundleIcon environmentId={environmentId} path={iconPath} theme={theme} />
-                  ) : undefined
-                }
                 path={iconPath}
                 environmentId={environmentId}
                 label={label}
@@ -377,11 +175,6 @@ export const MarkdownFileLink = memo(function MarkdownFileLink({
               onContextMenu={handleContextMenu}
             >
               <FileTagChipContent
-                icon={
-                  isAppBundle ? (
-                    <AppBundleIcon environmentId={environmentId} path={iconPath} theme={theme} />
-                  ) : undefined
-                }
                 path={iconPath}
                 environmentId={environmentId}
                 label={label}
@@ -408,43 +201,10 @@ function areMarkdownFileLinkPropsEqual(
     previous.iconPath === next.iconPath &&
     previous.environmentId === next.environmentId &&
     previous.workspaceRelativePath === next.workspaceRelativePath &&
-    previous.panelPath === next.panelPath &&
-    previous.line === next.line &&
     previous.label === next.label &&
     previous.copyMarkdown === next.copyMarkdown &&
     previous.theme === next.theme &&
-    previous.threadRef === next.threadRef &&
-    previous.isAppBundle === next.isAppBundle &&
-    previous.onOpen === next.onOpen &&
-    previous.onOpenInPanel === next.onOpenInPanel &&
-    previous.openInEditorMenuLabel === next.openInEditorMenuLabel &&
-    previous.onOpenInBrowser === next.onOpenInBrowser &&
     previous.onOpenMedia === next.onOpenMedia &&
-    previous.onReveal === next.onReveal &&
-    previous.resolveCopyPaths === next.resolveCopyPaths &&
-    previous.revealLabel === next.revealLabel
-  );
-}
-
-function AppBundleIcon(props: {
-  environmentId: EnvironmentId | null;
-  path: string;
-  theme: "light" | "dark";
-}) {
-  const asset = useAssetUrlState(props.environmentId, {
-    _tag: "native-app-icon",
-    app: { _tag: "app-path", path: props.path },
-  });
-  const [failedUrl, setFailedUrl] = useState<string | null>(null);
-  if (asset._tag !== "Success" || asset.url === failedUrl) {
-    return <WorkspaceEntryIcon {...props} />;
-  }
-  return (
-    <img
-      src={asset.url}
-      alt=""
-      className="size-4 shrink-0 object-contain"
-      onError={() => setFailedUrl(asset.url)}
-    />
+    previous.resolveCopyPaths === next.resolveCopyPaths
   );
 }

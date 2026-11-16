@@ -10,7 +10,7 @@ import type { ScopedThreadRef } from "~/contracts";
 import { ScrollArea } from "../ui/scroll-area";
 import { cn } from "../../lib/utils";
 import { Popover, PopoverPopup, PopoverCreateHandle } from "../ui/popover";
-import { selectThreadPanelOpen, useRightPanelStore } from "../../rightPanelStore";
+import { selectThreadPanelOpen, useThreadPanelStore } from "../../threadPanelStore";
 import { useChatCanvas } from "./ChatCanvasContext";
 import {
   THREAD_DETAILS_CARD_GAP,
@@ -41,10 +41,10 @@ export function ThreadDetailsCard({
   const placement = canvas?.detailsCardPlacement ?? null;
   const mode = placement ? "inline" : "popover";
   const topInset = canvas?.detailsCardTopInset ?? 0;
-  const inlineOpen = useRightPanelStore((state) =>
+  const inlineOpen = useThreadPanelStore((state) =>
     selectThreadPanelOpen(state.threadPanelVisibilityByThreadKey, threadRef, "inline"),
   );
-  const popoverOpen = useRightPanelStore((state) =>
+  const popoverOpen = useThreadPanelStore((state) =>
     selectThreadPanelOpen(state.threadPanelVisibilityByThreadKey, threadRef, "popover"),
   );
   const measurementKey = `${threadRef.environmentId}:${threadRef.threadId}:${preferredPlacement?.width ?? "popup"}:${contentKey}`;
@@ -65,7 +65,7 @@ export function ThreadDetailsCard({
   // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- closes the popover flag in the right panel store when the derived mode turns inline
   useLayoutEffect(() => {
     if (mode === "inline" && popoverOpen)
-      useRightPanelStore.getState().setThreadPanelOpen(threadRef, "popover", false);
+      useThreadPanelStore.getState().setThreadPanelOpen(threadRef, "popover", false);
   }, [mode, popoverOpen, threadRef]);
   const [contentElement, setContentElement] = useState<HTMLDivElement | null>(null);
   const { environmentId, threadId } = threadRef;
@@ -143,7 +143,7 @@ export function ThreadDetailsCard({
           details.cancel();
           return;
         }
-        useRightPanelStore.getState().setThreadPanelOpen(threadRef, "popover", open);
+        useThreadPanelStore.getState().setThreadPanelOpen(threadRef, "popover", open);
       }}
     >
       {placement && inlineOpen ? (

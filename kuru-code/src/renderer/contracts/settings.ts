@@ -524,8 +524,6 @@ export const ClientSettingsSchema = Schema.Struct({
   screenReaderAnnouncements: ScreenReaderAnnouncements.pipe(
     Schema.withDecodingDefault(Effect.succeed("status" as const)),
   ),
-  // Retired Labs toggle. Still read as the default for the Usage item in threadDetailsItems.
-  threadDetailsUsageEnabled: Schema.Boolean.pipe(Schema.withDecodingDefault(Effect.succeed(false))),
   // Sparse show/hide overrides for thread details card items. Missing ids use the client's
   // default, so new items appear for everyone and unknown ids survive a downgrade.
   threadDetailsItems: Schema.Record(Schema.String, Schema.Boolean).pipe(
@@ -1450,8 +1448,6 @@ export const ServerSettings = Schema.Struct({
    * and tasks on another machine; tasks already running there finish.
    */
   linkedEnvironmentsEnabled: Schema.Boolean.pipe(Schema.withDecodingDefault(Effect.succeed(false))),
-  /** Beta: Claude and Codex predict the next prompt after completed turns. Codex follows a change at once; open Claude threads after they restart. */
-  promptSuggestionsEnabled: Schema.Boolean.pipe(Schema.withDecodingDefault(Effect.succeed(false))),
   sidebarAutoSettleKeepPullRequests: Schema.Boolean.pipe(
     Schema.withDecodingDefault(Effect.succeed(false)),
   ),
@@ -1869,7 +1865,6 @@ export const ServerSettingsPatch = Schema.Struct({
   hideTaggedThreads: Schema.optionalKey(Schema.Boolean),
   guestSharingEnabled: Schema.optionalKey(Schema.Boolean),
   linkedEnvironmentsEnabled: Schema.optionalKey(Schema.Boolean),
-  promptSuggestionsEnabled: Schema.optionalKey(Schema.Boolean),
   backgroundActivity: Schema.optionalKey(
     Schema.Struct({
       schemaVersion: Schema.optionalKey(Schema.Literal(1)),

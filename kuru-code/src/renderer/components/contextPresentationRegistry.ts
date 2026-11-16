@@ -21,18 +21,6 @@ const DEFINITIONS = [
     capabilities: { details: "tooltip", expanded: "modal", defaultDraftView: "compact" },
   },
   {
-    kind: "terminal",
-    capabilities: { details: "popover", expanded: "none", defaultDraftView: "compact" },
-  },
-  {
-    kind: "element",
-    capabilities: { details: "popover", expanded: "none", defaultDraftView: "compact" },
-  },
-  {
-    kind: "preview-annotation",
-    capabilities: { details: "popover", expanded: "modal", defaultDraftView: "compact" },
-  },
-  {
     kind: "review-comment",
     capabilities: { details: "popover", expanded: "none", defaultDraftView: "compact" },
   },
@@ -46,10 +34,6 @@ const DEFINITIONS = [
   },
   {
     kind: "thread",
-    capabilities: { details: "tooltip", expanded: "none", defaultDraftView: "compact" },
-  },
-  {
-    kind: "environment",
     capabilities: { details: "tooltip", expanded: "none", defaultDraftView: "compact" },
   },
 ] as const satisfies ReadonlyArray<ContextPresentationDefinition>;

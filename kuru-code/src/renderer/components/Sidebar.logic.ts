@@ -3,23 +3,15 @@ import { scopeThreadRef, scopedThreadKey } from "~/rt/environment/index";
 import { resolveThreadWorkingStartedAt } from "~/rt/state/models";
 import { threadPullRequestSearchTerms } from "~/shared/threadPullRequests";
 import * as React from "react";
-import {
-  isAtomCommandInterrupted,
-  type AtomCommandResult,
-} from "~/rt/state/runtime";
+import { isAtomCommandInterrupted, type AtomCommandResult } from "~/rt/state/runtime";
 import { defaultAnimateLayoutChanges, type AnimateLayoutChanges } from "@dnd-kit/sortable";
-import {
-  threadSearchMatchKey,
-  threadSearchSubject,
-  type ThreadSearchShell,
-} from "~/rt/state/threadSearch";
+import { threadSearchMatchKey, threadSearchSubject, type ThreadSearchShell } from "~/rt/state/threadSearch";
 import { foldSearchQuery, rankSearchItems, scoreThreadSearch } from "~/shared/paletteSearch";
 import {
   isListedThreadLineage,
   type ContextMenuItem,
   type EnvironmentId,
   type ResolvedKeybindingsConfig,
-  type ScopedThreadRef,
   type ThreadId,
 } from "~/contracts";
 import type { SidebarProjectSortOrder, SidebarThreadSortOrder } from "~/contracts";
@@ -36,7 +28,6 @@ import { normalizeSearchText } from "../lib/utils";
 import { isLatestRunSettled } from "~/rt/state/models";
 import { observeIntersection } from "../lib/observeIntersection";
 import { deadlineAfter, deadlineStore, type ClockStore } from "~/rt/clock";
-import { useDeadlinePassed } from "../hooks/useDeadline";
 import { legacyProjectCwdPreferenceKey } from "../uiStateStore";
 import { isElectron } from "../env";
 import { shouldShowThreadJumpHintsForModifiers } from "../keybindings";
@@ -619,14 +610,9 @@ type ThreadStatusInput = Pick<
   blockedOnThreadWait?: boolean | undefined;
 };
 
-// Read at event time: subscribing Sidebar to terminal or modifier state re-renders every row.
-export function threadShortcutContext(routeThreadRef: ScopedThreadRef | null) {
+// Read at event time: subscribing Sidebar to modifier state re-renders every row.
+export function threadShortcutContext() {
   return {
-    // kuru code has no terminal or preview panel.
-    terminalFocus: false,
-    terminalOpen: routeThreadRef === null && false,
-    previewFocus: false,
-    previewOpen: false,
     modelPickerOpen: isModelPickerOpen(),
     isWeb: !isElectron,
     isDesktop: isElectron,
@@ -692,7 +678,6 @@ function subscribeToThreadJumpHintInputs(listener: () => void): () => void {
  */
 export function useThreadJumpHintsVisible(
   keybindings: ResolvedKeybindingsConfig,
-  routeThreadRef: ScopedThreadRef | null,
 ): boolean {
   return React.useSyncExternalStore(
     subscribeToThreadJumpHintInputs,
@@ -700,7 +685,7 @@ export function useThreadJumpHintsVisible(
       threadJumpModifierHold.getSnapshot() &&
       shouldShowThreadJumpHintsForModifiers(shortcutModifierStore.getSnapshot(), keybindings, {
         platform: navigator.platform,
-        context: threadShortcutContext(routeThreadRef),
+        context: threadShortcutContext(),
       }),
   );
 }

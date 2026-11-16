@@ -2489,7 +2489,7 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
       }
       const command = resolveShortcutCommand(event, keybindings, {
         platform: navigator.platform,
-        context: threadShortcutContext(routeThreadRef),
+        context: threadShortcutContext(),
       });
       const navigateToThreadKey = (targetThreadKey: string | null) => {
         if (!targetThreadKey) return false;
@@ -2526,7 +2526,7 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
     threadByKey,
   ]);
 
-  const showJumpHints = useThreadJumpHintsVisible(keybindings, routeThreadRef);
+  const showJumpHints = useThreadJumpHintsVisible(keybindings);
 
   const handleNewThreadClick = (event?: ReactMouseEvent) => {
     if (

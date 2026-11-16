@@ -1,12 +1,7 @@
 import { formatProviderSkillDisplayName } from "~/shared/inlineSkills";
 import type { ComposerPathSearchTarget } from "~/rt/state/threads";
+import { resolveProviderSkillSourceKind, type ProviderSkillSourceKind } from "~/rt/providerSkills";
 import {
-  resolveProviderSkillSourceKind,
-  type ProviderSkillSourceKind,
-} from "~/rt/providerSkills";
-import {
-  type EnvironmentId,
-  type EnvironmentMachineKind,
   type ProjectEntry,
   type ProviderDriverKind,
   type ProviderInstanceId,
@@ -30,7 +25,6 @@ import { type ComposerSlashCommand, type ComposerTriggerKind } from "../../compo
 import { cn } from "~/lib/utils";
 import { Badge } from "../ui/badge";
 import { Command, CommandGroup, CommandItem, CommandList } from "../ui/command";
-import { EnvironmentMachineIcon } from "../EnvironmentMachineIcon";
 import { PierreEntryIcon } from "./PierreEntryIcon";
 import { ProviderInstanceIcon } from "./ProviderInstanceIcon";
 import { ComposerBanner } from "./ComposerBanner";
@@ -80,14 +74,6 @@ export type ComposerCommandItem =
       id: string;
       type: "thread";
       thread: ScopedThreadRef;
-      label: string;
-      description: string;
-    }
-  | {
-      id: string;
-      type: "environment";
-      environmentId: EnvironmentId;
-      machine: EnvironmentMachineKind;
       label: string;
       description: string;
     }
@@ -227,13 +213,6 @@ const ComposerCommandMenuItem = memo(function ComposerCommandMenuItem(props: {
       ) : null}
       {props.item.type === "thread" ? (
         <MessagesSquareIcon aria-hidden="true" className="size-4 shrink-0 text-secondary-label" />
-      ) : null}
-      {props.item.type === "environment" ? (
-        <EnvironmentMachineIcon
-          kind={props.item.machine}
-          aria-hidden="true"
-          className="size-4 shrink-0 text-secondary-label"
-        />
       ) : null}
       {props.item.type === "model" ? (
         <ProviderInstanceIcon

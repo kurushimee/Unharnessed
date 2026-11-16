@@ -2,8 +2,6 @@ import { documentChipKindForFileName } from "~/pierre-icons";
 import { isSvgAttachment } from "~/shared/image";
 import { useRenderedAppearance } from "../../hooks/useTheme";
 import { PullRequestGlyph } from "../pullRequest/pullRequestIcons";
-import { ReadOnlySourcePreview } from "../files/AttachmentFilePreview";
-import { useRightPanelStore } from "~/rightPanelStore";
 import { COMPOSER_CONTEXT_KINDS } from "~/contracts";
 import { formatAttachmentSize } from "~/rt/state/attachments";
 import { use, type ReactNode } from "react";
@@ -15,20 +13,13 @@ import {
   isImageAttachment,
   isVideoAttachment,
 } from "../../types";
-import {
-  getRenderablePatch,
-  resolveDiffThemeName,
-  resolveFileDiffPath,
-} from "../../lib/diffRendering";
+import { getRenderablePatch, resolveDiffThemeName, resolveFileDiffPath } from "../../lib/diffRendering";
 import { PREFERRED_HIGHLIGHTER } from "../../lib/syntaxHighlighting";
 import ChatMarkdown from "../ChatMarkdown";
-import { EnvironmentContextChip } from "../EnvironmentContextChip";
 import { ThreadContextChip } from "../ThreadContextChip";
-import { MessageCircleIcon, MousePointerClickIcon, PaintbrushIcon } from "lucide-react";
+import { MessageCircleIcon } from "lucide-react";
 import type { ComposerContextId, KnownComposerContextRecord } from "~/contracts";
-import { buildExpandedImagePreview } from "./ExpandedImagePreview";
 import { WorkspaceEntryIcon, WorkspaceEntryTooltip } from "./WorkspaceEntryIcon";
-import { TerminalContextInlineChip } from "./TerminalContextInlineChip";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
 import {
   ContextChipPopover as UserMessageContextPopover,
@@ -48,11 +39,7 @@ import { formatComposerContextReference } from "~/shared/composerContextReferenc
 import { ContextChip, ContextChipLabel, type ContextChipKind } from "../ContextChip";
 import { createContextPresentationRegistry } from "../contextPresentationRegistry";
 import type { ChatMarkdownContextReference } from "../ChatMarkdown";
-import {
-  SkillChipPopover,
-  skillInstructionsOpener,
-  skillPopoverDescription,
-} from "./SkillInlineText";
+import { SkillChipPopover, skillPopoverDescription } from "./SkillInlineText";
 import { formatWorkspaceRelativePath } from "../../filePathDisplay";
 import {
   buildReviewCommentRenderablePatch,
@@ -73,13 +60,9 @@ function UserMessageMentionChip(props: {
         render={
           <ContextChip
             kind={documentChipKindForFileName(props.record.path) ?? "mention"}
-            render={<button type="button" />}
-            aria-label={`Preview ${props.record.path}`}
+            render={<span />}
+            aria-label={props.record.path}
             data-markdown-copy={props.copyMarkdown}
-            onClick={() => {
-              if (ctx.threadRef)
-                useRightPanelStore.getState().openFile(ctx.threadRef, props.record.path);
-            }}
           >
             <WorkspaceEntryIcon
               path={props.record.path}
@@ -106,14 +89,13 @@ function UserMessageSkillChip(props: {
   record: Extract<KnownComposerContextRecord, { kind: "skill" }>;
   copyMarkdown: string;
 }) {
-  const { skills, threadRef } = use(TimelineRowCtx);
+  const { skills } = use(TimelineRowCtx);
   const skill = skills.find((candidate) => candidate.name === props.record.name);
   return (
     <SkillChipPopover
       label={props.record.label || props.record.name}
       description={skill ? skillPopoverDescription(skill) : null}
       copyMarkdown={props.copyMarkdown}
-      onViewInstructions={skillInstructionsOpener(threadRef, skill)}
     />
   );
 }
@@ -139,135 +121,9 @@ function UserMessagePullRequestContextChip(props: {
   );
 }
 
-function UserMessagePreviewAnnotationDetails(props: {
-  record: Extract<KnownComposerContextRecord, { kind: "preview-annotation" }>;
-  image: ChatImageAttachment | null;
-}) {
-  const ctx = use(TimelineRowCtx);
-  const visibleElements = props.record.elements ?? [];
-  return (
-    <div className="max-w-full overflow-hidden rounded-lg border border-border/70 bg-background/70">
-      {props.image?.previewUrl ? (
-        <button
-          type="button"
-          className="block max-h-64 w-full cursor-zoom-in overflow-hidden border-b border-border/70 bg-muted"
-          aria-label={`Preview ${props.image.name}`}
-          onClick={() => {
-            if (!props.image) return;
-            const preview = buildExpandedImagePreview([props.image], props.image.id);
-            if (preview) ctx.onImageExpand(preview);
-          }}
-        >
-          <img
-            src={props.image.previewUrl}
-            alt="Annotated preview crop"
-            className="max-h-64 w-full object-contain"
-          />
-        </button>
-      ) : (
-        <div className="border-b border-border/70 bg-muted/40 px-3 py-2 text-secondary-label text-xs">
-          Screenshot unavailable
-        </div>
-      )}
-      <div className="min-w-0 px-3 py-2.5">
-        <div className="text-message-foreground text-xs font-medium">
-          {props.record.pageTitle?.trim() || props.record.pageUrl || "Preview annotation"}
-        </div>
-        {props.record.comment ? (
-          <div className="mt-1 whitespace-pre-wrap wrap-break-word text-sm">
-            {props.record.comment}
-          </div>
-        ) : null}
-        <div className="mt-1 flex items-center gap-2 text-secondary-label text-3xs">
-          {props.record.targetSummary ? (
-            <span className="truncate">{props.record.targetSummary}</span>
-          ) : null}
-          {(props.record.styleChanges?.length ?? 0) > 0 ? (
-            <span className="inline-flex shrink-0 items-center gap-1">
-              <PaintbrushIcon className="size-3" />
-              {props.record.styleChanges?.length ?? 0}
-            </span>
-          ) : null}
-        </div>
-        {visibleElements.length > 0 ? (
-          <div className="mt-2 space-y-2 border-t border-border/60 pt-2">
-            {visibleElements.map((element) => {
-              const source = element.source;
-              const sourceLabel = source?.fileName
-                ? `${source.fileName}${source.lineNumber === null ? "" : `:${source.lineNumber}`}`
-                : null;
-              return (
-                <div
-                  key={`${element.selector}\u0000${element.tagName}\u0000${sourceLabel ?? ""}\u0000${element.htmlPreview}`}
-                  className="min-w-0"
-                >
-                  <div className="flex min-w-0 items-center gap-2 text-xs">
-                    <code className="truncate text-message-foreground">
-                      {element.selector || `<${element.tagName}>`}
-                    </code>
-                    {sourceLabel ? (
-                      <span className="ml-auto shrink-0 text-secondary-label">{sourceLabel}</span>
-                    ) : null}
-                  </div>
-                  {element.htmlPreview?.trim() ? (
-                    <pre className="mt-1 max-h-24 overflow-auto whitespace-pre-wrap rounded bg-muted/60 px-2 py-1.5 text-3xs leading-relaxed">
-                      {element.htmlPreview.trim()}
-                    </pre>
-                  ) : null}
-                </div>
-              );
-            })}
-          </div>
-        ) : null}
-      </div>
-    </div>
-  );
-}
-
-function UserMessageElementDetails({
-  record,
-}: {
-  record: Extract<KnownComposerContextRecord, { kind: "element" }>;
-}) {
-  const sourceLabel = record.source?.fileName
-    ? `${record.source.fileName}${record.source.lineNumber === null ? "" : `:${record.source.lineNumber}`}`
-    : null;
-  return (
-    <div className="max-w-full overflow-hidden rounded-lg border border-border/70 bg-background/70">
-      <div className="border-b border-border/70 px-3 py-2.5">
-        <div className="truncate text-message-foreground text-xs font-medium">
-          {record.pageTitle?.trim() || record.pageUrl}
-        </div>
-        <div className="mt-0.5 truncate text-secondary-label text-3xs">{record.pageUrl}</div>
-      </div>
-      <div className="space-y-2 px-3 py-2.5">
-        <div className="flex min-w-0 items-center gap-2 text-xs">
-          <code className="truncate text-message-foreground">
-            {record.selector || `<${record.tagName}>`}
-          </code>
-          {sourceLabel ? (
-            <span className="ml-auto shrink-0 text-secondary-label">{sourceLabel}</span>
-          ) : null}
-        </div>
-        {record.htmlPreview?.trim() ? (
-          <div className="flex h-40 flex-col overflow-hidden rounded border border-border">
-            <ReadOnlySourcePreview name="element.html" text={record.htmlPreview} />
-          </div>
-        ) : null}
-        {record.styles?.trim() ? (
-          <div className="flex h-32 flex-col overflow-hidden rounded border border-border">
-            <ReadOnlySourcePreview name="styles.css" text={record.styles} />
-          </div>
-        ) : null}
-      </div>
-    </div>
-  );
-}
-
 interface UserMessageContextRenderContext {
   environmentId: import("~/contracts").EnvironmentId;
   reference: ChatMarkdownContextReference;
-  annotationImage: ChatImageAttachment | null;
   attachment: ChatImageAttachment | ChatFileAttachment | null;
   resolvedTheme: "light" | "dark";
   copyMarkdown: string;
@@ -319,16 +175,6 @@ const userMessageContextPresentationRegistry = createContextPresentationRegistry
       render: (record, context) =>
         record.kind === "thread" ? (
           <ThreadContextChip record={record} copyMarkdown={context.copyMarkdown} />
-        ) : (
-          <UnavailableUserMessageContextChip {...context} />
-        ),
-    },
-    {
-      kind: "environment",
-      canRender: (record) => record.kind === "environment",
-      render: (record, context) =>
-        record.kind === "environment" ? (
-          <EnvironmentContextChip record={record} copyMarkdown={context.copyMarkdown} />
         ) : (
           <UnavailableUserMessageContextChip {...context} />
         ),
@@ -401,43 +247,6 @@ const userMessageContextPresentationRegistry = createContextPresentationRegistry
       },
     },
     {
-      kind: "terminal",
-      canRender: (record) => record.kind === "terminal",
-      render: (record, context, definition) =>
-        record.kind === "terminal" ? (
-          <span data-markdown-copy={context.copyMarkdown}>
-            <TerminalContextInlineChip
-              label={record.label}
-              terminalLabel={record.terminalLabel}
-              lineStart={record.lineStart}
-              lineEnd={record.lineEnd}
-              text={record.text}
-              detailsMode={definition.capabilities.details}
-            />
-          </span>
-        ) : (
-          <UnavailableUserMessageContextChip {...context} />
-        ),
-    },
-    {
-      kind: "element",
-      canRender: (record) => record.kind === "element",
-      render: (record, context) =>
-        record.kind === "element" ? (
-          <UserMessageContextPopover
-            copyMarkdown={context.copyMarkdown}
-            accessibleLabel={`Browser element, ${record.label}`}
-            kind="element"
-            icon={<MousePointerClickIcon />}
-            label={record.label}
-          >
-            <UserMessageElementDetails record={record} />
-          </UserMessageContextPopover>
-        ) : (
-          <UnavailableUserMessageContextChip {...context} />
-        ),
-    },
-    {
       kind: "review-comment",
       canRender: (record) => record.kind === "review-comment",
       render: (record, context) => {
@@ -486,24 +295,6 @@ const userMessageContextPresentationRegistry = createContextPresentationRegistry
         );
       },
     },
-    {
-      kind: "preview-annotation",
-      canRender: (record) => record.kind === "preview-annotation",
-      render: (record, context) =>
-        record.kind === "preview-annotation" ? (
-          <UserMessageContextPopover
-            copyMarkdown={context.copyMarkdown}
-            accessibleLabel={`Preview annotation, ${record.label}`}
-            kind="preview-annotation"
-            icon={<MousePointerClickIcon />}
-            label={record.label}
-          >
-            <UserMessagePreviewAnnotationDetails record={record} image={context.annotationImage} />
-          </UserMessageContextPopover>
-        ) : (
-          <UnavailableUserMessageContextChip {...context} />
-        ),
-    },
   ],
   fallback: (_kind, _record, context) => <UnavailableUserMessageContextChip {...context} />,
 });
@@ -511,7 +302,6 @@ const userMessageContextPresentationRegistry = createContextPresentationRegistry
 export function UserMessageContextReferenceChip(props: {
   reference: ChatMarkdownContextReference;
   record: KnownComposerContextRecord | undefined;
-  annotationImage: ChatImageAttachment | null;
   attachment: ChatImageAttachment | ChatFileAttachment | null;
   onExpandImage: (image: ChatImageAttachment) => void;
   onExpandVideo: (file: ChatFileAttachment) => void;
@@ -526,7 +316,6 @@ export function UserMessageContextReferenceChip(props: {
   return userMessageContextPresentationRegistry.render(props.reference.kind, props.record, {
     environmentId: activeThreadEnvironmentId,
     reference: props.reference,
-    annotationImage: props.annotationImage,
     attachment: props.attachment,
     resolvedTheme,
     copyMarkdown,

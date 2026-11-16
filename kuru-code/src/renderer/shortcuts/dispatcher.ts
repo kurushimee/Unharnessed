@@ -2,8 +2,6 @@ import type { KeybindingCommand, ResolvedKeybindingsConfig } from "~/contracts";
 
 import { resolveShortcutCommand, type ShortcutMatchContext } from "../keybindings";
 import { isEditableFocused } from "../lib/editableFocus";
-import { isPreviewFocused } from "../lib/previewFocus";
-import { isTerminalFocused } from "../lib/terminalFocus";
 import { isModelPickerOpen } from "../modelPickerVisibility";
 import { readPrimaryServerKeybindings, usePrimaryServerKeybindings } from "../state/server";
 
@@ -15,14 +13,14 @@ export type CommandHandlers = Partial<Record<KeybindingCommand, CommandHandler>>
 export interface CommandScopeOptions {
   /** Read at event time; a scope whose guard fails is skipped. */
   readonly when?: (event: KeyboardEvent) => boolean;
-  /** When-clause context the dispatcher cannot know (terminalOpen, previewOpen), read at event time. */
+  /** When-clause context the dispatcher cannot know, read at event time. */
   readonly context?: () => Partial<ShortcutMatchContext>;
   readonly keybindings?: () => ResolvedKeybindingsConfig;
   /** For shortcuts that are not keybinding commands (Escape, "/"); runs before command lookup. */
   readonly onKeyDown?: CommandHandler;
   /**
    * Run in the capture phase, ahead of focused widgets that consume the key
-   * themselves (the terminal encodes Ctrl+Shift+T and stops propagation).
+   * themselves.
    */
   readonly capture?: boolean;
   /**
@@ -45,8 +43,6 @@ const observerScopes: CommandScope[] = [];
 
 function readFocusContext(event: KeyboardEvent): Partial<ShortcutMatchContext> {
   return {
-    terminalFocus: isTerminalFocused(),
-    previewFocus: isPreviewFocused(),
     editableFocus: isEditableFocused(event.target),
     modelPickerOpen: isModelPickerOpen(),
   };

@@ -1,30 +1,21 @@
-import {
-  capitalizeTerm,
-  sourceControlClients,
-} from "~/rt/sourceControlClients";
+import { capitalizeTerm, sourceControlClients } from "~/rt/sourceControlClients";
 import {
   COMPOSER_CONTEXT_REVIEW_DIFF_MAX_CHARS,
   COMPOSER_CONTEXT_REVIEW_TEXT_MAX_CHARS,
-  COMPOSER_CONTEXT_TERMINAL_TEXT_MAX_CHARS,
 } from "~/contracts";
 import type {
   ComposerContextId,
   ComposerContextRecord,
-  EnvironmentContextRecord,
   EnvironmentId,
   FileContextRecord,
   ImageContextRecord,
   KnownComposerContextRecord,
   MessageId,
   OrchestrationMessageContext,
-  PreviewAnnotationContextRecord,
-  PreviewAnnotationPayload,
   ReviewCommentContextRecord,
-  TerminalContextRecord,
   ThreadContextRecord,
   ThreadId,
 } from "~/contracts";
-import { upgradeLegacyContextMessage } from "~/shared/composerContextLegacy";
 import { encodeComposerContextFragment } from "~/shared/composerContextClipboard";
 import {
   collectComposerContextReferences,
@@ -32,21 +23,9 @@ import {
   toKindScopedComposerContextId,
 } from "~/shared/composerContextReferences";
 
-import {
-  type ComposerContextReference,
-  producerIdFromComposerContextId,
-} from "./composerContextReferences";
+import { type ComposerContextReference, producerIdFromComposerContextId } from "./composerContextReferences";
 import type { ComposerFileAttachment, ComposerImageAttachment } from "~/composerDraftStore";
-import type { AttachmentUploadState } from "./attachmentUploadState";
-import { normalizeElementContextSelection } from "./elementContext";
-import {
-  formatTerminalContextLabel,
-  normalizeTerminalContextText,
-  type TerminalContextDraft,
-} from "./terminalContext";
 import type { ReviewCommentContext } from "~/reviewCommentContext";
-
-const PREVIEW_LABEL_MAX_CHARS = 48;
 
 // Truncate selections to wire bounds before persistence to avoid send-time encoding failures.
 const TRUNCATION_MARKER = "\n… truncated …";
@@ -114,33 +93,8 @@ export function pullRequestContextKindLabel(comment: ReviewCommentPresentation):
   return `${capitalizeTerm(state)} ${term}`;
 }
 
-export function previewAnnotationContextLabel(annotation: PreviewAnnotationPayload): string {
-  const comment = annotation.comment.trim().replace(/\s+/g, " ");
-  if (comment) {
-    if (comment.length <= PREVIEW_LABEL_MAX_CHARS) return comment;
-    let end = PREVIEW_LABEL_MAX_CHARS - 1;
-    const previous = comment.charCodeAt(end - 1);
-    const next = comment.charCodeAt(end);
-    if (previous >= 0xd800 && previous <= 0xdbff && next >= 0xdc00 && next <= 0xdfff) end -= 1;
-    return `${comment.slice(0, end)}…`;
-  }
-  return annotation.pageTitle?.trim() || "Preview annotation";
-}
-
-export function terminalContextReference(context: TerminalContextDraft): ComposerContextReference {
-  return {
-    kind: "terminal",
-    contextId: toKindScopedComposerContextId("terminal", context.id),
-    label: formatTerminalContextLabel(context),
-  };
-}
-
 export function reviewCommentContextId(commentId: string): ComposerContextId {
   return toKindScopedComposerContextId("review-comment", commentId);
-}
-
-export function previewAnnotationContextId(annotationId: string): ComposerContextId {
-  return toKindScopedComposerContextId("preview-annotation", annotationId);
 }
 
 export function reviewCommentContextReference(
@@ -153,55 +107,8 @@ export function reviewCommentContextReference(
   };
 }
 
-export function previewAnnotationContextReference(
-  annotation: PreviewAnnotationPayload,
-): ComposerContextReference {
-  return {
-    kind: "preview-annotation",
-    contextId: previewAnnotationContextId(annotation.id),
-    label: previewAnnotationContextLabel(annotation),
-  };
-}
-
 export function threadContextReference(record: ThreadContextRecord): ComposerContextReference {
   return { kind: "thread", contextId: record.contextId, label: record.label };
-}
-
-/** One record per machine: mentioning the same machine twice reuses the chip. */
-export function environmentContextReference(
-  record: EnvironmentContextRecord,
-): ComposerContextReference {
-  return { kind: "environment", contextId: record.contextId, label: record.label };
-}
-
-export function environmentContextRecord(
-  environmentId: EnvironmentId,
-  label: string,
-): EnvironmentContextRecord {
-  return {
-    version: 1,
-    kind: "environment",
-    contextId: toKindScopedComposerContextId("environment", environmentId),
-    label: sanitizeComposerContextLabel(label, "environment"),
-    environmentId,
-  };
-}
-
-export function terminalContextRecord(context: TerminalContextDraft): TerminalContextRecord {
-  return {
-    version: 1,
-    contextId: toKindScopedComposerContextId("terminal", context.id),
-    kind: "terminal",
-    label: sanitizeComposerContextLabel(formatTerminalContextLabel(context), "terminal"),
-    terminalId: context.terminalId,
-    terminalLabel: context.terminalLabel,
-    lineStart: context.lineStart,
-    lineEnd: context.lineEnd,
-    text: clampContextText(
-      normalizeTerminalContextText(context.text),
-      COMPOSER_CONTEXT_TERMINAL_TEXT_MAX_CHARS,
-    ),
-  };
 }
 
 export function reviewCommentContextRecord(
@@ -222,55 +129,6 @@ export function reviewCommentContextRecord(
     diff: clampContextText(comment.diff, COMPOSER_CONTEXT_REVIEW_DIFF_MAX_CHARS),
     ...(comment.fenceLanguage !== undefined ? { fenceLanguage: comment.fenceLanguage } : {}),
     ...(comment.pullRequest !== undefined ? { pullRequest: comment.pullRequest } : {}),
-  };
-}
-
-function previewAnnotationTargetSummary(annotation: PreviewAnnotationPayload): string {
-  const parts: string[] = [];
-  const plural = (count: number, noun: string) => `${count} ${noun}${count === 1 ? "" : "s"}`;
-  if (annotation.elements.length > 0)
-    parts.push(plural(annotation.elements.length, "selected element"));
-  if (annotation.regions.length > 0) parts.push(plural(annotation.regions.length, "marked region"));
-  if (annotation.strokes.length > 0) parts.push(plural(annotation.strokes.length, "drawing"));
-  return parts.join(", ");
-}
-
-export function previewAnnotationContextRecord(
-  annotation: PreviewAnnotationPayload,
-  options?: { screenshotContextId?: string | undefined },
-): PreviewAnnotationContextRecord {
-  const targets = annotation.elements.flatMap((target) => {
-    const element = normalizeElementContextSelection(target.element);
-    return element ? [{ id: target.id, element }] : [];
-  });
-  return {
-    version: 1,
-    contextId: previewAnnotationContextId(annotation.id),
-    kind: "preview-annotation",
-    label: sanitizeComposerContextLabel(
-      previewAnnotationContextLabel(annotation),
-      "preview-annotation",
-    ),
-    annotationId: annotation.id,
-    pageUrl: annotation.pageUrl,
-    pageTitle: annotation.pageTitle,
-    comment: annotation.comment.trim(),
-    targetSummary: previewAnnotationTargetSummary(annotation),
-    styleChanges: annotation.styleChanges.map(
-      (change) => `${change.property}: ${change.previousValue || "(unset)"} → ${change.value}`,
-    ),
-    ...(targets.length > 0
-      ? {
-          elements: targets.map((target) => target.element),
-          elementIds: targets.map((target) => target.id),
-        }
-      : {}),
-    styleChangeDetails: annotation.styleChanges.map((change) => ({ ...change })),
-    ...(annotation.regions.length > 0 ? { regionCount: annotation.regions.length } : {}),
-    ...(annotation.strokes.length > 0 ? { strokeCount: annotation.strokes.length } : {}),
-    ...(options?.screenshotContextId !== undefined
-      ? { screenshotContextId: toKindScopedComposerContextId("image", options.screenshotContextId) }
-      : {}),
   };
 }
 
@@ -295,20 +153,6 @@ export interface BoundComposerAttachment {
   attachmentId: string;
 }
 
-/** Returns null until the attachment has a server id. */
-export function uploadedAttachmentContextRecord(
-  attachment: ComposerImageAttachment | ComposerFileAttachment,
-  upload: AttachmentUploadState | undefined,
-): ImageContextRecord | FileContextRecord | null {
-  const attachmentId =
-    attachment.type === "file" && attachment.uploadedAttachmentId !== undefined
-      ? attachment.uploadedAttachmentId
-      : upload?.status === "ready"
-        ? upload.attachmentId
-        : undefined;
-  return attachmentId === undefined ? null : attachmentContextRecord({ attachment, attachmentId });
-}
-
 export function attachmentContextRecord(
   bound: BoundComposerAttachment,
 ): ImageContextRecord | FileContextRecord {
@@ -326,28 +170,13 @@ export function attachmentContextRecord(
 }
 
 export function buildMessageContext(input: {
-  terminalContexts: ReadonlyArray<TerminalContextDraft>;
   reviewComments: ReadonlyArray<ReviewCommentContext>;
-  previewAnnotations: ReadonlyArray<PreviewAnnotationPayload>;
   threadContexts?: ReadonlyArray<ThreadContextRecord>;
-  environmentContexts?: ReadonlyArray<EnvironmentContextRecord>;
   attachments?: ReadonlyArray<BoundComposerAttachment>;
 }): OrchestrationMessageContext | undefined {
-  const screenshotAttachmentIds = new Set(
-    (input.attachments ?? []).flatMap(({ attachment }) =>
-      attachment.type === "image" ? [attachment.id] : [],
-    ),
-  );
   const records: ComposerContextRecord[] = [
-    ...input.terminalContexts.map(terminalContextRecord),
     ...input.reviewComments.map(reviewCommentContextRecord),
     ...(input.threadContexts ?? []),
-    ...(input.environmentContexts ?? []),
-    ...input.previewAnnotations.map((annotation) =>
-      previewAnnotationContextRecord(annotation, {
-        screenshotContextId: screenshotAttachmentIds.has(annotation.id) ? annotation.id : undefined,
-      }),
-    ),
     ...(input.attachments ?? []).map(attachmentContextRecord),
   ];
   return records.length === 0 ? undefined : { version: 1, records };
@@ -405,29 +234,11 @@ export function resolveUserMessageContext(message: {
   text: string;
   context?: OrchestrationMessageContext | undefined;
 }): ResolvedUserMessageContext {
-  const resolved = message.context
-    ? { text: message.text, records: message.context.records }
-    : upgradeLegacyContextMessage(message.text);
+  const resolved = { text: message.text, records: message.context?.records ?? [] };
   return {
     text: resolved.text,
     records: resolved.records,
     recordsById: new Map(resolved.records.map((record) => [record.contextId, record])),
-  };
-}
-
-export function terminalContextDraftFromRecord(
-  record: TerminalContextRecord,
-  threadId: ThreadId,
-): TerminalContextDraft {
-  return {
-    id: producerIdFromComposerContextId("terminal", record.contextId),
-    threadId,
-    createdAt: new Date().toISOString(),
-    terminalId: record.terminalId,
-    terminalLabel: record.terminalLabel,
-    lineStart: record.lineStart,
-    lineEnd: record.lineEnd,
-    text: record.text,
   };
 }
 
@@ -444,52 +255,6 @@ export function reviewCommentFromRecord(record: ReviewCommentContextRecord): Rev
     diff: record.diff,
     ...(record.fenceLanguage !== undefined ? { fenceLanguage: record.fenceLanguage } : {}),
     ...(record.pullRequest !== undefined ? { pullRequest: record.pullRequest } : {}),
-  };
-}
-
-export function previewAnnotationFromRecord(
-  record: PreviewAnnotationContextRecord,
-): PreviewAnnotationPayload {
-  return {
-    id:
-      record.annotationId ||
-      producerIdFromComposerContextId("preview-annotation", record.contextId),
-    pageUrl: record.pageUrl,
-    pageTitle: record.pageTitle,
-    comment: record.comment,
-    elements: (record.elements ?? []).map((element, index) => ({
-      id: record.elementIds?.[index] ?? `${record.contextId}-element-${index + 1}`,
-      rect: { x: 0, y: 0, width: 0, height: 0 },
-      element: { ...element, stack: [], pickedAt: new Date().toISOString() },
-    })),
-    regions: Array.from({ length: record.regionCount ?? 0 }, (_unused, index) => ({
-      id: `${record.contextId}-region-${index + 1}`,
-      rect: { x: 0, y: 0, width: 0, height: 0 },
-    })),
-    strokes: Array.from({ length: record.strokeCount ?? 0 }, (_unused, index) => ({
-      id: `${record.contextId}-stroke-${index + 1}`,
-      color: "",
-      width: 0,
-      points: [],
-      bounds: { x: 0, y: 0, width: 0, height: 0 },
-    })),
-    styleChanges:
-      record.styleChangeDetails ??
-      record.styleChanges.flatMap((change) => {
-        const match = /^(.+?): ([\s\S]*?) → ([\s\S]*)$/.exec(change);
-        if (!match) return [];
-        return [
-          {
-            targetId: record.elementIds?.[0] ?? `${record.contextId}-element-1`,
-            selector: null,
-            property: match[1]!,
-            previousValue: match[2] === "(unset)" ? "" : match[2]!,
-            value: match[3]!,
-          },
-        ];
-      }),
-    screenshot: null,
-    createdAt: new Date().toISOString(),
   };
 }
 

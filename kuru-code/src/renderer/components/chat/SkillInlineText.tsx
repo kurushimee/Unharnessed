@@ -4,10 +4,8 @@ import { formatProviderSkillDisplayName } from "~/shared/inlineSkills";
 import { Children, cloneElement, isValidElement, type ReactNode } from "react";
 import { matchInlineSkills } from "~/shared/inlineSkills";
 
-import { useRightPanelStore } from "~/rightPanelStore";
 import { SKILL_CHIP_ICON_SVG } from "../composerInlineChip";
 import { ContextChipPopover } from "../contextChipParts";
-import { Button } from "../ui/button";
 import { ModelMentionChip } from "./ModelMentionChip";
 
 function SkillInlineText(props: {
@@ -27,7 +25,6 @@ function SkillInlineText(props: {
           label={formatProviderSkillDisplayName(skill)}
           description={skillPopoverDescription(skill)}
           copyMarkdown={rawText}
-          onViewInstructions={skillInstructionsOpener(props.threadRef, skill)}
         />
       ),
     });
@@ -109,19 +106,10 @@ export function skillPopoverDescription(
   return skill.description?.trim() || skill.shortDescription?.trim() || null;
 }
 
-export function skillInstructionsOpener(
-  threadRef: ScopedThreadRef | null | undefined,
-  skill: Pick<ServerProviderSkill, "path"> | undefined,
-) {
-  if (!threadRef || !skill?.path) return undefined;
-  return () => useRightPanelStore.getState().openFile(threadRef, skill.path);
-}
-
 export function SkillChipPopover(props: {
   label: string;
   description: string | null | undefined;
   copyMarkdown?: string | undefined;
-  onViewInstructions: (() => void) | undefined;
 }) {
   return (
     <ContextChipPopover
@@ -134,11 +122,6 @@ export function SkillChipPopover(props: {
       <div className="space-y-3 p-2 text-sm">
         <p className="font-medium">{props.label}</p>
         <p>{props.description || "No description is available for this skill."}</p>
-        {props.onViewInstructions ? (
-          <Button variant="outline" size="sm" onClick={props.onViewInstructions}>
-            View instructions
-          </Button>
-        ) : null}
       </div>
     </ContextChipPopover>
   );

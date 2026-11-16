@@ -20,7 +20,6 @@ import {
   inlineCodeFilePathCandidate,
   resolveMarkdownFileLinkTarget,
 } from "./markdownLinks";
-import { upgradeLegacyContextMessage } from "./composerContextLegacy";
 import {
   isAttachmentOnlyBootstrapPrompt,
   parseComposerContextHref,
@@ -221,8 +220,7 @@ export function searchableMessageSegments(
   if (message.role === "user") {
     // Clients hide this prompt, so find must not match text nobody can see.
     if (isAttachmentOnlyBootstrapPrompt(message.text)) return [];
-    const text = message.context ? message.text : upgradeLegacyContextMessage(message.text).text;
-    return markdownThreadFindText(text, true, cwd, skills);
+    return markdownThreadFindText(message.text, true, cwd, skills);
   }
   if (message.role !== "assistant") return null;
   return markdownThreadFindText(

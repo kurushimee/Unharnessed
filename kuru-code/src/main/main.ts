@@ -13,6 +13,7 @@ import { showContextMenu } from "./contextMenu";
 import { Git } from "./git";
 import { createRpc } from "./rpc";
 import { projectFavicon } from "./favicons";
+import { Files } from "./files";
 import { searchThreads } from "./search";
 import { createLog } from "./log";
 import { Limits } from "./limits";
@@ -435,6 +436,8 @@ async function start(): Promise<void> {
       threads.emit();
       return null;
     },
+    // The `@` menu's files and folders of a project (main/files.ts), listed fresh each time.
+    "files.list": ({ cwd }) => new Files(String(cwd), log, projectId(String(cwd)) !== projectId(home)).list(),
     "threads.search": ({ query, projectIds }) => {
       const scope = Array.isArray(projectIds) ? new Set(projectIds.map(String)) : null;
       return searchThreads(

@@ -49,20 +49,13 @@ import { threadEnvironment } from "../../state/threads";
 import { vcsEnvironment } from "../../state/vcs";
 import { useChildThreadInputs, readThreadShell, waitForThreadShell } from "../../state/entities";
 import { serverEnvironment } from "../../state/server";
-import { environmentShell } from "../../state/shell";
 import { ThreadStatusLine } from "./ThreadStatusLine";
 import { formatRelativeTimeLabel } from "../../timestampFormat";
 import { appAtomRegistry } from "../../rpc/atomRegistry";
 import { readEnvironmentScope } from "../../state/session";
 import { useAtomCommand } from "../../state/use-atom-command";
 import { useOrchestrationCommand } from "../../state/use-orchestration-command";
-import {
-  backgroundWorkNowItem,
-  childInputNowItem,
-  goalNowItem,
-  runStopNowItem,
-} from "./ThreadActivityBanners";
-import { useForceStopThread } from "./useForceStopThread";
+import { backgroundWorkNowItem, childInputNowItem, goalNowItem, runStopNowItem } from "./ThreadActivityBanners";
 import { useAtomValue } from "@effect/atom-react";
 import type { RunStopPresentation } from "~/rt/state/threadExecution";
 import { Atom } from "effect/reactivity";
@@ -377,8 +370,8 @@ export function useThreadLifecycle(input: ThreadLifecycleInput) {
   ) => {
     const generation = ++openRelatedThreadGenerationRef.current;
     const threadRef = scopeThreadRef(threadEnvironmentId, threadId);
-    const isEnvironmentLive = () =>
-      appAtomRegistry.get(environmentShell.stateValueAtom(threadEnvironmentId)).status === "live";
+    // kuru code's one environment, the local machine, is always live.
+    const isEnvironmentLive = () => true;
     // The shell can leave idle subagent children out, so absence is not deletion there: the
     // route decides from the thread's own detail.
     const shellOmitsChildren =
@@ -488,7 +481,6 @@ export function useThreadLifecycle(input: ThreadLifecycleInput) {
         })
       : null;
 
-  const forceStop = useForceStopThread(environmentId);
   const anyRunStop = useAtomValue(
     threadDetailRef ? environmentThreadDetails.runStopAtom(threadDetailRef) : NO_RUN_STOP_ATOM,
   );
@@ -499,9 +491,6 @@ export function useThreadLifecycle(input: ThreadLifecycleInput) {
       ? runStopNowItem({
           threadId: activeThread.id,
           stop: runStop,
-          canForceStop: forceStop.canForceStop,
-          forceStopping: forceStop.stoppingThreadId === activeThread.id,
-          onForceStop: () => void forceStop.forceStopThread(activeThread.id, runStop.runId),
         })
       : null;
   const backgroundWorkNow = activeThread

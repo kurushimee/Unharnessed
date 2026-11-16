@@ -1,6 +1,5 @@
 import type { AnyRouter } from "@tanstack/react-router";
 import { dismissContextMenu } from "../contextMenuFallback";
-import { useRightPanelStore } from "../rightPanelStore";
 
 const AREA_SELECTOR = "[data-workspace-area]";
 const FOCUS_BOUNDARY_SELECTOR =
@@ -36,7 +35,7 @@ function isWorkspaceElementVisible(element: HTMLElement): boolean {
   if (
     !element.isConnected ||
     element.closest(
-      '[hidden], [inert], [data-closed], [aria-hidden="true"], [data-chat-column-maximized-away="true"], [data-slot="sidebar"][data-state="collapsed"], [data-workspace-unavailable="true"]',
+      '[hidden], [inert], [data-closed], [aria-hidden="true"], [data-slot="sidebar"][data-state="collapsed"], [data-workspace-unavailable="true"]',
     )
   )
     return false;
@@ -139,11 +138,9 @@ export function createWorkspaceFocusController(doc: Document) {
     const usable = (element: HTMLElement) =>
       isWorkspaceElementVisible(element) && !element.matches(":disabled");
     const belongs = (element: HTMLElement) => workspaceArea(element) === area && usable(element);
-    // A side chat's message input sits in its own area inside the panel. Opening the
-    // panel focuses it, but F6 visits that area on its own, so it moves past it here.
     const preferred = Array.from(
       area.querySelectorAll<HTMLElement>(
-        '[data-workspace-focus-default], [data-sidebar-row][aria-current="page"], [data-settings-section][tabindex="0"], .xterm-helper-textarea, [contenteditable="true"]',
+        '[data-workspace-focus-default], [data-sidebar-row][aria-current="page"], [data-settings-section][tabindex="0"], [contenteditable="true"]',
       ),
     ).find(nested ? usable : belongs);
     const fallback = Array.from(area.querySelectorAll<HTMLElement>(FOCUSABLE_SELECTOR)).find(
@@ -165,12 +162,6 @@ export function createWorkspaceFocusController(doc: Document) {
                   element.textContent === previous.textContent)),
           )
         : undefined;
-    const surface = area.querySelector<HTMLElement>("[data-right-panel-surface-content]");
-    const surfaceControl = surface
-      ? Array.from(surface.querySelectorAll<HTMLElement>(FOCUSABLE_SELECTOR)).find(
-          (element) => belongs(element) && element.tabIndex >= 0,
-        )
-      : undefined;
     // Moving the timeline to an old control would also stop it following a running turn,
     // so the conversation reuses a control only while it is still in view.
     const isConversation = area.dataset.workspaceArea === "conversation";
@@ -180,7 +171,6 @@ export function createWorkspaceFocusController(doc: Document) {
         : undefined,
       isConversation ? undefined : restored,
       preferred,
-      surfaceControl,
       isConversation ? undefined : fallback,
       area,
     ]);
@@ -209,15 +199,9 @@ export function createWorkspaceFocusController(doc: Document) {
             (element) =>
               element.dataset.workspaceArea === "pull-requests" || element.matches("main"),
           ) ??
-          areas.find((element) => element.dataset.workspaceArea === "conversation") ??
-          areas.find((element) => element.dataset.workspaceArea === "panel"))
+          areas.find((element) => element.dataset.workspaceArea === "conversation"))
         : areas.find((element) => element.dataset.workspaceArea === name);
     if (!area) return false;
-    const surface = area.querySelector("[data-right-panel-surface-content]");
-    // A lazy surface's Suspense fallback is empty. Wait for its content instead
-    // of claiming focus on the tab strip before the useful controls mount.
-    if (surface && !surface.hasChildNodes()) return false;
-    if (!selector && surface?.contains(doc.activeElement)) return true;
     if (selector) {
       const target = area.querySelector<HTMLElement>(selector);
       if (!target || !isWorkspaceElementVisible(target)) return false;
@@ -370,27 +354,16 @@ export const getWorkspaceFocusRequestVersion = () => focusRequestVersion;
 
 /**
  * Starts workspace focus for the app: F6 area moves, focus requests, focus-loss recovery,
- * focus into a panel the user opens, and focus into the Pull Requests page on entry.
+ * and focus into the Pull Requests page on entry.
  */
 export function startWorkspaceFocus(router: AnyRouter): () => void {
   const active = createWorkspaceFocusController(document);
   controller = active;
-  const stopPanels = useRightPanelStore.subscribe((state, previous) => {
-    if (state.userActionRevisionByThreadKey === previous.userActionRevisionByThreadKey) return;
-    for (const [threadKey, revision] of Object.entries(state.userActionRevisionByThreadKey)) {
-      if (previous.userActionRevisionByThreadKey[threadKey] === revision) continue;
-      const next = state.byThreadKey[threadKey];
-      const before = previous.byThreadKey[threadKey];
-      if (next?.isOpen && (!before?.isOpen || next.activeSurfaceId !== before.activeSurfaceId))
-        requestWorkspaceFocus({ area: "panel" });
-    }
-  });
   const stopRoute = router.subscribe("onResolved", ({ fromLocation, toLocation }) => {
     if (toLocation.pathname === "/pull-requests" && fromLocation?.pathname !== "/pull-requests")
       requestWorkspaceFocus({ area: "pull-requests" });
   });
   return () => {
-    stopPanels();
     stopRoute();
     active.dispose();
     if (controller === active) controller = undefined;
@@ -409,8 +382,7 @@ export function requestWorkspaceFocus(target: WorkspaceFocusTarget) {
 }
 
 export function requestWorkspaceContentFocus() {
-  // Resolve after the layout commits: closing a maximized panel makes the
-  // composer available again, while hiding a sidebar may leave only the panel.
+  // Resolve after the layout commits.
   requestWorkspaceFocus({ area: "content" });
 }
 

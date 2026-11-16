@@ -1,17 +1,12 @@
 import { useAtomValue } from "@effect/atom-react";
-import {
-  makeQueuedRunEditStore,
-  makeQueuedRunsAtom,
-} from "~/rt/queuedRunEdit";
+import { makeQueuedRunEditStore, makeQueuedRunsAtom } from "~/rt/queuedRunEdit";
 import type { ThreadStructure } from "~/rt/state/models";
 import {
   PROVIDER_SEND_TURN_MAX_ATTACHMENTS,
   type ChatAttachment,
-  type EnvironmentContextRecord,
   type EnvironmentId,
   type MessageId,
   type OrchestrationMessageContext,
-  type PreviewAnnotationPayload,
   type RunId,
   type ScopedThreadRef,
   type ThreadContextRecord,
@@ -33,27 +28,14 @@ import {
   type ComposerThreadTarget,
 } from "../../composerDraftStore";
 import { useStableCallback } from "../../hooks/useStableCallback";
-import {
-  awaitAttachmentUploads,
-  getUploadedAttachments,
-  releaseDraftAttachments,
-  startAttachmentUpload,
-} from "../../lib/attachmentUploadQueue";
 import { buildMessageContext } from "../../lib/composerContextRecords";
 import { readFileAsDataUrl } from "../../lib/imageCompression";
-import type { TerminalContextDraft } from "../../lib/terminalContext";
 import type { ReviewCommentContext } from "../../reviewCommentContext";
 import { appAtomRegistry } from "../../rpc/atomRegistry";
-import { environmentServerConfigsAtom } from "../../state/server";
-import {
-  environmentThreadDetails,
-  environmentThreadShells,
-  threadEnvironment,
-} from "../../state/threads";
+import { environmentThreadDetails, environmentThreadShells, threadEnvironment } from "../../state/threads";
 import { useAtomCommand } from "../../state/use-atom-command";
 import { stackedThreadToast, toastManager } from "../ui/toast";
 import type { ChatComposerHandle } from "./ChatComposer";
-import { fileAttachmentCapabilityBlockReason } from "./composerAttachmentFiles";
 import { prepareQueuedEditAttachments, recoverQueuedMessageEdit } from "./queuedMessageEdit";
 import type { EditQueuedRunRequest } from "./QueuedRunsControl";
 
@@ -78,11 +60,8 @@ interface QueuedRunEditContent {
   readonly prompt: string;
   readonly images: ReadonlyArray<ComposerImageAttachment>;
   readonly files: ReadonlyArray<ComposerFileAttachment>;
-  readonly terminalContexts: ReadonlyArray<TerminalContextDraft>;
   readonly reviewComments: ReadonlyArray<ReviewCommentContext>;
-  readonly previewAnnotations: ReadonlyArray<PreviewAnnotationPayload>;
   readonly threadContexts: ReadonlyArray<ThreadContextRecord>;
-  readonly environmentContexts: ReadonlyArray<EnvironmentContextRecord>;
 }
 
 function queuedEditDraftTarget(routeThreadRef: ScopedThreadRef, runId: RunId) {
@@ -99,25 +78,10 @@ async function submitQueuedRunEdit(input: {
   const { environmentId, draftTarget, editing, content } = input;
   const editText = content.prompt.trim();
   const newAttachments = [...content.images, ...content.files];
+  // Unharnessed sends images only, so a queued message never carries other files.
   const uploadFiles = async (files: ReadonlyArray<ComposerFileAttachment>) => {
-    const validateFiles = () => {
-      const config = appAtomRegistry.get(environmentServerConfigsAtom).get(environmentId) ?? null;
-      const reason = fileAttachmentCapabilityBlockReason({
-        files,
-        attachmentUploadsCapabilityKnown: config !== null,
-        supportsAttachmentUploads: config !== null,
-        maxFileAttachmentBytes:
-          config?.environment.capabilities.fileAttachments?.maxUploadBytes ?? null,
-      });
-      if (reason !== null) throw new Error(reason);
-    };
-    validateFiles();
-    for (const file of files) startAttachmentUpload({ environmentId, image: file, draftTarget });
-    await awaitAttachmentUploads(files.map((file) => file.id));
-    validateFiles();
-    const uploaded = getUploadedAttachments({ environmentId, images: files });
-    if (uploaded === null) throw new Error("Retry or remove failed uploads before saving.");
-    return uploaded;
+    if (files.length > 0) throw new Error("Unharnessed sends images only: remove the other files.");
+    return [];
   };
   try {
     const uploads = await prepareQueuedEditAttachments({
@@ -134,13 +98,8 @@ async function submitQueuedRunEdit(input: {
     );
     const newRecords =
       buildMessageContext({
-        terminalContexts: content.terminalContexts.filter(
-          (context) => context.text.trim().length > 0,
-        ),
         reviewComments: content.reviewComments,
-        previewAnnotations: content.previewAnnotations,
         threadContexts: content.threadContexts,
-        environmentContexts: content.environmentContexts,
         attachments: newAttachments.map((attachment, index) => ({
           attachment,
           attachmentId: uploads[editing.existingAttachments.length + index]?.id ?? attachment.id,
@@ -341,7 +300,6 @@ export function useQueuedRunEdit(input: {
     setThreadError(editing.threadId, error);
     const current = finishSave(error === null);
     if (error !== null) return;
-    releaseDraftAttachments(newAttachments);
     // The edit was cancelled or begun again while this save ran; its drafts are the newer edit's.
     if (!current) return;
     promptRef.current = "";

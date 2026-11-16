@@ -39,12 +39,8 @@ interface ComposerPrimaryActionsProps {
   followUpBehavior?: "queue" | "steer";
   canSteer?: boolean;
   alternateShortcutLabel?: string | null;
-  /** Dictation is running; Send finishes it and submits once the transcript lands. */
-  voiceInputActive?: boolean;
   isSendBusy: boolean;
   sendDisabledReason: string | null;
-  isEnvironmentUnavailable: boolean;
-  isPreparingWorktree: boolean;
   hasSendableContent: boolean;
   canResume?: boolean;
   preserveComposerFocusOnPointerDown?: boolean;
@@ -93,11 +89,8 @@ export const ComposerPrimaryActions = memo(function ComposerPrimaryActions({
   followUpBehavior = "steer",
   canSteer = true,
   alternateShortcutLabel = null,
-  voiceInputActive = false,
   isSendBusy,
   sendDisabledReason,
-  isEnvironmentUnavailable,
-  isPreparingWorktree,
   hasSendableContent,
   canResume = false,
   preserveComposerFocusOnPointerDown = false,
@@ -189,13 +182,11 @@ export const ComposerPrimaryActions = memo(function ComposerPrimaryActions({
           {...pointerFocusProps}
           disabled={
             !canOperateThread ||
-            isEnvironmentUnavailable ||
             isSendDisabled ||
             pendingAction.isResponding ||
-            (!voiceInputActive &&
-              (pendingAction.isLastQuestion
-                ? !pendingAction.isComplete
-                : !pendingAction.canAdvance))
+            (pendingAction.isLastQuestion
+              ? !pendingAction.isComplete
+              : !pendingAction.canAdvance)
           }
         >
           {formatPendingPrimaryActionLabel({
@@ -237,16 +228,13 @@ export const ComposerPrimaryActions = memo(function ComposerPrimaryActions({
           : isRunning
             ? "Steer message"
             : "Submit message";
-  const submitStatus = isEnvironmentUnavailable
-    ? "Environment disconnected"
-    : (sendDisabledReason ??
-      (isPreparingWorktree
-        ? "Preparing worktree"
-        : isSendBusy
-          ? isEditingQueuedMessage
-            ? "Updating queued message"
-            : "Submitting message"
-          : null));
+  const submitStatus =
+    sendDisabledReason ??
+    (isSendBusy
+      ? isEditingQueuedMessage
+        ? "Updating queued message"
+        : "Submitting message"
+      : null);
   const submitTooltip =
     submitStatus ??
     (compactsBeforeSend
@@ -269,7 +257,6 @@ export const ComposerPrimaryActions = memo(function ComposerPrimaryActions({
       disabled={
         isSendBusy ||
         isSendDisabled ||
-        isEnvironmentUnavailable ||
         (!hasSendableContent && !showResume)
       }
       aria-label={submitStatus ?? submitLabel}

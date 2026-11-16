@@ -15,7 +15,6 @@ import {
 
 import { useAssetUrlRefresh, useAssetUrlState } from "../../assets/assetUrls";
 import { cn } from "../../lib/utils";
-import { useRightPanelStore } from "../../rightPanelStore";
 import { MediaActions, type MediaActionSource } from "../media/MediaActions";
 import { MediaVideoPlayer } from "../media/MediaVideoPlayer";
 import type { ExpandedImagePreview } from "./ExpandedImagePreview";
@@ -365,7 +364,6 @@ export const ChatMarkdownAssetImage = memo(function ChatMarkdownAssetImage(props
     : props.originalUrl
       ? mediaUrlReference(props.originalUrl)
       : undefined;
-  const relativePath = reference?.kind === "file" ? reference.relativePath : undefined;
   const fallbackSrc = assetUrl._tag === "Failure" ? props.fallbackSrc : undefined;
   const src =
     assetUrl._tag === "Success"
@@ -390,17 +388,6 @@ export const ChatMarkdownAssetImage = memo(function ChatMarkdownAssetImage(props
       ? { asset: { environmentId: props.environmentId, resource } }
       : {}),
     ...(reference ? { reference } : {}),
-    ...(relativePath && (resource._tag === "media-file" || resource._tag === "workspace-file")
-      ? {
-          onOpenFile: () =>
-            useRightPanelStore
-              .getState()
-              .openFile(
-                { environmentId: props.environmentId, threadId: resource.threadId },
-                relativePath,
-              ),
-        }
-      : {}),
   };
 
   if (props.kind === "video") {

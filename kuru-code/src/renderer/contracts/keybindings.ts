@@ -4,7 +4,6 @@ import { ForwardCompatibleArray, TrimmedString } from "./baseSchemas";
 const MAX_KEYBINDING_VALUE_LENGTH = 64;
 const MAX_KEYBINDING_WHEN_LENGTH = 256;
 export const MAX_WHEN_EXPRESSION_DEPTH = 64;
-export const MAX_SCRIPT_ID_LENGTH = 24;
 export const MAX_KEYBINDINGS_COUNT = 256;
 
 export const THREAD_JUMP_KEYBINDING_COMMANDS = [
@@ -43,7 +42,6 @@ const THREAD_KEYBINDING_COMMANDS = [
   "thread.copyReference",
   "thread.settle",
   "thread.pin",
-  "thread.regenerateTitle",
   "thread.undo",
   ...THREAD_JUMP_KEYBINDING_COMMANDS,
 ] as const;
@@ -61,28 +59,9 @@ export const STATIC_KEYBINDING_COMMANDS = [
   "sidebar.toggle",
   "navigation.back",
   "navigation.forward",
-  "terminal.toggle",
-  "terminal.split",
-  "terminal.splitVertical",
-  "terminal.new",
-  "terminal.close",
-  "rightPanel.toggle",
-  "rightPanel.new",
   "threadPanel.toggle",
-  "rightPanel.toggleMaximized",
-  "rightPanel.close",
-  "view.reopenClosed",
   "pullRequest.copyNumber",
-  "diff.toggle",
-  "preview.toggle",
-  "preview.refresh",
-  "preview.focusUrl",
-  "preview.zoomIn",
-  "preview.zoomOut",
-  "preview.resetZoom",
   "commandPalette.toggle",
-  "filePicker.toggle",
-  "projectSearch.toggle",
   "usage.open",
   "theme.select",
   "appearance.cycle",
@@ -91,21 +70,14 @@ export const STATIC_KEYBINDING_COMMANDS = [
   "composer.sendAlternate",
   "composer.sendBackground",
   "composer.sendAndNewThread",
-  "composer.dictation",
-  "composer.host",
-  "composer.cycleHost",
   "composer.effort",
   "composer.increaseEffort",
   "composer.decreaseEffort",
-  "composer.mode",
-  "composer.workspace",
-  "composer.previousWorktree",
   "composer.branch",
   "chat.new",
   "chat.newLocal",
   "chat.newWithoutProject",
   "chat.find",
-  "editor.openFavorite",
   "usage.cost",
   "usage.tokens",
   "usage.limits",
@@ -117,19 +89,7 @@ export const STATIC_KEYBINDING_COMMANDS = [
   ...THREAD_KEYBINDING_COMMANDS,
 ] as const;
 
-export const SCRIPT_RUN_COMMAND_PATTERN = Schema.TemplateLiteral([
-  Schema.Literal("script."),
-  Schema.NonEmptyString.check(
-    Schema.isMaxLength(MAX_SCRIPT_ID_LENGTH),
-    Schema.isPattern(/^[a-z0-9][a-z0-9-]*$/),
-  ),
-  Schema.Literal(".run"),
-]);
-
-export const KeybindingCommand = Schema.Union([
-  Schema.Literals(STATIC_KEYBINDING_COMMANDS),
-  SCRIPT_RUN_COMMAND_PATTERN,
-]);
+export const KeybindingCommand = Schema.Literals(STATIC_KEYBINDING_COMMANDS);
 export type KeybindingCommand = typeof KeybindingCommand.Type;
 
 export const KeybindingValue = TrimmedString.check(
@@ -162,12 +122,6 @@ export const KeybindingShortcut = Schema.Struct({
   modKey: Schema.Boolean,
 });
 export type KeybindingShortcut = typeof KeybindingShortcut.Type;
-
-export const PreviewForwardedShortcut = Schema.Struct({
-  command: KeybindingCommand,
-  shortcut: KeybindingShortcut,
-});
-export type PreviewForwardedShortcut = typeof PreviewForwardedShortcut.Type;
 
 const KeybindingWhenNodeRef = Schema.suspend(
   (): Schema.Codec<KeybindingWhenNode> => KeybindingWhenNode,

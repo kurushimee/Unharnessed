@@ -1,9 +1,5 @@
-import { scopeThreadRef } from "~/rt/environment/index";
 import type { AssistantCitation } from "~/contracts";
-import {
-  assistantCitationLabel,
-  serializeAssistantCitation,
-} from "~/shared/assistantCitations";
+import { assistantCitationLabel, serializeAssistantCitation } from "~/shared/assistantCitations";
 import { Link, useNavigate } from "@tanstack/react-router";
 import { ArrowUpRightIcon, PencilIcon, QuoteIcon } from "lucide-react";
 import {
@@ -13,16 +9,9 @@ import {
   useState,
   type MouseEvent as ReactMouseEvent,
 } from "react";
-import {
-  findAssistantCitationSourceAnchor,
-  type AssistantCitationSourceAnchor,
-} from "~/lib/assistantTextSelection";
-import {
-  assistantCitationNavigation,
-  assistantCitationRoute,
-} from "../../lib/assistantCitationNavigation";
+import { findAssistantCitationSourceAnchor, type AssistantCitationSourceAnchor } from "~/lib/assistantTextSelection";
+import { assistantCitationNavigation, assistantCitationRoute } from "../../lib/assistantCitationNavigation";
 import { cn } from "~/lib/utils";
-import { useQuietThreadShell } from "~/state/entities";
 import { ContextChip, ContextChipAction, ContextChipLabel } from "../ContextChip";
 import { ContextChipPopover } from "../contextChipParts";
 import { Button } from "../ui/button";
@@ -54,13 +43,9 @@ export function AssistantCitationChip({
   };
 }) {
   const navigate = useNavigate();
-  const sourceThread = useQuietThreadShell(
-    scopeThreadRef(citation.environmentId, citation.threadId),
-  );
   const commentInputRef = useRef<HTMLTextAreaElement>(null);
   const commentPopupRef = useRef<HTMLDivElement>(null);
   const draftCommentRef = useRef<string | null>(null);
-  const [voiceSetupOpen, setVoiceSetupOpen] = useState(false);
   const [unavailableSourceAnchor, setUnavailableSourceAnchor] =
     useState<AssistantCitationSourceAnchor | null>(null);
   const commentOpen = commentEditor?.open ?? false;
@@ -117,14 +102,14 @@ export function AssistantCitationChip({
     : undefined;
   const label = assistantCitationLabel(citation);
   const sourceLinkProps = {
-    ...assistantCitationRoute(citation, sourceThread),
+    ...assistantCitationRoute(citation),
     "data-markdown-copy": serializeAssistantCitation(citation),
     onClick: (event: ReactMouseEvent<HTMLAnchorElement>) => {
       if (event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) {
         return;
       }
       event.preventDefault();
-      void navigate(assistantCitationNavigation(citation, sourceThread));
+      void navigate(assistantCitationNavigation(citation));
     },
   };
   const composerSourceLink = (
@@ -170,7 +155,7 @@ export function AssistantCitationChip({
       {composerSourceLink}
       {commentEditor ? (
         <Popover
-          open={commentEditor.open && !voiceSetupOpen}
+          open={commentEditor.open}
           onOpenChange={(open, eventDetails) => {
             if (!open && !settleDraftOnClose(eventDetails.reason)) {
               eventDetails.cancel();
@@ -228,7 +213,6 @@ export function AssistantCitationChip({
                 key={serializeAssistantCitation(citation)}
                 citation={citation}
                 inputRef={commentInputRef}
-                onVoiceSetupOpenChange={setVoiceSetupOpen}
                 onDraftChange={(comment) => {
                   draftCommentRef.current = comment;
                   commentEditor.onDraftChange?.(comment);

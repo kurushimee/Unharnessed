@@ -1,6 +1,5 @@
 import { readHtmlRenderContentHeight } from "~/shared/htmlRender";
 
-import { isInSideChatPane } from "../../lib/sideChatPane";
 import { registerCommands } from "../../shortcuts/dispatcher";
 import {
   eventPathContainsSelector,
@@ -100,8 +99,8 @@ export function attachTimelineViewport(
       consumed ||
       !(event.target instanceof Node) ||
       (!scrollNode.contains(event.target) &&
-        ((event.target !== document.body && event.target !== document.documentElement) ||
-          isInSideChatPane(scrollNode))) ||
+        event.target !== document.body &&
+        event.target !== document.documentElement) ||
       event.isComposing ||
       event.altKey ||
       event.ctrlKey ||

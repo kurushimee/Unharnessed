@@ -18,6 +18,8 @@ import {
 } from "~/rt/state/threadSearch";
 import { messageSearchTokens } from "~/shared/paletteSearch";
 import { invoke } from "~/bridge";
+import { findPaths, toPaths, type Paths } from "@panel/mentions";
+import type { ComposerPathSearchTarget } from "~/rt/state/composerPathSearch";
 
 const THREAD_SEARCH_DEBOUNCE_MS = 120;
 const THREAD_SEARCH_QUERY_MAX_LENGTH = 200;
@@ -244,5 +246,77 @@ export function usePaginatedBranches(target: VcsRefTarget) {
     isFetchingNextPage,
     refresh,
     loadNext,
+  };
+}
+
+// T3 Code's composer path search (state/queries.ts), over Unharnessed's `@` menu:
+// the project's files from kuru code's main process (main/files.ts), ranked by the
+// extension's own matcher (vscode/webview/mentions.tsx).
+const PROJECT_PATH_SEARCH_DEBOUNCE_MS = 80;
+const EMPTY_PROJECT_ENTRIES: ReadonlyArray<{ readonly path: string; readonly kind: "file" | "directory" }> = [];
+const listedPaths = new Map<string, Promise<Paths>>();
+
+function projectPaths(cwd: string): Promise<Paths> {
+  let listed = listedPaths.get(cwd);
+  if (!listed) {
+    listed = invoke<{ files: string[]; open: string[] }>("files.list", { cwd }).then(({ files, open }) =>
+      toPaths(files, open),
+    );
+    listedPaths.set(cwd, listed);
+    // A menu opened later lists the folder again.
+    window.setTimeout(() => listedPaths.delete(cwd), 30_000);
+  }
+  return listed;
+}
+
+export function useComposerPathSearch(target: ComposerPathSearchTarget) {
+  const normalizedTarget = {
+    environmentId: target.environmentId,
+    cwd: target.cwd,
+    query: target.query == null ? null : target.query.trim(),
+  };
+  const debouncedTarget = useDebouncedValue(normalizedTarget, PROJECT_PATH_SEARCH_DEBOUNCE_MS);
+  const key =
+    debouncedTarget.cwd === null || debouncedTarget.query === null
+      ? null
+      : `${debouncedTarget.cwd}\0${debouncedTarget.query}`;
+  const [found, setFound] = useState<{
+    key: string;
+    entries: ReadonlyArray<{ readonly path: string; readonly kind: "file" | "directory" }>;
+  } | null>(null);
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- lists the project's files in main and ranks them for the typed query
+  useEffect(() => {
+    if (key === null || debouncedTarget.cwd === null || debouncedTarget.query === null) return;
+    let live = true;
+    const query = debouncedTarget.query;
+    void projectPaths(debouncedTarget.cwd).then(
+      (paths) => {
+        if (!live) return;
+        const entries = findPaths(paths, query).map((path) =>
+          path.endsWith("/")
+            ? { path: path.slice(0, -1), kind: "directory" as const }
+            : { path, kind: "file" as const },
+        );
+        setFound({ key, entries });
+      },
+      () => {
+        if (live) setFound({ key, entries: EMPTY_PROJECT_ENTRIES });
+      },
+    );
+    return () => {
+      live = false;
+    };
+  }, [key, debouncedTarget.cwd, debouncedTarget.query]);
+  const settled = found !== null && found.key === key;
+  return {
+    entries: settled ? found.entries : EMPTY_PROJECT_ENTRIES,
+    error: null,
+    isPending:
+      normalizedTarget.cwd !== debouncedTarget.cwd ||
+      normalizedTarget.query !== debouncedTarget.query ||
+      (key !== null && !settled),
+    searchedTarget: debouncedTarget,
+    searchedQuery: debouncedTarget.query ?? "",
+    truncated: false,
   };
 }

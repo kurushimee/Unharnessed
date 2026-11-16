@@ -1,8 +1,8 @@
 import type { ScopedThreadRef } from "~/contracts";
 import { createStore } from "zustand";
-import type { ThreadPanelPresentation } from "../../rightPanelLayout";
+import type { ThreadPanelPresentation } from "../../threadPanelStore";
 import type { DetailsCardMeasurement } from "./ChatCanvasContext";
-import { resolveChatCanvasLayout, type ChatCanvasPreview } from "./chatCanvasLayout";
+import { resolveChatCanvasLayout } from "./chatCanvasLayout";
 import { resolveThreadDetailsCardLayout } from "./threadDetailsCardLayout";
 
 interface CanvasEdges {
@@ -83,26 +83,21 @@ export function resolveChatCanvasModel({
   measurements,
   detailsCardMeasurement,
   threadRef,
-  preview,
   detailsCardInlineOpen,
 }: {
   measurements: ChatCanvasMeasurements;
   detailsCardMeasurement: DetailsCardMeasurement | null;
   /** The thread whose details card sits on the canvas; other threads' measurements are stale. */
   threadRef: ScopedThreadRef | null;
-  preview: ChatCanvasPreview | null;
   detailsCardInlineOpen: boolean;
 }) {
   const container = { width: measurements.width, height: measurements.height };
   const { findBar } = measurements;
   const detailsCardTopInset = findBar?.bottom ?? 0;
   const lane = { padding: measurements.padding, minChatWidth: measurements.minChatWidth };
-  // The preview avoids where an open inline card would sit, whether or not a
-  // preview overlap has pushed the card itself into popover mode.
   const preferredDetailsCard = resolveThreadDetailsCardLayout({
     container,
     lane,
-    frame: null,
     topInset: detailsCardTopInset,
   });
   // The canvas outlives thread switches, so a measurement only counts for the
@@ -129,21 +124,11 @@ export function resolveChatCanvasModel({
       : null;
   const layout = resolveChatCanvasLayout({
     container,
-    preview,
     padding: measurements.padding,
     maxChatWidth: measurements.maxChatWidth,
-    minChatWidth: measurements.minChatWidth,
-    composerHeight: measurements.composerHeight,
     detailsCard,
-    findBar,
   });
-  const detailsCardPlacement = resolveThreadDetailsCardLayout({
-    container,
-    lane,
-    frame: layout.frame,
-    overlapsDetailsCard: layout.overlapsDetailsCard,
-    topInset: detailsCardTopInset,
-  });
+  const detailsCardPlacement = preferredDetailsCard;
   const detailsCardMode: ThreadPanelPresentation = detailsCardPlacement ? "inline" : "popover";
   return {
     container,

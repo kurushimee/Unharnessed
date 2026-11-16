@@ -6,7 +6,6 @@ import {
   type RuntimeRequestId,
   type ScopedThreadRef,
   type ThreadId,
-  type UserInputAttachments,
 } from "~/contracts";
 import {
   derivePendingThreadRequests,
@@ -15,16 +14,11 @@ import {
   seedUserInputDraftAnswers,
   userInputDraftKey,
 } from "~/rt/state/threadRequests";
-import {
-  isAtomCommandInterrupted,
-  squashAtomCommandFailure,
-} from "~/rt/state/runtime";
+import { isAtomCommandInterrupted, squashAtomCommandFailure } from "~/rt/state/runtime";
 import { create } from "zustand";
 import { useRef, useState, type RefObject, type SetStateAction } from "react";
-import { useShallow } from "zustand/react/shallow";
 import { type DraftId, useComposerDraftStore } from "../../composerDraftStore";
 import { useStableCallback } from "../../hooks/useStableCallback";
-import { getUploadedAttachments, useAttachmentUploadStore } from "../../lib/attachmentUploadQueue";
 import {
   buildPendingUserInputAnswers,
   setPendingUserInputCustomAnswer,
@@ -35,17 +29,8 @@ import {
   carryDisplacedCustomAnswerIntoPrompt,
   derivePendingUserInputProgress,
   projectPendingUserInputAnswer,
-  threadContextsReferencedByAnswer,
 } from "../../pendingUserInput";
-import {
-  questionAttachmentDraftId,
-  useQuestionAttachmentPreparation,
-} from "../../questionAttachments";
-import {
-  derivePendingApprovals,
-  derivePendingUserInputs,
-  type PendingUserInput,
-} from "../../session-logic";
+import { derivePendingApprovals, derivePendingUserInputs, type PendingUserInput } from "../../session-logic";
 import { readEnvironmentScope } from "../../state/session";
 import { threadEnvironment } from "../../state/threads";
 import { useAtomCommand } from "../../state/use-atom-command";
@@ -63,9 +48,8 @@ const NO_PENDING_REQUESTS = { approvals: [], userInputs: [] } as const;
 const NO_PENDING_APPROVALS: ReturnType<typeof derivePendingApprovals> = [];
 const NO_PENDING_USER_INPUTS: ReturnType<typeof derivePendingUserInputs> = [];
 
-// Resolution can come from anywhere: another device, an interrupt, the turn
-// ending, or a thread that is not open. Question attachment drafts are pruned
-// by questionAttachments.ts, which owns them.
+// Resolution can come from anywhere: an interrupt, the turn ending, or a
+// thread that is not open.
 onThreadRequestsResolved(({ environmentId, threadId, pendingRequestIds }) => {
   usePendingUserInputAnswers.setState(
     (existing) =>
@@ -116,7 +100,6 @@ export function usePendingThreadRequests(input: {
   readonly environmentId: EnvironmentId;
   readonly activeThreadId: ThreadId | null;
   readonly serverProjection: ThreadStructure | null;
-  readonly supportsQuestionAttachments: boolean;
   readonly composerDraftTarget: ScopedThreadRef | DraftId;
   readonly setComposerDraftPrompt: (target: ScopedThreadRef | DraftId, prompt: string) => void;
   readonly promptRef: { current: string };
@@ -127,7 +110,6 @@ export function usePendingThreadRequests(input: {
     environmentId,
     activeThreadId,
     serverProjection,
-    supportsQuestionAttachments,
     composerDraftTarget,
     setComposerDraftPrompt,
     promptRef,
@@ -181,67 +163,14 @@ export function usePendingThreadRequests(input: {
   const activePendingQuestionIndex = usePendingUserInputQuestionIndex(
     (state) => state[activePendingRequestKey] ?? 0,
   );
-  const pendingQuestionDraftKeys = activeThreadId
-    ? pendingUserInputs.flatMap((request) =>
-        request.questions.map((question) =>
-          questionAttachmentDraftId(environmentId, activeThreadId, request.requestId, question.id),
-        ),
-      )
-    : [];
-  const questionComposerDrafts = useComposerDraftStore(
-    useShallow((state) =>
-      Object.fromEntries(
-        pendingQuestionDraftKeys.map((key) => [key, state.draftsByThreadKey[key]]),
-      ),
-    ),
-  );
-  const questionUploadsBlocked = useAttachmentUploadStore(
-    useShallow((state) =>
-      Object.fromEntries(
-        pendingQuestionDraftKeys.map((key) => {
-          const draft = questionComposerDrafts[key];
-          const attachments = draft ? [...draft.images, ...draft.files] : [];
-          return [
-            key,
-            attachments.some((attachment) => {
-              const upload = state.uploadsByImageId[attachment.id];
-              return upload?.status !== "ready" || upload.environmentId !== environmentId;
-            }),
-          ];
-        }),
-      ),
-    ),
-  );
-  const questionPreparations = useQuestionAttachmentPreparation(
-    useShallow((state) =>
-      Object.fromEntries(pendingQuestionDraftKeys.map((key) => [key, state.counts[key] ?? 0])),
-    ),
-  );
   const activePendingDraftAnswers =
     !activePendingUserInput || !activeThreadId
       ? EMPTY_PENDING_USER_INPUT_ANSWERS
       : Object.fromEntries(
-          activePendingUserInput.questions.map((question) => {
-            const key = questionAttachmentDraftId(
-              environmentId,
-              activeThreadId,
-              activePendingUserInput.requestId,
-              question.id,
-            );
-            const draft = questionComposerDrafts[key];
-            const attachments = draft ? [...draft.images, ...draft.files] : [];
-            return [
-              question.id,
-              {
-                ...activePendingAnswerDrafts[question.id],
-                attachmentCount: attachments.length,
-                attachmentsBlocked:
-                  (attachments.length > 0 && !supportsQuestionAttachments) ||
-                  (questionPreparations[key] ?? 0) > 0 ||
-                  questionUploadsBlocked[key] === true,
-              },
-            ];
-          }),
+          activePendingUserInput.questions.map((question) => [
+            question.id,
+            activePendingAnswerDrafts[question.id] ?? {},
+          ]),
         );
   const activePendingProgress = activePendingUserInput
     ? derivePendingUserInputProgress(
@@ -306,32 +235,15 @@ export function usePendingThreadRequests(input: {
     if (!pendingInput || pendingInput.responseCapability === "not_resumable") return;
     const responseKey = JSON.stringify([environmentId, activeThreadId, requestId]);
     if (userInputResponsesInFlight.current.has(responseKey)) return;
-    const attachmentsByQuestionId = new Map<string, UserInputAttachments[string]>();
     const providerAnswers = { ...answers };
+    // An answer's thread chips name contexts the composer's draft holds.
+    const threadContexts =
+      useComposerDraftStore.getState().getComposerDraft(composerDraftTarget)?.threadContexts ?? [];
     for (const question of pendingInput.questions) {
-      const target = questionAttachmentDraftId(
-        environmentId,
-        activeThreadId,
-        requestId,
-        question.id,
-      );
-      if ((useQuestionAttachmentPreparation.getState().counts[target] ?? 0) > 0) return;
-      const draft = useComposerDraftStore.getState().getComposerDraft(target);
       providerAnswers[question.id] = projectPendingUserInputAnswer(
         answers[question.id],
-        draft?.threadContexts ?? [],
+        threadContexts,
       );
-      const attachments = draft ? [...draft.images, ...draft.files] : [];
-      if (attachments.length === 0) continue;
-      const uploaded = getUploadedAttachments({ environmentId, images: attachments });
-      if (!uploaded) {
-        setThreadError(
-          activeThreadId,
-          "Wait for attachments to finish uploading, or remove failed uploads.",
-        );
-        return;
-      }
-      attachmentsByQuestionId.set(question.id, uploaded as UserInputAttachments[string]);
     }
     userInputResponsesInFlight.current.add(responseKey);
 
@@ -344,9 +256,6 @@ export function usePendingThreadRequests(input: {
         threadId: activeThreadId,
         requestId,
         answers: providerAnswers,
-        ...(attachmentsByQuestionId.size > 0
-          ? { attachmentsByQuestionId: Object.fromEntries(attachmentsByQuestionId) }
-          : {}),
       },
     });
     if (result._tag === "Failure" && !isAtomCommandInterrupted(result)) {
@@ -411,23 +320,6 @@ export function usePendingThreadRequests(input: {
         description: "It will be back in the composer once the question is answered.",
         data: { threadRef: activeThreadId ? { environmentId, threadId: activeThreadId } : null },
       });
-      if (activeThreadId) {
-        const store = useComposerDraftStore.getState();
-        const questionTarget = questionAttachmentDraftId(
-          environmentId,
-          activeThreadId,
-          activePendingUserInput.requestId,
-          questionId,
-        );
-        store.addThreadContexts(
-          composerDraftTarget,
-          threadContextsReferencedByAnswer(
-            displacedAnswer ?? "",
-            store.getComposerDraft(questionTarget)?.threadContexts ?? [],
-          ),
-          { appendReference: false },
-        );
-      }
     }
     setPendingUserInputAnswersByRequestId((existing) => {
       const question =

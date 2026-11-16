@@ -176,11 +176,10 @@ function ModelListSeparator() {
 function modelJumpLabelsByKey(
   modelKeys: ReadonlyArray<string>,
   keybindings: ResolvedKeybindingsConfig,
-  terminalOpen: boolean,
 ): ReadonlyMap<string, string> {
   const shortcutLabelOptions = {
     platform: navigator.platform,
-    context: { terminalFocus: false, terminalOpen, modelPickerOpen: true },
+    context: { modelPickerOpen: true },
   };
   const mapping = new Map<string, string>();
   for (const [index, modelKey] of modelKeys.entries()) {
@@ -325,14 +324,11 @@ export const ModelPickerContent = memo(function ModelPickerContent(props: {
   environmentId: EnvironmentId | null;
   activeInstanceId: ProviderInstanceId;
   model: string;
-  selectedModels?: ReadonlyArray<{ instanceId: ProviderInstanceId; model: string }>;
-  onToggleModel?: (instanceId: ProviderInstanceId, model: string) => void;
   lockedProvider: ProviderDriverKind | null;
   lockedContinuationGroupKey?: string | null;
   instanceEntries: ReadonlyArray<ProviderInstanceEntry>;
   keybindings?: ResolvedKeybindingsConfig;
   modelOptionsByInstance: ReadonlyMap<ProviderInstanceId, ReadonlyArray<ModelEsque>>;
-  terminalOpen: boolean;
   onRequestClose?: () => void;
   onOpenProviderSetup?: (instanceId: ProviderInstanceId) => void;
   getModelDisabledReason?: (instanceId: ProviderInstanceId, model: string) => string | null;
@@ -353,7 +349,6 @@ export const ModelPickerContent = memo(function ModelPickerContent(props: {
     instanceEntries,
     getModelDisabledReason,
     onInstanceModelChange,
-    onToggleModel,
     onRequestClose,
     onOpenProviderSetup,
   } = props;
@@ -377,18 +372,7 @@ export const ModelPickerContent = memo(function ModelPickerContent(props: {
   const activeModelKey = activeModelSlug
     ? modelPickerModelKey(props.activeInstanceId, activeModelSlug)
     : null;
-  const selectedModelKeys = props.selectedModels?.map((selection) => {
-    const entry = instanceEntries.find((entry) => entry.instanceId === selection.instanceId);
-    const model = resolveModelPickerSelectedModel({
-      driverKind: entry?.driverKind,
-      model: selection.model,
-      options: modelOptionsByInstance.get(selection.instanceId) ?? [],
-    });
-    return modelPickerModelKey(selection.instanceId, model?.slug ?? selection.model);
-  });
-  const selectedModelKeySet = new Set(
-    selectedModelKeys ?? (activeModelKey ? [activeModelKey] : []),
-  );
+  const selectedModelKeySet = new Set(activeModelKey ? [activeModelKey] : []);
   const activeInstanceHasSelectableUnavailableModel =
     activeEntry !== undefined &&
     (modelOptionsByInstance.get(props.activeInstanceId) ?? []).some((option) =>
@@ -457,11 +441,7 @@ export const ModelPickerContent = memo(function ModelPickerContent(props: {
     });
   };
 
-  const handleModelSelect = (
-    modelSlug: string,
-    instanceId: ProviderInstanceId,
-    additive = false,
-  ): string | null => {
+  const handleModelSelect = (modelSlug: string, instanceId: ProviderInstanceId): string | null => {
     if (getModelDisabledReason?.(instanceId, modelSlug)) {
       return null;
     }
@@ -475,19 +455,11 @@ export const ModelPickerContent = memo(function ModelPickerContent(props: {
     }
     const resolvedModel = resolveSelectableModel(entry.driverKind, modelSlug, options);
     if (!resolvedModel) return null;
-    if (additive && onToggleModel) {
-      onToggleModel(instanceId, resolvedModel);
-    } else {
-      onInstanceModelChange(instanceId, resolvedModel);
-    }
+    onInstanceModelChange(instanceId, resolvedModel);
     return resolvedModel;
   };
 
-  const modelJumpShortcutContext = {
-    terminalFocus: false,
-    terminalOpen: props.terminalOpen,
-    modelPickerOpen: true,
-  } as const;
+  const modelJumpShortcutContext = { modelPickerOpen: true } as const;
   const lockedProvider = props.lockedProvider;
   const lockedContinuationGroupKey = props.lockedContinuationGroupKey;
   const canOpenProviderSetup = onOpenProviderSetup !== undefined;
@@ -736,11 +708,7 @@ export const ModelPickerContent = memo(function ModelPickerContent(props: {
       ),
     ))();
 
-  const modelJumpLabelByKey = modelJumpLabelsByKey(
-    modelJumpModelKeys,
-    keybindings,
-    props.terminalOpen,
-  );
+  const modelJumpLabelByKey = modelJumpLabelsByKey(modelJumpModelKeys, keybindings);
   const badgedInstanceIds = new Set(
     instanceEntries
       .filter((entry) => shouldShowInstanceBadge(entry, instanceEntries))
@@ -857,8 +825,8 @@ export const ModelPickerContent = memo(function ModelPickerContent(props: {
           autoHighlight
           open
           virtualized
-          multiple={onToggleModel !== undefined}
-          value={onToggleModel ? [...selectedModelKeySet] : activeModelKey}
+          multiple={false}
+          value={activeModelKey}
           onItemHighlighted={(modelKey, eventDetails) => {
             highlightedModelKeyRef.current = typeof modelKey === "string" ? modelKey : null;
             if (eventDetails.reason === "keyboard" && eventDetails.index >= 0) {
@@ -869,10 +837,7 @@ export const ModelPickerContent = memo(function ModelPickerContent(props: {
             }
           }}
           onValueChange={(value, details) => {
-            const modelKey = Array.isArray(value)
-              ? (value.find((key) => !selectedModelKeySet.has(key)) ??
-                [...selectedModelKeySet].find((key) => !value.includes(key)))
-              : value;
+            const modelKey = value;
             if (typeof modelKey !== "string") {
               return;
             }
@@ -883,11 +848,7 @@ export const ModelPickerContent = memo(function ModelPickerContent(props: {
             }
             const model = parseModelPickerModelKey(modelKey);
             if (model) {
-              handleModelSelect(
-                model.slug,
-                model.instanceId,
-                "shiftKey" in details.event && details.event.shiftKey === true,
-              );
+              handleModelSelect(model.slug, model.instanceId);
             }
           }}
         >
@@ -975,7 +936,7 @@ export const ModelPickerContent = memo(function ModelPickerContent(props: {
                   }
                   const model = parseModelPickerModelKey(highlightedModelKeyRef.current);
                   if (model) {
-                    handleModelSelect(model.slug, model.instanceId, e.shiftKey);
+                    handleModelSelect(model.slug, model.instanceId);
                   }
                   return;
                 }
@@ -1025,11 +986,7 @@ export const ModelPickerContent = memo(function ModelPickerContent(props: {
                     acpRegistryAgentId={model.acpRegistryAgentId}
                     acpRegistryIconUrl={model.acpRegistryIconUrl}
                     isFavorite={favoritesSet.has(providerModelKey(model.instanceId, model.slug))}
-                    isSelected={
-                      selectedModelKeys !== undefined
-                        ? selectedModelKeySet.has(modelKey)
-                        : modelKey === activeModelKey
-                    }
+                    isSelected={modelKey === activeModelKey}
                     favoriteStarOnHover={selectedInstanceId === "favorites" && !isSearching}
                     showInstanceBadge={badgedInstanceIds.has(model.instanceId)}
                     showNewBadge={model.badge === "new"}

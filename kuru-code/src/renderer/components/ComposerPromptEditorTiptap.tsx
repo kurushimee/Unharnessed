@@ -275,9 +275,8 @@ function ComposerMentionNodeView({ node }: NodeViewProps) {
     <ContextChip
       kind={documentChipKindForFileName(path) ?? "mention"}
       dir="ltr"
-      render={<button type="button" />}
-      onClick={() => actions.openMention(path)}
-      aria-label={`Preview ${path}`}
+      render={<span />}
+      aria-label={path}
       contentEditable={false}
       spellCheck={false}
       data-composer-mention-chip="true"
@@ -403,9 +402,6 @@ function ComposerSkillNodeView({ node }: NodeViewProps) {
       <SkillChipPopover
         label={skillLabel}
         description={skill ? skillPopoverDescription(skill) : skillDescription}
-        onViewInstructions={
-          skill?.path && actions.environmentId ? () => actions.openMention(skill.path) : undefined
-        }
       />
     </NodeViewWrapper>
   );

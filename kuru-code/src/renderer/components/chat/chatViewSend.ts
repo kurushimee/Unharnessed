@@ -1,40 +1,21 @@
 import {
   CommandId,
   type EnvironmentId,
-  type ModelSelection,
   type ScopedThreadRef,
   type ThreadId,
   PROVIDER_SEND_TURN_MAX_ATTACHMENTS,
 } from "~/contracts";
-import {
-  wasBootstrapThreadDeleted,
-  wasBootstrapThreadNotCreated,
-} from "~/rt/errors/index";
-import { Atom } from "effect/reactivity";
-import {
-  squashAtomCommandFailure,
-  type AtomCommandResult,
-} from "~/rt/state/runtime";
-import { readLocalApi } from "../../localApi";
-import { awaitAttachmentUploads, getUploadedAttachments } from "../../lib/attachmentUploadQueue";
+import { squashAtomCommandFailure, type AtomCommandResult } from "~/rt/state/runtime";
 import { findRevertCheckpoint } from "../../session-logic";
 import { type ChatMessage } from "../../types";
 import { randomUUID } from "~/lib/utils";
-import { stackedThreadToast, toastManager } from "../ui/toast";
-import { newThreadId } from "~/lib/utils";
 import {
   type ComposerFileAttachment,
   type ComposerImageAttachment,
   useComposerDraftStore,
   DraftId,
 } from "../../composerDraftStore";
-import { ATTACHMENT_ONLY_BOOTSTRAP_PROMPT } from "~/shared/composerContextReferences";
-import { createModelSelection } from "~/shared/model";
-import type { ProviderInstanceEntry } from "../../providerInstances";
-import { getComposerPromptInjectionState, getComposerProviderState } from "./composerProviderState";
 import {
-  formatOutgoingPrompt,
-  getAntigravitySendBlockReason,
   cloneComposerImageForRetry,
   type ComposerSendSnapshot,
   readFileAsDataUrl,
@@ -44,11 +25,7 @@ import {
 import { readPreparedConnection } from "../../state/session";
 import { recallableComposerPrompt } from "./composerPromptHistory";
 
-// Kept per route so a send in flight, and the multiple-model selections, survive
-// ChatView remounting while the user navigates.
-export const draftFanoutSelectionsAtom = Atom.family((_routeKey: string) =>
-  Atom.make<ReadonlyArray<ModelSelection> | null>(null).pipe(Atom.keepAlive),
-);
+// Kept per route so a send in flight survives ChatView remounting while the user navigates.
 const draftSendStateByRouteKey = new Map<
   string,
   {
@@ -63,87 +40,6 @@ export function draftSendState(routeKey: string) {
     draftSendStateByRouteKey.set(routeKey, state);
   }
   return state;
-}
-
-/**
- * Starts one thread of a multiple-model send. A request that may have
- * reached the server before failing is remembered by `retryKey`, so sending
- * again cannot silently create a duplicate thread; its failure toast offers
- * to open that thread or to allow the retry.
- */
-export async function startFanoutThread(input: {
-  readonly retryKey: string;
-  readonly model: string;
-  readonly uncertainSubmissions: Map<string, ThreadId>;
-  readonly start: (threadId: ThreadId) => Promise<AtomCommandResult<unknown, unknown>>;
-  readonly openThread: (threadId: ThreadId) => void;
-}): Promise<boolean> {
-  const { retryKey, uncertainSubmissions } = input;
-  const uncertainThreadId = uncertainSubmissions.get(retryKey);
-  const targetThreadId = uncertainThreadId ?? newThreadId();
-  let requestMayHaveStarted = false;
-  try {
-    if (uncertainThreadId) {
-      throw new Error(
-        "The previous request may have started. Open its thread to check before sending again.",
-      );
-    }
-    requestMayHaveStarted = true;
-    const result = await input.start(targetThreadId);
-    if (result._tag === "Failure") {
-      const error = squashAtomCommandFailure(result);
-      if (wasBootstrapThreadDeleted(error) || wasBootstrapThreadNotCreated(error)) {
-        requestMayHaveStarted = false;
-      }
-      throw error;
-    }
-    return true;
-  } catch (error) {
-    if (requestMayHaveStarted && !uncertainSubmissions.has(retryKey)) {
-      uncertainSubmissions.set(retryKey, targetThreadId);
-    }
-    const retainedThreadId = uncertainSubmissions.get(retryKey);
-    const failureToastId = toastManager.add(
-      stackedThreadToast({
-        type: "error",
-        title: `Could not start ${input.model}`,
-        description: error instanceof Error ? error.message : "Failed to send message.",
-        ...(retainedThreadId
-          ? {
-              timeout: 0,
-              data: {
-                secondaryActionProps: {
-                  children: "Allow retry",
-                  onClick: () => {
-                    void readLocalApi()
-                      ?.dialogs.confirm(
-                        "The previous request may already be running. Check its thread first. Allow another send that could create a duplicate thread?",
-                      )
-                      .then(
-                        (confirmed) => {
-                          if (
-                            confirmed &&
-                            uncertainSubmissions.get(retryKey) === retainedThreadId
-                          ) {
-                            uncertainSubmissions.delete(retryKey);
-                            toastManager.close(failureToastId);
-                          }
-                        },
-                        () => undefined,
-                      );
-                  },
-                },
-              },
-              actionProps: {
-                children: "Open thread",
-                onClick: () => input.openThread(retainedThreadId),
-              },
-            }
-          : {}),
-      }),
-    );
-    return false;
-  }
 }
 
 /**
@@ -263,84 +159,19 @@ export function restoreComposerDraft(
   store.setPrompt(draftTarget, snapshot.messageText);
   store.addImages(draftTarget, images);
   store.addFiles(draftTarget, snapshot.files);
-  store.setTerminalContexts(draftTarget, snapshot.terminalContexts);
-  store.setPreviewAnnotations(draftTarget, snapshot.previewAnnotations);
   store.setReviewComments(draftTarget, snapshot.reviewComments);
   store.setThreadContexts(draftTarget, snapshot.threadContexts);
-  store.setEnvironmentContexts(draftTarget, snapshot.environmentContexts);
   return images;
 }
 
-export interface MultipleModelTarget {
-  readonly selection: ModelSelection;
-  readonly text: string;
-}
-
-/**
- * The thread each selected model starts for a multiple-model send, in
- * selection order, or why that model cannot take the message.
- */
-export function resolveMultipleModelTargets(input: {
-  readonly selections: ReadonlyArray<ModelSelection>;
-  readonly providerInstanceEntries: ReadonlyArray<ProviderInstanceEntry>;
-  readonly messageText: string;
-}): Array<MultipleModelTarget | { readonly error: string }> {
-  const { messageText } = input;
-  return input.selections.map((selection) => {
-    const provider = input.providerInstanceEntries.find(
-      (entry) => entry.instanceId === selection.instanceId,
-    );
-    if (!provider?.enabled || !provider.isAvailable || provider.status !== "ready") {
-      return { error: `Provider for ${selection.model} is unavailable.` };
-    }
-    const providerBlockReason = getAntigravitySendBlockReason(provider.snapshot, selection.model);
-    if (providerBlockReason) return { error: providerBlockReason };
-    const providerState = getComposerProviderState({
-      provider: provider.driverKind,
-      model: selection.model,
-      models: provider.models,
-      modelOptions: selection.options,
-      promptInjectionState: getComposerPromptInjectionState(messageText),
-    });
-    return {
-      selection: createModelSelection(
-        selection.instanceId,
-        selection.model,
-        providerState.modelOptionsForDispatch,
-      ),
-      text: formatOutgoingPrompt({
-        provider: provider.driverKind,
-        model: selection.model,
-        models: provider.models,
-        effort: providerState.promptEffort,
-        text: messageText || ATTACHMENT_ONLY_BOOTSTRAP_PROMPT,
-      }),
-    };
-  });
-}
-
-/**
- * The attachments a turn sends: the server's upload records when it takes uploads, otherwise
- * images inlined as data URLs. Waits for in-flight uploads; rejects when one cannot go out.
- */
+/** The attachments a turn sends: its images, inlined as data URLs. Unharnessed sends images only. */
 export function prepareTurnAttachments(input: {
-  readonly environmentId: EnvironmentId;
   readonly attachments: ReadonlyArray<ComposerImageAttachment | ComposerFileAttachment>;
-  readonly usesAttachmentUploads: boolean;
 }) {
-  const { environmentId, usesAttachmentUploads } = input;
   return Promise.all(
     input.attachments.map(async (attachment) => {
-      if (usesAttachmentUploads) {
-        await awaitAttachmentUploads([attachment.id]);
-        const uploaded = getUploadedAttachments({ environmentId, images: [attachment] })?.[0];
-        if (!uploaded) {
-          throw new Error(`Attachment '${attachment.name}' failed to upload.`);
-        }
-        return uploaded;
-      }
       if (attachment.type !== "image") {
-        throw new Error("This server does not support file attachments.");
+        throw new Error(`'${attachment.name}' is not an image: Unharnessed sends images only.`);
       }
       return {
         type: "image" as const,
@@ -349,7 +180,6 @@ export function prepareTurnAttachments(input: {
         mimeType: attachment.mimeType,
         sizeBytes: attachment.sizeBytes,
         dataUrl: await readFileAsDataUrl(attachment.file),
-        ...(attachment.source ? { source: attachment.source } : {}),
       };
     }),
   );

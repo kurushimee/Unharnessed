@@ -3,17 +3,11 @@ import {
   type ComposerContextRecord,
   type EnvironmentId,
   PROVIDER_SEND_TURN_MAX_ATTACHMENTS,
-  type PreviewAnnotationPayload,
   type ThreadContextRecord,
 } from "~/contracts";
 import {
-  type ComposerFileAttachment,
   type ComposerThreadDraftState,
-  type PersistedComposerFileAttachment,
   type PersistedComposerImageAttachment,
-  composerFileDedupKey,
-  composerFileMatchesReattachMarker,
-  composerFileNeedsReattach,
   composerTargetKey,
   hydrateImagesFromPersisted,
   useComposerDraftStore,
@@ -32,23 +26,11 @@ import { compressImageForStash } from "../../lib/imageCompression";
 import { formatInlineContextReference } from "~/lib/composerContextReferences";
 import { isCommandPaletteOpen } from "../../commandPaletteBus";
 import { pendingDraftWork } from "./pendingDraftWork";
-import {
-  previewAnnotationContextRecord,
-  reviewCommentContextRecord,
-  terminalContextRecord,
-} from "~/lib/composerContextRecords";
+import { reviewCommentContextRecord } from "~/lib/composerContextRecords";
 import { randomUUID } from "~/lib/utils";
-import {
-  readAttachmentUpload,
-  releaseAttachmentUpload,
-  releasePersistedAttachmentUpload,
-  verifyStashedAttachmentUpload,
-} from "../../lib/attachmentUploadQueue";
 import { remainingComposerAttachmentSlots } from "./composerThreadImport";
 import { replaceComposerContextReferences } from "~/shared/composerContextReferences";
-import { resizeSnapShotSource } from "../../lib/snapShotSource";
 import { registerCommands } from "../../shortcuts/dispatcher";
-import { selectThreadTerminalUiState, useTerminalUiStateStore } from "../../terminalUiStateStore";
 import { toastManager } from "../ui/toast";
 import type { useComposerTriggerState } from "./useComposerTriggerState";
 import {
@@ -61,7 +43,6 @@ import {
   useState,
 } from "react";
 import { BackgroundThreadContext } from "./backgroundThread";
-import { isInSideChatPane } from "../../lib/sideChatPane";
 import { useStableCallback } from "../../hooks/useStableCallback";
 
 /**
@@ -73,7 +54,6 @@ export function useComposerStash(input: {
   readonly composerDraftTarget: ChatComposerProps["composerDraftTarget"];
   readonly promptRef: ChatComposerProps["promptRef"];
   readonly readAttachmentDraft: () => Pick<ComposerThreadDraftState, "images" | "files">;
-  readonly readTerminalContexts: () => ComposerThreadDraftState["terminalContexts"];
   readonly routeThreadRef: ChatComposerProps["routeThreadRef"];
   readonly projectSelectionRequired: boolean;
   readonly pendingUserInputs: ReadonlyArray<PendingUserInput>;
@@ -81,7 +61,6 @@ export function useComposerStash(input: {
   readonly prompt: string;
   readonly composerMenuOpen: boolean;
   readonly isComposerCollapsedMobile: boolean;
-  readonly composerPreviewAnnotations: ReadonlyArray<PreviewAnnotationPayload>;
   readonly composerReviewComments: ReadonlyArray<ReviewCommentContext>;
   readonly composerThreadContexts: ReadonlyArray<ThreadContextRecord>;
   readonly attachmentTargetKey: string;
@@ -103,7 +82,6 @@ export function useComposerStash(input: {
     composerDraftTarget,
     promptRef,
     readAttachmentDraft,
-    readTerminalContexts,
     routeThreadRef,
     projectSelectionRequired,
     pendingUserInputs,
@@ -111,7 +89,6 @@ export function useComposerStash(input: {
     prompt,
     composerMenuOpen,
     isComposerCollapsedMobile,
-    composerPreviewAnnotations,
     composerReviewComments,
     composerThreadContexts,
     attachmentTargetKey,
@@ -128,14 +105,8 @@ export function useComposerStash(input: {
   const setComposerDraftPrompt = useComposerDraftStore((store) => store.setPrompt);
   const addComposerDraftImages = useComposerDraftStore((store) => store.addImages);
   const addComposerDraftFiles = useComposerDraftStore((store) => store.addFiles);
-  const removeComposerDraftPreviewAnnotation = useComposerDraftStore(
-    (store) => store.removePreviewAnnotation,
-  );
   const removeComposerDraftReviewComment = useComposerDraftStore(
     (store) => store.removeReviewComment,
-  );
-  const clearComposerDraftTerminalContexts = useComposerDraftStore(
-    (store) => store.clearTerminalContexts,
   );
   const clearComposerDraftPromptAndImages = useComposerDraftStore(
     (store) => store.clearComposerPromptAndImages,
@@ -156,35 +127,10 @@ export function useComposerStash(input: {
   };
 
   const restoreStashEntry = async (menuEntry: PromptStashEntry) => {
-    const filesToVerify = menuEntry.files ?? [];
-    if (filesToVerify.some((file) => file.environmentId !== environmentId)) {
-      toastManager.add({
-        type: "error",
-        title: "Stashed files belong to another environment",
-        description: "Restore this prompt in the environment that received its files.",
-      });
-      return;
-    }
     setIsStashMenuOpen(false);
 
-    // An expired upload restores as a needs-reattach row instead of a reference
-    // the next send would fail to verify. Verify BEFORE taking: the take
-    // removes the entry from durable storage, and a tab closed during this
-    // await must still find it there after reload.
-    const verifications = await Promise.all(
-      filesToVerify.map((file) =>
-        verifyStashedAttachmentUpload({ environmentId, attachmentId: file.attachmentId }),
-      ),
-    );
-    const expiredAttachmentIds = new Set(
-      filesToVerify
-        .filter((_, index) => verifications[index]?.status === "missing")
-        .map((file) => file.attachmentId),
-    );
-
-    // A thread switch during the verify await would mix the new thread's
-    // prompt with this invocation's captured target. Nothing was taken yet,
-    // so abort and leave the entry restorable where the user now is.
+    // A thread switch would mix the new thread's prompt with this invocation's
+    // captured target. Nothing was taken yet, so leave the entry restorable.
     if (
       isRevertingCheckpoint() ||
       !isComposerDraftTargetOpen(composerTargetKey(composerDraftTarget))
@@ -210,11 +156,7 @@ export function useComposerStash(input: {
     const restoredPrompt = replaceComposerContextReferences(entry.prompt, (reference) => {
       const contextId = rewrittenContextIds.get(reference.contextId);
       return contextId
-        ? formatInlineContextReference({
-            ...reference,
-            contextId,
-            kind: reference.kind === "element" ? "preview-annotation" : reference.kind,
-          })
+        ? formatInlineContextReference({ ...reference, contextId })
         : reference.source;
     });
     const currentPrompt = promptRef.current;
@@ -232,119 +174,6 @@ export function useComposerStash(input: {
       setComposerTrigger(null);
     }
 
-    let unrestoredFileNames: string[] = [];
-    const expiredFileNames: string[] = [];
-    let restoredFileCount = 0;
-    const stashedFiles = entry.files ?? [];
-    if (stashedFiles.length > 0) {
-      const composerFilesNow = readAttachmentDraft().files;
-      const existingFileIds = new Set(composerFilesNow.map((file) => file.id));
-      const retainedUploadIds = new Set(
-        composerFilesNow.flatMap((file) =>
-          file.uploadedAttachmentId ? [file.uploadedAttachmentId] : [],
-        ),
-      );
-      const existingFileKeys = new Set(composerFilesNow.map(composerFileDedupKey));
-      const reattachMarkers = composerFilesNow.filter(composerFileNeedsReattach);
-      const restoredMarkerIds = new Set<string>();
-      const duplicateFiles: PersistedComposerFileAttachment[] = [];
-      const markerReplacements: ComposerFileAttachment[] = [];
-      const appendedFiles: ComposerFileAttachment[] = [];
-      for (const file of stashedFiles) {
-        const expired = expiredAttachmentIds.has(file.attachmentId);
-        const key = composerFileDedupKey(file);
-        const restored: ComposerFileAttachment = {
-          type: "file",
-          id: file.id,
-          name: file.name,
-          mimeType: file.mimeType,
-          sizeBytes: file.sizeBytes,
-          file: null,
-          ...(file.source ? { source: file.source } : {}),
-          ...(expired
-            ? {}
-            : { uploadedAttachmentId: file.attachmentId, uploadEnvironmentId: environmentId }),
-        };
-        if (existingFileIds.has(file.id)) {
-          if (!expired && !retainedUploadIds.has(file.attachmentId)) {
-            duplicateFiles.push(file);
-          }
-          continue;
-        }
-        const reattachMarker = reattachMarkers.find(
-          (marker) =>
-            !restoredMarkerIds.has(marker.id) && composerFileMatchesReattachMarker(marker, file),
-        );
-        if (reattachMarker) {
-          restoredMarkerIds.add(reattachMarker.id);
-          existingFileIds.add(file.id);
-          existingFileKeys.add(key);
-          if (expired) {
-            expiredFileNames.push(file.name);
-          } else {
-            retainedUploadIds.add(file.attachmentId);
-            markerReplacements.push(restored);
-          }
-          continue;
-        }
-        if (existingFileKeys.has(key)) {
-          if (!expired && !retainedUploadIds.has(file.attachmentId)) {
-            duplicateFiles.push(file);
-          }
-          continue;
-        }
-        existingFileIds.add(file.id);
-        existingFileKeys.add(key);
-        if (expired) {
-          expiredFileNames.push(file.name);
-        } else {
-          retainedUploadIds.add(file.attachmentId);
-        }
-        appendedFiles.push(restored);
-      }
-      const capacity = remainingComposerAttachmentSlots(
-        readAttachmentDraft().images.length + composerFilesNow.length,
-        pendingThreadImportsRef.current.get(composerTargetKey(composerDraftTarget)) ?? 0,
-      );
-      const filesToAppend = appendedFiles.slice(0, capacity);
-      const skippedFiles = appendedFiles.slice(capacity);
-      unrestoredFileNames = skippedFiles.map((file) => file.name);
-      // A non-durable take can resurrect the stash entry after a reload;
-      // deleting these uploads would leave it pointing at nothing.
-      if (durable) {
-        for (const file of duplicateFiles) {
-          releasePersistedAttachmentUpload({
-            id: file.id,
-            environmentId,
-            attachmentId: file.attachmentId,
-          });
-        }
-        for (const file of skippedFiles) {
-          if (file.uploadedAttachmentId) {
-            releasePersistedAttachmentUpload({
-              id: file.id,
-              environmentId,
-              attachmentId: file.uploadedAttachmentId,
-            });
-          }
-        }
-      }
-      const restoredFiles = [...markerReplacements, ...filesToAppend];
-      if (restoredFiles.length > 0) {
-        addComposerDraftFiles(composerDraftTarget, restoredFiles, { appendReference: true });
-        const restoredFilePrompt = getComposerDraft(composerDraftTarget)?.prompt;
-        if (restoredFilePrompt !== undefined && restoredFilePrompt !== promptRef.current) {
-          promptRef.current = restoredFilePrompt;
-          setComposerCursor(
-            collapseExpandedComposerCursor(restoredFilePrompt, restoredFilePrompt.length),
-          );
-          setComposerTrigger(null);
-          promptChanged = true;
-        }
-        restoredFileCount = filesToAppend.length;
-      }
-    }
-
     let unrestoredImageNames: string[] = [];
     if (entry.attachments.length > 0) {
       const attachmentDraft = readAttachmentDraft();
@@ -359,7 +188,7 @@ export function useComposerStash(input: {
         ),
       );
       const capacity = remainingComposerAttachmentSlots(
-        attachmentDraft.images.length + attachmentDraft.files.length + restoredFileCount,
+        attachmentDraft.images.length,
         pendingThreadImportsRef.current.get(composerTargetKey(composerDraftTarget)) ?? 0,
       );
       const pending = entry.attachments.filter(
@@ -392,16 +221,6 @@ export function useComposerStash(input: {
         `${unrestoredImageNames.join(", ")} could not be restored: the composer is at its ${PROVIDER_SEND_TURN_MAX_ATTACHMENTS}-attachment limit.`,
       );
     }
-    if (unrestoredFileNames.length > 0) {
-      missingImageReasons.push(
-        `${unrestoredFileNames.join(", ")} could not be restored: the composer is at its ${PROVIDER_SEND_TURN_MAX_ATTACHMENTS}-attachment limit.`,
-      );
-    }
-    if (expiredFileNames.length > 0) {
-      missingImageReasons.push(
-        `${expiredFileNames.join(", ")}: stashed files are kept for 24 hours and this upload expired. Attach the file again.`,
-      );
-    }
     if (missingImageReasons.length > 0) {
       toastManager.add({
         type: "warning",
@@ -419,18 +238,9 @@ export function useComposerStash(input: {
   const restoreStashEntryStable = useStableCallback(restoreStashEntry);
 
   const deleteStashEntry = (entry: PromptStashEntry) => {
-    const { entry: removed, durable } = takeStashEntry(entry.id);
+    const { durable } = takeStashEntry(entry.id);
     if (!stashQueue.some((candidate) => candidate.id !== entry.id)) {
       setIsStashMenuOpen(false);
-    }
-    if (durable && removed) {
-      for (const file of removed.files ?? []) {
-        releasePersistedAttachmentUpload({
-          id: file.id,
-          environmentId: file.environmentId,
-          attachmentId: file.attachmentId,
-        });
-      }
     }
     if (!durable) {
       toastManager.add({
@@ -458,20 +268,11 @@ export function useComposerStash(input: {
     const prompt = promptRef.current.trim();
     const attachmentDraft = readAttachmentDraft();
     const images = [...attachmentDraft.images];
-    const files = [...attachmentDraft.files];
     const stashedRecords: ComposerContextRecord[] = [
       ...composerThreadContexts,
-      ...readTerminalContexts().map(terminalContextRecord),
       ...composerReviewComments.map(reviewCommentContextRecord),
-      ...composerPreviewAnnotations.map((annotation) =>
-        previewAnnotationContextRecord(annotation, {
-          screenshotContextId: images.some((image) => image.id === annotation.id)
-            ? annotation.id
-            : undefined,
-        }),
-      ),
     ];
-    if (prompt.length === 0 && images.length === 0 && files.length === 0) {
+    if (prompt.length === 0 && images.length === 0) {
       const entries = usePromptStashStore.getState().entries;
       const entry = entries.length === 1 ? entries[0] : undefined;
       if (entry && !entry.pendingImageCount) {
@@ -481,39 +282,9 @@ export function useComposerStash(input: {
       }
       return;
     }
-    const stashedFiles: PersistedComposerFileAttachment[] = [];
-    for (const file of files) {
-      if (composerFileNeedsReattach(file)) {
-        toastManager.add({
-          type: "error",
-          title: "Attach dropped files again or remove them before stashing",
-        });
-        return;
-      }
-      const upload = readAttachmentUpload(file.id);
-      if (upload?.status !== "ready" || upload.environmentId !== environmentId) {
-        toastManager.add({
-          type: "error",
-          title: "Wait for file uploads before stashing this prompt",
-        });
-        return;
-      }
-      stashedFiles.push({
-        id: file.id,
-        name: file.name,
-        mimeType: file.mimeType,
-        sizeBytes: file.sizeBytes,
-        attachmentId: upload.attachmentId,
-        environmentId,
-        ...(file.source ? { source: file.source } : {}),
-      });
-    }
     // Deduplicate the snapshot while encoding, not all stashes: new drafts or
     // thread switches must still be able to create their own entries.
-    const attachmentKey = images
-      .map((image) => `image:${image.id}`)
-      .concat(files.map((file) => `file:${file.id}`))
-      .join(",");
+    const attachmentKey = images.map((image) => `image:${image.id}`).join(",");
     const snapshotKey = [String(composerDraftTarget), prompt, attachmentKey].join("\n");
     if (stashInFlightRef.current.has(snapshotKey)) return;
     stashInFlightRef.current.add(snapshotKey);
@@ -530,7 +301,6 @@ export function useComposerStash(input: {
         createdAt: new Date().toISOString(),
         prompt,
         attachments: [],
-        ...(stashedFiles.length > 0 ? { files: stashedFiles } : {}),
         droppedImageNames: [],
         unreadableImageNames: [],
         pendingImageCount: images.length,
@@ -562,31 +332,16 @@ export function useComposerStash(input: {
 
       promptRef.current = "";
       clearComposerDraftPromptAndImages(stashTarget);
-      clearComposerDraftTerminalContexts(stashTarget);
       setComposerDraftThreadContexts(stashTarget, []);
       for (const comment of composerReviewComments) {
         removeComposerDraftReviewComment(stashTarget, comment.id);
       }
-      for (const annotation of composerPreviewAnnotations) {
-        releaseAttachmentUpload(annotation.id);
-        removeComposerDraftPreviewAnnotation(stashTarget, annotation.id);
-      }
       setComposerDraftPrompt(stashTarget, "");
-      for (const image of images) {
-        releaseAttachmentUpload(image.id);
-      }
       setComposerCursor(0);
       setComposerTrigger(null);
       pulseStashBadge();
 
       if (evicted) {
-        for (const file of evicted.files ?? []) {
-          releasePersistedAttachmentUpload({
-            id: file.id,
-            environmentId: file.environmentId,
-            attachmentId: file.attachmentId,
-          });
-        }
         toastManager.add({
           type: "warning",
           title: "Oldest stashed prompt discarded",
@@ -615,9 +370,6 @@ export function useComposerStash(input: {
           mimeType: result.image.mimeType,
           sizeBytes: result.image.sizeBytes,
           dataUrl: result.image.dataUrl,
-          ...(image.source
-            ? { source: resizeSnapShotSource(image.source, result.image.imageSize) }
-            : {}),
         });
       }
       const { kept, droppedNames } = partitionStashAttachments(candidateAttachments);
@@ -687,26 +439,14 @@ export function useComposerStash(input: {
   // Capture phase while the composer is mounted, so Mod+S never reaches the browser's save
   // dialog even when a focused widget (the model picker search) stops the key.
   const backgroundThread = use(BackgroundThreadContext);
-  const readShortcutContext = useStableCallback(() => ({
-    terminalOpen: Boolean(
-      selectThreadTerminalUiState(
-        useTerminalUiStateStore.getState().terminalUiStateByThreadKey,
-        routeThreadRef,
-      ).terminalOpen,
-    ),
-  }));
   // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- registers the capture-phase stash shortcut with the command registry while the composer is mounted
   useEffect(() => {
     if (backgroundThread) return;
     return registerCommands(
       { "composer.stash": handleStashShortcut },
-      {
-        capture: true,
-        context: readShortcutContext,
-        when: (event) => !isInSideChatPane(event.target),
-      },
+      { capture: true },
     );
-  }, [backgroundThread, handleStashShortcut, readShortcutContext]);
+  }, [backgroundThread, handleStashShortcut]);
 
   return {
     stashQueue,
