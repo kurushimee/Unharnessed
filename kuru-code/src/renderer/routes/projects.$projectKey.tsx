@@ -4,7 +4,7 @@ export const Route = createFileRoute("/projects/$projectKey")({
   beforeLoad: async ({ params }) => {
     throw redirect({
       to: "/settings/projects",
-      search: { project: params.projectKey, machine: undefined },
+      search: { project: params.projectKey },
       replace: true,
     });
   },

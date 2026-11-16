@@ -7,13 +7,14 @@ const urls = new Map<string, string | null>();
 const asked = new Set<string>();
 const listeners = new Set<() => void>();
 
-function ask(cwd: string): void {
-  if (asked.has(cwd)) return;
-  asked.add(cwd);
-  void invoke<string | null>("project.favicon", { cwd })
+function ask(cwd: string, path: string | null): void {
+  const key = `${cwd}\n${path ?? ""}`;
+  if (asked.has(key)) return;
+  asked.add(key);
+  void invoke<string | null>("project.favicon", { cwd, path })
     .catch(() => null)
     .then((url) => {
-      urls.set(cwd, url);
+      urls.set(key, url);
       for (const listener of listeners) listener();
     });
 }
@@ -23,10 +24,13 @@ function subscribe(listener: () => void): () => void {
   return () => listeners.delete(listener);
 }
 
-/** The project's icon, `null` until known or when it has none. */
-export function useProjectFaviconUrl(cwd: string): string | null {
-  ask(cwd);
-  return useSyncExternalStore(subscribe, () => urls.get(cwd) ?? null);
+/**
+ * The project's icon, `null` until known or when it has none: the file chosen in its
+ * settings, else the one its folder has.
+ */
+export function useProjectFaviconUrl(cwd: string, path: string | null): string | null {
+  ask(cwd, path);
+  return useSyncExternalStore(subscribe, () => urls.get(`${cwd}\n${path ?? ""}`) ?? null);
 }
 
 /** Forgets the folders' icons, so the next render asks again. */

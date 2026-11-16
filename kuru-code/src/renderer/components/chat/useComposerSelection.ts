@@ -1,10 +1,10 @@
 import type { EnvironmentThreadShell } from "~/rt/state/models";
+import { providerSettingsRowId } from "../settings/agentSettingsCommon";
 import type { UnifiedSettings } from "~/contracts";
 import type { ComposerThreadTarget, DraftSessionState } from "../../composerDraftStore";
 import { useStableCallback } from "../../hooks/useStableCallback";
 import { useApplyThreadModelPick } from "./useApplyThreadModelPick";
 import {
-  type EnvironmentId,
   type ModelSelection,
   ProviderInstanceId,
   type ServerProvider,
@@ -21,7 +21,6 @@ import {
   makeModelDisabledReason,
 } from "../ChatView.logic";
 interface ComposerSelectionInput {
-  readonly environmentId: EnvironmentId;
   readonly composerDraftTarget: ComposerThreadTarget;
   readonly draftThread: DraftSessionState | null;
   readonly activeThread: EnvironmentThreadShell | undefined;
@@ -39,7 +38,6 @@ interface ComposerSelectionInput {
  */
 export function useComposerSelection(input: ComposerSelectionInput) {
   const {
-    environmentId,
     composerDraftTarget,
     draftThread,
     activeThread,
@@ -59,10 +57,8 @@ export function useComposerSelection(input: ComposerSelectionInput) {
   const applyThreadModelPick = useApplyThreadModelPick();
 
   const openProviderSetup = (instanceId: ProviderInstanceId) => {
-    void navigate({
-      to: "/settings/providers",
-      search: { environmentId, instanceId },
-    });
+    // kuru code's provider instance is the provider: its row on the providers page.
+    void navigate({ to: "/settings/providers", hash: providerSettingsRowId(instanceId) });
   };
   const openProviderSetupStable = useStableCallback(openProviderSetup);
 

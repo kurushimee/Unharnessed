@@ -10,17 +10,16 @@ import {
 import { AsyncResult } from "effect/reactivity";
 import * as Cause from "effect/Cause";
 
+import type { ProjectIconOverride } from "@shared/protocol";
 import { invoke } from "~/bridge";
 import { stackedThreadToast, toastManager } from "../components/ui/toast";
 import type { SidebarProjectGroupMember } from "../sidebarProjectGrouping";
 
 export type ProjectGroupUpdate = Partial<{
-  title: string;
+  /** `null`: back to the folder's name. */
+  title: string | null;
   faviconPath: string | null;
-  projectIcon:
-    | { kind: "monogram"; text: string; color: string }
-    | { kind: "emoji"; emoji: string }
-    | null;
+  projectIcon: ProjectIconOverride | null;
   pinned: boolean;
   archived: boolean;
 }>;

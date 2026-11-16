@@ -1826,7 +1826,6 @@ export default function ChatView(props: ChatViewProps) {
     onProviderModelSelectStable,
     openProviderSetupStable,
   } = useComposerSelection({
-    environmentId,
     composerDraftTarget,
     draftThread,
     activeThread,

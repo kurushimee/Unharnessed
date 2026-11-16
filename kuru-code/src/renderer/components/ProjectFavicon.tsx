@@ -76,8 +76,9 @@ export function ProjectFavicon(input: {
 
 function AutomaticProjectFavicon(input: Parameters<typeof ProjectFavicon>[0]) {
   const { project } = input;
-  // kuru code's main process finds the icon in the project's folder (main/favicons.ts).
-  const src = useProjectFaviconUrl(project.workspaceRoot);
+  // kuru code's main process reads the chosen file, else finds the icon in the project's
+  // folder (main/favicons.ts).
+  const src = useProjectFaviconUrl(project.workspaceRoot, project.faviconPath ?? null);
   const FallbackIcon = input.fallbackIcon ?? FolderCodeIcon;
 
   if (!src) {
@@ -90,7 +91,7 @@ function AutomaticProjectFavicon(input: Parameters<typeof ProjectFavicon>[0]) {
     );
   }
 
-  const cacheKey = `${project.environmentId}:${project.workspaceRoot}`;
+  const cacheKey = `${project.environmentId}:${project.workspaceRoot}:${project.faviconPath ?? ""}`;
 
   return (
     <ProjectFaviconImage

@@ -6,10 +6,7 @@ import {
   SourceControlProviderKind,
   type ScopedThreadRef,
 } from "~/contracts";
-import {
-  isAtomCommandInterrupted,
-  squashAtomCommandFailure,
-} from "~/rt/state/runtime";
+import { isAtomCommandInterrupted, squashAtomCommandFailure } from "~/rt/state/runtime";
 import type {
   GitRunStackedActionResult,
   GitStackedAction,
@@ -19,7 +16,6 @@ import type {
   SourceControlRepositoryVisibility,
   VcsStatusResult,
 } from "~/contracts";
-import { useNavigate } from "@tanstack/react-router";
 import * as Option from "effect/Option";
 import { useEffect, useEffectEvent, useRef, useState } from "react";
 import { useDeadlinePassed } from "../hooks/useDeadline";
@@ -65,6 +61,7 @@ import {
 } from "./GitActionsControl.logic";
 import { WizardPopup, WizardHeader, WizardSteps, WizardPanel, WizardFooter } from "./ui/wizard";
 import { StartTruncatedPath } from "./StartTruncatedPath";
+import { Badge } from "./ui/badge";
 import { Button } from "~/components/ui/button";
 import { Checkbox } from "~/components/ui/checkbox";
 import {
@@ -195,7 +192,7 @@ function getPublishProviderReadiness(input: {
   if (!discovered) {
     return {
       ready: false,
-      hint: "Provider status unavailable. Open Settings -> Source control and rescan.",
+      hint: "Provider status unavailable.",
     };
   }
   if (discovered.status !== "available") {
@@ -206,7 +203,7 @@ function getPublishProviderReadiness(input: {
       ready: false,
       hint:
         Option.getOrNull(discovered.auth.detail) ??
-        `${discovered.label} is not authenticated. Open Settings -> Source control for setup guidance.`,
+        `${discovered.label} is not authenticated.`,
     };
   }
   return { ready: true, hint: null };
@@ -431,7 +428,6 @@ interface PublishRepositoryDialogProps {
 
 function PublishRepositoryDialog(props: PublishRepositoryDialogProps) {
   const openLink = useOpenLink(props.threadRef);
-  const navigate = useNavigate();
   const sourceControlDiscovery = useEnvironmentQuery(
     props.environmentId === null
       ? null
@@ -572,11 +568,6 @@ function PublishRepositoryDialog(props: PublishRepositoryDialogProps) {
     }
   };
 
-  const openSourceControlSettings = () => {
-    handleOpenChange(false);
-    void navigate({ to: "/settings/source-control" });
-  };
-
   return (
     <Dialog open={props.open} onOpenChange={handleOpenChange}>
       <WizardPopup>
@@ -626,24 +617,11 @@ function PublishRepositoryDialog(props: PublishRepositoryDialogProps) {
                         {option.label}
                       </span>
                       <Tooltip>
-                        <TooltipTrigger
-                          render={
-                            <Button
-                              variant="warning-outline"
-                              size="micro"
-                              onClick={(event) => {
-                                event.preventDefault();
-                                event.stopPropagation();
-                                openSourceControlSettings();
-                              }}
-                            >
-                              Setup Required
-                            </Button>
-                          }
-                        />
+                        <TooltipTrigger render={<Badge variant="warning" size="sm" />}>
+                          Setup Required
+                        </TooltipTrigger>
                         <TooltipPopup side="top" align="end">
-                          {readiness.hint ??
-                            "Open Settings -> Source control to configure this provider."}
+                          {readiness.hint ?? "This provider is not set up on this machine."}
                         </TooltipPopup>
                       </Tooltip>
                     </div>

@@ -65,6 +65,7 @@ async function requestThreadUnpinConfirmation(input: {
 export function useThreadActions() {
   const router = useRouter();
   const confirmThreadUnpin = useClientSettings((settings) => settings.confirmThreadUnpin);
+  const confirmThreadDelete = useClientSettings((settings) => settings.confirmThreadDelete);
 
   const isRouteThread = (target: ScopedThreadRef) => {
     const params = router.state.matches.at(-1)?.params as
@@ -211,6 +212,11 @@ export function useThreadActions() {
     return result;
   };
 
+  const unarchiveThread = async (target: ScopedThreadRef): Promise<Result> => {
+    ThreadUndo.invalidate("archive", scopedThreadKey(target));
+    return update(target, { archivedAt: null });
+  };
+
   const deleteThread = async (
     target: ScopedThreadRef,
     _opts: { deletedThreadKeys?: ReadonlySet<string> } = {},
@@ -225,6 +231,23 @@ export function useThreadActions() {
     return result;
   };
 
+  const confirmAndDeleteThread = async (target: ScopedThreadRef, title: string): Promise<Result> => {
+    const localApi = readLocalApi();
+    if (confirmThreadDelete && localApi) {
+      const confirmed = await settlePromise(() =>
+        localApi.dialogs.confirm(
+          [`Delete thread "${title}"?`, "This permanently clears conversation history for this thread."].join(
+            "\n",
+          ),
+          { variant: "destructive" },
+        ),
+      );
+      if (confirmed._tag === "Failure") return confirmed;
+      if (!confirmed.value) return AsyncResult.success(undefined);
+    }
+    return deleteThread(target);
+  };
+
   return {
     settleThread,
     unsettleThread,
@@ -236,7 +259,9 @@ export function useThreadActions() {
     reorderActiveThread,
     markThreadUnread,
     archiveThread,
+    unarchiveThread,
     deleteThread,
+    confirmAndDeleteThread,
   };
 }
 

@@ -4,6 +4,8 @@ import { build, context } from "esbuild";
 import { fileURLToPath } from "node:url";
 import { dirname, resolve } from "node:path";
 import { spawnSync } from "node:child_process";
+import { readFileSync, rmSync } from "node:fs";
+import { writeLicenseManifest } from "./licenses.mjs";
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const watch = process.argv.includes("--watch");
@@ -37,9 +39,18 @@ if (watch) {
   const ctx = await context(options);
   await ctx.watch();
 } else {
-  await build(options);
+  const main = await build({ ...options, metafile: true });
   if (!mainOnly) {
     const vite = spawnSync(process.execPath, [resolve(root, "node_modules/vite/bin/vite.js"), "build"], { cwd: root, stdio: "inherit" });
     if (vite.status !== 0) process.exit(vite.status ?? 1);
+    // Settings -> About -> Open source licenses: the packages both bundles carry.
+    const listed = resolve(root, "dist/renderer/bundled-modules.json");
+    const count = writeLicenseManifest({
+      windowFiles: JSON.parse(readFileSync(listed, "utf8")),
+      mainFiles: Object.keys(main.metafile.inputs).map((input) => resolve(root, input)),
+      out: resolve(root, "dist/renderer/third-party-licenses.json"),
+    });
+    rmSync(listed);
+    console.log(`third-party-licenses.json: ${count} entries`);
   }
 }

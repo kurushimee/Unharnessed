@@ -36,6 +36,21 @@ function extensionPanel(): Plugin {
   };
 }
 
+/** The modules the window's bundle holds, for the license manifest (scripts/licenses.mjs). */
+function bundledModules(): Plugin {
+  return {
+    name: "kuru:bundled-modules",
+    apply: "build",
+    generateBundle(_options, bundle) {
+      const modules = new Set<string>();
+      for (const output of Object.values(bundle)) {
+        if (output.type === "chunk") for (const id of output.moduleIds) modules.add(id.split("?")[0]!);
+      }
+      this.emitFile({ type: "asset", fileName: "bundled-modules.json", source: JSON.stringify([...modules]) });
+    },
+  };
+}
+
 export default defineConfig({
   root,
   base: "./",
@@ -49,6 +64,7 @@ export default defineConfig({
     }),
     react({ compiler: true }),
     tailwindcss(),
+    bundledModules(),
   ],
   resolve: {
     alias: {

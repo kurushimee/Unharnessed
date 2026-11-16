@@ -26,10 +26,11 @@ export type Project = {
   faviconPath?: string;
 };
 
-/** T3 Code's project icon override: a monogram or an emoji. */
+/** T3 Code's project icon override: a monogram, an emoji or a Lucide icon. */
 export type ProjectIconOverride =
   | { kind: "monogram"; text: string; color: string }
-  | { kind: "emoji"; emoji: string };
+  | { kind: "emoji"; emoji: string }
+  | { kind: "lucide"; name: string; color: string };
 
 /** A pull request a thread's branch has on GitHub. */
 export type PullRequestRef = {

@@ -1,6 +1,7 @@
 import { app, BrowserWindow, clipboard, dialog, ipcMain, nativeTheme, Notification, screen, shell } from "electron";
 import { spawn } from "node:child_process";
 import { existsSync } from "node:fs";
+import { readFile, rename, writeFile } from "node:fs/promises";
 import { homedir } from "node:os";
 import { join, resolve } from "node:path";
 import { connectedModels } from "../../../vscode/src/instructions";
@@ -12,7 +13,7 @@ import type { AppPrefs, HostMessage, WebviewMessage } from "@shared/protocol";
 import { showContextMenu } from "./contextMenu";
 import { Git } from "./git";
 import { createRpc } from "./rpc";
-import { projectFavicon } from "./favicons";
+import { FAVICON_EXTENSIONS, projectFavicon } from "./favicons";
 import { Files } from "./files";
 import { searchThreads } from "./search";
 import { createLog } from "./log";
@@ -49,6 +50,7 @@ async function start(): Promise<void> {
   log.info(`kuru code ${version} (electron ${process.versions.electron}), agent ${binary}`);
   const home = homedir();
   const store = new Store(app.getPath("userData"));
+  const keybindingsFile = join(app.getPath("userData"), "keybindings.json");
   const git = new Git(log);
   const shown = new ShownAgent(log);
   // Before the first thread: they listen to every agent's notifications.
@@ -505,7 +507,39 @@ async function start(): Promise<void> {
       threads.setMeta(String(id), threadMetaChange(change));
       return null;
     },
-    "project.favicon": ({ cwd }) => projectFavicon(String(cwd)),
+    // Settings -> About -> Open source licenses: the manifest the build wrote (scripts/licenses.mjs).
+    "app.licenses": async () =>
+      JSON.parse(await readFile(join(__dirname, "..", "renderer", "third-party-licenses.json"), "utf8")) as unknown,
+    "project.favicon": ({ cwd, path }) => projectFavicon(String(cwd), typeof path === "string" ? path : null),
+    // T3 Code's "Choose file" for a project's icon: an image picked from disk.
+    "project.pickFavicon": async ({ cwd }) => {
+      const options: Electron.OpenDialogOptions = {
+        title: "Choose a project icon",
+        defaultPath: String(cwd),
+        properties: ["openFile"],
+        filters: [{ name: "Images", extensions: FAVICON_EXTENSIONS }],
+      };
+      const picked = await (window ? dialog.showOpenDialog(window, options) : dialog.showOpenDialog(options));
+      return picked.canceled ? null : (picked.filePaths[0] ?? null);
+    },
+    // T3 Code's keybindings.json: the user's rules, which kuru code merges over its defaults.
+    "keybindings.get": async () => {
+      try {
+        return JSON.parse(await readFile(keybindingsFile, "utf8")) as unknown;
+      } catch {
+        return null;
+      }
+    },
+    "keybindings.set": async ({ rules }) => {
+      await writeFile(`${keybindingsFile}.tmp`, `${JSON.stringify(rules, null, 2)}\n`, "utf8");
+      await rename(`${keybindingsFile}.tmp`, keybindingsFile);
+      return null;
+    },
+    "keybindings.open": async () => {
+      if (!existsSync(keybindingsFile)) await writeFile(keybindingsFile, "[]\n", "utf8");
+      const error = await shell.openPath(keybindingsFile);
+      return error || null;
+    },
     "clientSettings.get": () => store.clientSettings,
     "serverSettings.get": () => store.serverSettings,
     "serverSettings.set": ({ settings }) => {

@@ -4,24 +4,17 @@ import "@fontsource-variable/inter";
 import { createHashHistory, RouterProvider } from "@tanstack/react-router";
 import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
-import { DEFAULT_PREFS } from "@shared/protocol";
 import { post } from "./bridge";
-import { startMainAppLocationTracking } from "./components/sidebar/mainAppLocation";
+import { startAppServices } from "./appInit";
 import { getRouter } from "./router";
 import { startKuru } from "./kuru/start";
-import { applyTheme, connect } from "./state";
+import { connect } from "./state";
 import "./index.css";
 
-try {
-  applyTheme(JSON.parse(localStorage.getItem("kuru:theme") ?? "null") ?? DEFAULT_PREFS.theme);
-} catch {
-  applyTheme(DEFAULT_PREFS.theme);
-}
-document.documentElement.classList.add("electron", "electron-windows", "wco");
 connect();
 
 const router = getRouter(createHashHistory());
-startMainAppLocationTracking(router);
+startAppServices(router);
 startKuru(router);
 
 void router.load().then(() => {

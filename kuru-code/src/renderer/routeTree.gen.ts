@@ -12,10 +12,25 @@ import { Route as rootRouteImport } from './routes/__root'
 import { Route as ChatRouteImport } from './routes/_chat'
 import { Route as ChatIndexRouteImport } from './routes/_chat.index'
 import { Route as ChatPullRequestsRouteImport } from './routes/_chat.pull-requests'
+import { Route as ChatSettingsRouteImport } from './routes/_chat.settings'
 import { Route as ChatUsageRouteImport } from './routes/_chat.usage'
 import { Route as ProjectsProjectKeyRouteImport } from './routes/projects.$projectKey'
 import { Route as ChatEnvironmentIdThreadIdRouteImport } from './routes/_chat.$environmentId.$threadId'
 import { Route as ChatDraftDraftIdRouteImport } from './routes/_chat.draft.$draftId'
+import { Route as ChatSettingsAboutRouteImport } from './routes/_chat.settings.about'
+import { Route as ChatSettingsAgentRouteImport } from './routes/_chat.settings.agent'
+import { Route as ChatSettingsAppearanceRouteImport } from './routes/_chat.settings.appearance'
+import { Route as ChatSettingsArchivedRouteImport } from './routes/_chat.settings.archived'
+import { Route as ChatSettingsChatRouteImport } from './routes/_chat.settings.chat'
+import { Route as ChatSettingsDiffsRouteImport } from './routes/_chat.settings.diffs'
+import { Route as ChatSettingsGeneralRouteImport } from './routes/_chat.settings.general'
+import { Route as ChatSettingsInstructionsRouteImport } from './routes/_chat.settings.instructions'
+import { Route as ChatSettingsKeybindingsRouteImport } from './routes/_chat.settings.keybindings'
+import { Route as ChatSettingsMcpRouteImport } from './routes/_chat.settings.mcp'
+import { Route as ChatSettingsOpenSourceLicensesRouteImport } from './routes/_chat.settings.open-source-licenses'
+import { Route as ChatSettingsProjectsRouteImport } from './routes/_chat.settings.projects'
+import { Route as ChatSettingsProvidersRouteImport } from './routes/_chat.settings.providers'
+import { Route as ChatSettingsSkillsRouteImport } from './routes/_chat.settings.skills'
 
 const ChatRoute = ChatRouteImport.update({
   id: '/_chat',
@@ -29,6 +44,11 @@ const ChatIndexRoute = ChatIndexRouteImport.update({
 const ChatPullRequestsRoute = ChatPullRequestsRouteImport.update({
   id: '/pull-requests',
   path: '/pull-requests',
+  getParentRoute: () => ChatRoute,
+} as any)
+const ChatSettingsRoute = ChatSettingsRouteImport.update({
+  id: '/settings',
+  path: '/settings',
   getParentRoute: () => ChatRoute,
 } as any)
 const ChatUsageRoute = ChatUsageRouteImport.update({
@@ -52,59 +72,221 @@ const ChatDraftDraftIdRoute = ChatDraftDraftIdRouteImport.update({
   path: '/draft/$draftId',
   getParentRoute: () => ChatRoute,
 } as any)
+const ChatSettingsAboutRoute = ChatSettingsAboutRouteImport.update({
+  id: '/about',
+  path: '/about',
+  getParentRoute: () => ChatSettingsRoute,
+} as any)
+const ChatSettingsAgentRoute = ChatSettingsAgentRouteImport.update({
+  id: '/agent',
+  path: '/agent',
+  getParentRoute: () => ChatSettingsRoute,
+} as any)
+const ChatSettingsAppearanceRoute = ChatSettingsAppearanceRouteImport.update({
+  id: '/appearance',
+  path: '/appearance',
+  getParentRoute: () => ChatSettingsRoute,
+} as any)
+const ChatSettingsArchivedRoute = ChatSettingsArchivedRouteImport.update({
+  id: '/archived',
+  path: '/archived',
+  getParentRoute: () => ChatSettingsRoute,
+} as any)
+const ChatSettingsChatRoute = ChatSettingsChatRouteImport.update({
+  id: '/chat',
+  path: '/chat',
+  getParentRoute: () => ChatSettingsRoute,
+} as any)
+const ChatSettingsDiffsRoute = ChatSettingsDiffsRouteImport.update({
+  id: '/diffs',
+  path: '/diffs',
+  getParentRoute: () => ChatSettingsRoute,
+} as any)
+const ChatSettingsGeneralRoute = ChatSettingsGeneralRouteImport.update({
+  id: '/general',
+  path: '/general',
+  getParentRoute: () => ChatSettingsRoute,
+} as any)
+const ChatSettingsInstructionsRoute =
+  ChatSettingsInstructionsRouteImport.update({
+    id: '/instructions',
+    path: '/instructions',
+    getParentRoute: () => ChatSettingsRoute,
+  } as any)
+const ChatSettingsKeybindingsRoute = ChatSettingsKeybindingsRouteImport.update({
+  id: '/keybindings',
+  path: '/keybindings',
+  getParentRoute: () => ChatSettingsRoute,
+} as any)
+const ChatSettingsMcpRoute = ChatSettingsMcpRouteImport.update({
+  id: '/mcp',
+  path: '/mcp',
+  getParentRoute: () => ChatSettingsRoute,
+} as any)
+const ChatSettingsOpenSourceLicensesRoute =
+  ChatSettingsOpenSourceLicensesRouteImport.update({
+    id: '/open-source-licenses',
+    path: '/open-source-licenses',
+    getParentRoute: () => ChatSettingsRoute,
+  } as any)
+const ChatSettingsProjectsRoute = ChatSettingsProjectsRouteImport.update({
+  id: '/projects',
+  path: '/projects',
+  getParentRoute: () => ChatSettingsRoute,
+} as any)
+const ChatSettingsProvidersRoute = ChatSettingsProvidersRouteImport.update({
+  id: '/providers',
+  path: '/providers',
+  getParentRoute: () => ChatSettingsRoute,
+} as any)
+const ChatSettingsSkillsRoute = ChatSettingsSkillsRouteImport.update({
+  id: '/skills',
+  path: '/skills',
+  getParentRoute: () => ChatSettingsRoute,
+} as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof ChatIndexRoute
   '/pull-requests': typeof ChatPullRequestsRoute
+  '/settings': typeof ChatSettingsRouteWithChildren
   '/usage': typeof ChatUsageRoute
   '/projects/$projectKey': typeof ProjectsProjectKeyRoute
   '/$environmentId/$threadId': typeof ChatEnvironmentIdThreadIdRoute
   '/draft/$draftId': typeof ChatDraftDraftIdRoute
+  '/settings/about': typeof ChatSettingsAboutRoute
+  '/settings/agent': typeof ChatSettingsAgentRoute
+  '/settings/appearance': typeof ChatSettingsAppearanceRoute
+  '/settings/archived': typeof ChatSettingsArchivedRoute
+  '/settings/chat': typeof ChatSettingsChatRoute
+  '/settings/diffs': typeof ChatSettingsDiffsRoute
+  '/settings/general': typeof ChatSettingsGeneralRoute
+  '/settings/instructions': typeof ChatSettingsInstructionsRoute
+  '/settings/keybindings': typeof ChatSettingsKeybindingsRoute
+  '/settings/mcp': typeof ChatSettingsMcpRoute
+  '/settings/open-source-licenses': typeof ChatSettingsOpenSourceLicensesRoute
+  '/settings/projects': typeof ChatSettingsProjectsRoute
+  '/settings/providers': typeof ChatSettingsProvidersRoute
+  '/settings/skills': typeof ChatSettingsSkillsRoute
 }
 export interface FileRoutesByTo {
   '/pull-requests': typeof ChatPullRequestsRoute
+  '/settings': typeof ChatSettingsRouteWithChildren
   '/usage': typeof ChatUsageRoute
   '/projects/$projectKey': typeof ProjectsProjectKeyRoute
   '/': typeof ChatIndexRoute
   '/$environmentId/$threadId': typeof ChatEnvironmentIdThreadIdRoute
   '/draft/$draftId': typeof ChatDraftDraftIdRoute
+  '/settings/about': typeof ChatSettingsAboutRoute
+  '/settings/agent': typeof ChatSettingsAgentRoute
+  '/settings/appearance': typeof ChatSettingsAppearanceRoute
+  '/settings/archived': typeof ChatSettingsArchivedRoute
+  '/settings/chat': typeof ChatSettingsChatRoute
+  '/settings/diffs': typeof ChatSettingsDiffsRoute
+  '/settings/general': typeof ChatSettingsGeneralRoute
+  '/settings/instructions': typeof ChatSettingsInstructionsRoute
+  '/settings/keybindings': typeof ChatSettingsKeybindingsRoute
+  '/settings/mcp': typeof ChatSettingsMcpRoute
+  '/settings/open-source-licenses': typeof ChatSettingsOpenSourceLicensesRoute
+  '/settings/projects': typeof ChatSettingsProjectsRoute
+  '/settings/providers': typeof ChatSettingsProvidersRoute
+  '/settings/skills': typeof ChatSettingsSkillsRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/_chat': typeof ChatRouteWithChildren
   '/_chat/pull-requests': typeof ChatPullRequestsRoute
+  '/_chat/settings': typeof ChatSettingsRouteWithChildren
   '/_chat/usage': typeof ChatUsageRoute
   '/projects/$projectKey': typeof ProjectsProjectKeyRoute
   '/_chat/': typeof ChatIndexRoute
   '/_chat/$environmentId/$threadId': typeof ChatEnvironmentIdThreadIdRoute
   '/_chat/draft/$draftId': typeof ChatDraftDraftIdRoute
+  '/_chat/settings/about': typeof ChatSettingsAboutRoute
+  '/_chat/settings/agent': typeof ChatSettingsAgentRoute
+  '/_chat/settings/appearance': typeof ChatSettingsAppearanceRoute
+  '/_chat/settings/archived': typeof ChatSettingsArchivedRoute
+  '/_chat/settings/chat': typeof ChatSettingsChatRoute
+  '/_chat/settings/diffs': typeof ChatSettingsDiffsRoute
+  '/_chat/settings/general': typeof ChatSettingsGeneralRoute
+  '/_chat/settings/instructions': typeof ChatSettingsInstructionsRoute
+  '/_chat/settings/keybindings': typeof ChatSettingsKeybindingsRoute
+  '/_chat/settings/mcp': typeof ChatSettingsMcpRoute
+  '/_chat/settings/open-source-licenses': typeof ChatSettingsOpenSourceLicensesRoute
+  '/_chat/settings/projects': typeof ChatSettingsProjectsRoute
+  '/_chat/settings/providers': typeof ChatSettingsProvidersRoute
+  '/_chat/settings/skills': typeof ChatSettingsSkillsRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
   fullPaths:
     | '/'
     | '/pull-requests'
+    | '/settings'
     | '/usage'
     | '/projects/$projectKey'
     | '/$environmentId/$threadId'
     | '/draft/$draftId'
+    | '/settings/about'
+    | '/settings/agent'
+    | '/settings/appearance'
+    | '/settings/archived'
+    | '/settings/chat'
+    | '/settings/diffs'
+    | '/settings/general'
+    | '/settings/instructions'
+    | '/settings/keybindings'
+    | '/settings/mcp'
+    | '/settings/open-source-licenses'
+    | '/settings/projects'
+    | '/settings/providers'
+    | '/settings/skills'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/pull-requests'
+    | '/settings'
     | '/usage'
     | '/projects/$projectKey'
     | '/'
     | '/$environmentId/$threadId'
     | '/draft/$draftId'
+    | '/settings/about'
+    | '/settings/agent'
+    | '/settings/appearance'
+    | '/settings/archived'
+    | '/settings/chat'
+    | '/settings/diffs'
+    | '/settings/general'
+    | '/settings/instructions'
+    | '/settings/keybindings'
+    | '/settings/mcp'
+    | '/settings/open-source-licenses'
+    | '/settings/projects'
+    | '/settings/providers'
+    | '/settings/skills'
   id:
     | '__root__'
     | '/_chat'
     | '/_chat/pull-requests'
+    | '/_chat/settings'
     | '/_chat/usage'
     | '/projects/$projectKey'
     | '/_chat/'
     | '/_chat/$environmentId/$threadId'
     | '/_chat/draft/$draftId'
+    | '/_chat/settings/about'
+    | '/_chat/settings/agent'
+    | '/_chat/settings/appearance'
+    | '/_chat/settings/archived'
+    | '/_chat/settings/chat'
+    | '/_chat/settings/diffs'
+    | '/_chat/settings/general'
+    | '/_chat/settings/instructions'
+    | '/_chat/settings/keybindings'
+    | '/_chat/settings/mcp'
+    | '/_chat/settings/open-source-licenses'
+    | '/_chat/settings/projects'
+    | '/_chat/settings/providers'
+    | '/_chat/settings/skills'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -135,6 +317,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ChatPullRequestsRouteImport
       parentRoute: typeof ChatRoute
     }
+    '/_chat/settings': {
+      id: '/_chat/settings'
+      path: '/settings'
+      fullPath: '/settings'
+      preLoaderRoute: typeof ChatSettingsRouteImport
+      parentRoute: typeof ChatRoute
+    }
     '/_chat/usage': {
       id: '/_chat/usage'
       path: '/usage'
@@ -163,11 +352,148 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ChatDraftDraftIdRouteImport
       parentRoute: typeof ChatRoute
     }
+    '/_chat/settings/about': {
+      id: '/_chat/settings/about'
+      path: '/about'
+      fullPath: '/settings/about'
+      preLoaderRoute: typeof ChatSettingsAboutRouteImport
+      parentRoute: typeof ChatSettingsRoute
+    }
+    '/_chat/settings/agent': {
+      id: '/_chat/settings/agent'
+      path: '/agent'
+      fullPath: '/settings/agent'
+      preLoaderRoute: typeof ChatSettingsAgentRouteImport
+      parentRoute: typeof ChatSettingsRoute
+    }
+    '/_chat/settings/appearance': {
+      id: '/_chat/settings/appearance'
+      path: '/appearance'
+      fullPath: '/settings/appearance'
+      preLoaderRoute: typeof ChatSettingsAppearanceRouteImport
+      parentRoute: typeof ChatSettingsRoute
+    }
+    '/_chat/settings/archived': {
+      id: '/_chat/settings/archived'
+      path: '/archived'
+      fullPath: '/settings/archived'
+      preLoaderRoute: typeof ChatSettingsArchivedRouteImport
+      parentRoute: typeof ChatSettingsRoute
+    }
+    '/_chat/settings/chat': {
+      id: '/_chat/settings/chat'
+      path: '/chat'
+      fullPath: '/settings/chat'
+      preLoaderRoute: typeof ChatSettingsChatRouteImport
+      parentRoute: typeof ChatSettingsRoute
+    }
+    '/_chat/settings/diffs': {
+      id: '/_chat/settings/diffs'
+      path: '/diffs'
+      fullPath: '/settings/diffs'
+      preLoaderRoute: typeof ChatSettingsDiffsRouteImport
+      parentRoute: typeof ChatSettingsRoute
+    }
+    '/_chat/settings/general': {
+      id: '/_chat/settings/general'
+      path: '/general'
+      fullPath: '/settings/general'
+      preLoaderRoute: typeof ChatSettingsGeneralRouteImport
+      parentRoute: typeof ChatSettingsRoute
+    }
+    '/_chat/settings/instructions': {
+      id: '/_chat/settings/instructions'
+      path: '/instructions'
+      fullPath: '/settings/instructions'
+      preLoaderRoute: typeof ChatSettingsInstructionsRouteImport
+      parentRoute: typeof ChatSettingsRoute
+    }
+    '/_chat/settings/keybindings': {
+      id: '/_chat/settings/keybindings'
+      path: '/keybindings'
+      fullPath: '/settings/keybindings'
+      preLoaderRoute: typeof ChatSettingsKeybindingsRouteImport
+      parentRoute: typeof ChatSettingsRoute
+    }
+    '/_chat/settings/mcp': {
+      id: '/_chat/settings/mcp'
+      path: '/mcp'
+      fullPath: '/settings/mcp'
+      preLoaderRoute: typeof ChatSettingsMcpRouteImport
+      parentRoute: typeof ChatSettingsRoute
+    }
+    '/_chat/settings/open-source-licenses': {
+      id: '/_chat/settings/open-source-licenses'
+      path: '/open-source-licenses'
+      fullPath: '/settings/open-source-licenses'
+      preLoaderRoute: typeof ChatSettingsOpenSourceLicensesRouteImport
+      parentRoute: typeof ChatSettingsRoute
+    }
+    '/_chat/settings/projects': {
+      id: '/_chat/settings/projects'
+      path: '/projects'
+      fullPath: '/settings/projects'
+      preLoaderRoute: typeof ChatSettingsProjectsRouteImport
+      parentRoute: typeof ChatSettingsRoute
+    }
+    '/_chat/settings/providers': {
+      id: '/_chat/settings/providers'
+      path: '/providers'
+      fullPath: '/settings/providers'
+      preLoaderRoute: typeof ChatSettingsProvidersRouteImport
+      parentRoute: typeof ChatSettingsRoute
+    }
+    '/_chat/settings/skills': {
+      id: '/_chat/settings/skills'
+      path: '/skills'
+      fullPath: '/settings/skills'
+      preLoaderRoute: typeof ChatSettingsSkillsRouteImport
+      parentRoute: typeof ChatSettingsRoute
+    }
   }
 }
 
+interface ChatSettingsRouteChildren {
+  ChatSettingsAboutRoute: typeof ChatSettingsAboutRoute
+  ChatSettingsAgentRoute: typeof ChatSettingsAgentRoute
+  ChatSettingsAppearanceRoute: typeof ChatSettingsAppearanceRoute
+  ChatSettingsArchivedRoute: typeof ChatSettingsArchivedRoute
+  ChatSettingsChatRoute: typeof ChatSettingsChatRoute
+  ChatSettingsDiffsRoute: typeof ChatSettingsDiffsRoute
+  ChatSettingsGeneralRoute: typeof ChatSettingsGeneralRoute
+  ChatSettingsInstructionsRoute: typeof ChatSettingsInstructionsRoute
+  ChatSettingsKeybindingsRoute: typeof ChatSettingsKeybindingsRoute
+  ChatSettingsMcpRoute: typeof ChatSettingsMcpRoute
+  ChatSettingsOpenSourceLicensesRoute: typeof ChatSettingsOpenSourceLicensesRoute
+  ChatSettingsProjectsRoute: typeof ChatSettingsProjectsRoute
+  ChatSettingsProvidersRoute: typeof ChatSettingsProvidersRoute
+  ChatSettingsSkillsRoute: typeof ChatSettingsSkillsRoute
+}
+
+const ChatSettingsRouteChildren: ChatSettingsRouteChildren = {
+  ChatSettingsAboutRoute: ChatSettingsAboutRoute,
+  ChatSettingsAgentRoute: ChatSettingsAgentRoute,
+  ChatSettingsAppearanceRoute: ChatSettingsAppearanceRoute,
+  ChatSettingsArchivedRoute: ChatSettingsArchivedRoute,
+  ChatSettingsChatRoute: ChatSettingsChatRoute,
+  ChatSettingsDiffsRoute: ChatSettingsDiffsRoute,
+  ChatSettingsGeneralRoute: ChatSettingsGeneralRoute,
+  ChatSettingsInstructionsRoute: ChatSettingsInstructionsRoute,
+  ChatSettingsKeybindingsRoute: ChatSettingsKeybindingsRoute,
+  ChatSettingsMcpRoute: ChatSettingsMcpRoute,
+  ChatSettingsOpenSourceLicensesRoute: ChatSettingsOpenSourceLicensesRoute,
+  ChatSettingsProjectsRoute: ChatSettingsProjectsRoute,
+  ChatSettingsProvidersRoute: ChatSettingsProvidersRoute,
+  ChatSettingsSkillsRoute: ChatSettingsSkillsRoute,
+}
+
+const ChatSettingsRouteWithChildren = ChatSettingsRoute._addFileChildren(
+  ChatSettingsRouteChildren,
+)
+
 interface ChatRouteChildren {
   ChatPullRequestsRoute: typeof ChatPullRequestsRoute
+  ChatSettingsRoute: typeof ChatSettingsRouteWithChildren
   ChatUsageRoute: typeof ChatUsageRoute
   ChatIndexRoute: typeof ChatIndexRoute
   ChatEnvironmentIdThreadIdRoute: typeof ChatEnvironmentIdThreadIdRoute
@@ -176,6 +502,7 @@ interface ChatRouteChildren {
 
 const ChatRouteChildren: ChatRouteChildren = {
   ChatPullRequestsRoute: ChatPullRequestsRoute,
+  ChatSettingsRoute: ChatSettingsRouteWithChildren,
   ChatUsageRoute: ChatUsageRoute,
   ChatIndexRoute: ChatIndexRoute,
   ChatEnvironmentIdThreadIdRoute: ChatEnvironmentIdThreadIdRoute,

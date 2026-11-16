@@ -10,7 +10,9 @@ import {
   type ServerSettingsPatch,
   type EnvironmentId,
   type ServerProvider,
+  type ResolvedKeybindingsConfig,
 } from "~/contracts";
+import { loadKeybindings, onKeybindingsChange } from "./keybindings";
 import { DEFAULT_RESOLVED_KEYBINDINGS } from "~/shared/keybindings";
 import { appAtomRegistry } from "~/rpc/atomRegistry";
 import { useStore, type Store } from "~/state";
@@ -20,7 +22,6 @@ import { applyServerSettingsPatch } from "~/shared/serverSettings";
 import { Atom } from "effect/reactivity";
 
 const decodeConfig = Schema.decodeUnknownSync(ServerConfig);
-const encodeKeybindings = (value: unknown) => value;
 
 /** What kuru code's environment can do, in T3 Code's capability names. */
 const CAPABILITIES = {
@@ -40,7 +41,12 @@ const CAPABILITIES = {
   commandOutputStreaming: false,
 };
 
-function buildConfig(home: string, providers: ReadonlyArray<ServerProvider>, settings: unknown): ServerConfig {
+function buildConfig(
+  home: string,
+  providers: ReadonlyArray<ServerProvider>,
+  settings: unknown,
+  keybindings: ResolvedKeybindingsConfig,
+): ServerConfig {
   const config = decodeConfig({
     environment: {
       environmentId: LOCAL_ENVIRONMENT_ID,
@@ -56,8 +62,8 @@ function buildConfig(home: string, providers: ReadonlyArray<ServerProvider>, set
       sessionCookieName: "kuru",
     },
     cwd: home,
-    keybindingsConfigPath: `${home}/.unharnessed/keybindings.json`,
-    keybindings: encodeKeybindings(DEFAULT_RESOLVED_KEYBINDINGS),
+    keybindingsConfigPath: "keybindings.json",
+    keybindings: [],
     issues: [],
     providers: [],
     availableEditors: ["vscode", "file-manager"],
@@ -73,7 +79,7 @@ function buildConfig(home: string, providers: ReadonlyArray<ServerProvider>, set
     threadFind: true,
     threadLinkMetadata: true,
   });
-  return { ...config, providers };
+  return { ...config, providers, keybindings };
 }
 
 const NO_PROVIDERS: ReadonlyArray<ServerProvider> = [];
@@ -94,19 +100,34 @@ const configAtom = Atom.make<ServerConfig | null>(null).pipe(
 let storedSettings: unknown = undefined;
 let settingsLoaded = false;
 
+let keybindings: ResolvedKeybindingsConfig = DEFAULT_RESOLVED_KEYBINDINGS;
+
 let built: {
   home: string;
   providers: ReadonlyArray<ServerProvider>;
   settings: unknown;
+  keybindings: ResolvedKeybindingsConfig;
   config: ServerConfig;
 } | null = null;
 function refresh(state: Store): void {
   const home = state.app?.home;
   if (!home || !settingsLoaded) return;
   const providers = providersSource();
-  if (built?.home === home && built.providers === providers && built.settings === storedSettings) return;
+  if (
+    built?.home === home &&
+    built.providers === providers &&
+    built.settings === storedSettings &&
+    built.keybindings === keybindings
+  )
+    return;
   try {
-    built = { home, providers, settings: storedSettings, config: buildConfig(home, providers, storedSettings) };
+    built = {
+      home,
+      providers,
+      settings: storedSettings,
+      keybindings,
+      config: buildConfig(home, providers, storedSettings, keybindings),
+    };
   } catch (error) {
     console.error("kuru: the server config did not decode", error);
     return;
@@ -128,6 +149,11 @@ export function startServerConfig(): void {
       settingsLoaded = true;
       refresh(useStore.getState());
     });
+  onKeybindingsChange((next) => {
+    keybindings = next;
+    refresh(useStore.getState());
+  });
+  void loadKeybindings().catch((error) => console.error("kuru: the keybindings did not load", error));
   useStore.subscribe((state, previous) => {
     if (state.app !== previous.app || state.providers !== previous.providers) refresh(state);
   });

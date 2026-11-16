@@ -107,18 +107,29 @@ async function findPath(root: string): Promise<string | null> {
 
 const cache = new Map<string, { url: string | null; at: number }>();
 
-/** The project's icon as a data URL, or `null` when it has none. */
-export async function projectFavicon(root: string): Promise<string | null> {
-  const cached = cache.get(root);
+/** The image formats an icon can be, for the file picker. */
+export const FAVICON_EXTENSIONS = Object.keys(MIME).map((extension) => extension.slice(1));
+
+/**
+ * The project's icon as a data URL, or `null` when it has none: the file chosen in its
+ * settings (`chosen`, relative to the project or absolute), else the one found in it.
+ */
+export async function projectFavicon(root: string, chosen: string | null = null): Promise<string | null> {
+  const key = `${root}\n${chosen ?? ""}`;
+  const cached = cache.get(key);
   if (cached && Date.now() - cached.at < (cached.url ? HIT_TTL : MISS_TTL)) return cached.url;
   let url: string | null = null;
-  const path = await findPath(root).catch(() => null);
+  const path = chosen
+    ? MIME[extname(chosen).toLowerCase()]
+      ? resolve(root, chosen)
+      : null
+    : await findPath(root).catch(() => null);
   if (path) {
     const bytes = await readFile(path).catch(() => null);
     if (bytes && bytes.length <= MAX_BYTES) {
       url = `data:${MIME[extname(path).toLowerCase()]};base64,${bytes.toString("base64")}`;
     }
   }
-  cache.set(root, { url, at: Date.now() });
+  cache.set(key, { url, at: Date.now() });
   return url;
 }

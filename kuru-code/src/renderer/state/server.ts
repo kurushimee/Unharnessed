@@ -15,10 +15,13 @@ import {
   type ServerProvider,
   type ServerSettings,
   type ServerSettingsPatch,
+  type ServerRemoveKeybindingInput,
+  type ServerUpsertKeybindingInput,
 } from "~/contracts";
+import { removeKeybinding, upsertKeybinding } from "~/kuru/keybindings";
 import { useAtomValue } from "@effect/atom-react";
 import { Atom, AsyncResult } from "effect/reactivity";
-import { DEFAULT_RESOLVED_KEYBINDINGS, mergeWithDefaultKeybindings } from "~/shared/keybindings";
+import { DEFAULT_RESOLVED_KEYBINDINGS } from "~/shared/keybindings";
 import { serverConfigAtom, updateServerSettings } from "~/kuru/serverConfig";
 import {
   createEnvironmentRpcCommand,
@@ -100,8 +103,16 @@ export const serverEnvironment = {
   }),
   refreshUsageRates: rpcCommand("environment-data:server:refresh-usage-rates", WS_METHODS.serverRefreshUsageRates),
   refreshProviders: rpcCommand("environment-data:server:refresh-providers", WS_METHODS.serverRefreshProviders),
-  upsertKeybinding: rpcCommand("environment-data:server:upsert-keybinding", WS_METHODS.serverUpsertKeybinding),
-  removeKeybinding: rpcCommand("environment-data:server:remove-keybinding", WS_METHODS.serverRemoveKeybinding),
+  upsertKeybinding: createLocalCommand({
+    label: "environment-data:server:upsert-keybinding",
+    execute: (target: { readonly environmentId: EnvironmentId; readonly input: ServerUpsertKeybindingInput }) =>
+      upsertKeybinding(target.input),
+  }),
+  removeKeybinding: createLocalCommand({
+    label: "environment-data:server:remove-keybinding",
+    execute: (target: { readonly environmentId: EnvironmentId; readonly input: ServerRemoveKeybindingInput }) =>
+      removeKeybinding(target.input),
+  }),
   consumeResetCredit: rpcCommand("environment-data:server:consume-reset-credit", WS_METHODS.providerConsumeResetCredit),
   prepareTriage: rpcCommand("environment-data:server:prepare-triage", WS_METHODS.serverPrepareTriage),
   runScheduledTaskNow: rpcCommand("environment-data:server:scheduled-task:run-now", WS_METHODS.scheduledTasksRunNow),
@@ -145,8 +156,7 @@ export const themeServerEnvironmentThemesAtom = Atom.make(
 export const themeServerSettingsAtom = primaryServerSettingsAtom;
 
 export const primaryServerKeybindingsAtom = Atom.make((get): ResolvedKeybindingsConfig => {
-  const custom = get(primaryServerConfigAtom)?.keybindings;
-  return custom ? mergeWithDefaultKeybindings(custom) : DEFAULT_RESOLVED_KEYBINDINGS;
+  return get(primaryServerConfigAtom)?.keybindings ?? DEFAULT_RESOLVED_KEYBINDINGS;
 });
 
 export function readPrimaryServerKeybindings(): ResolvedKeybindingsConfig {
