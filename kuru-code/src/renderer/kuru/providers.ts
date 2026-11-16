@@ -17,7 +17,7 @@ import {
 import type { ModelChoice, Provider, SessionState } from "@shared/protocol";
 import { useStore, type Store } from "~/state";
 
-import { setServerProvidersSource } from "./serverConfig";
+import { providersChanged, setServerProvidersSource } from "./serverConfig";
 
 /** The T3 Code driver whose icon and name an Unharnessed provider shows. */
 export function driverKindOfProvider(providerId: string, local: boolean): ProviderDriverKind {
@@ -115,6 +115,7 @@ let usageLimitsSource: () => ReadonlyMap<string, ServerProviderUsageLimits> = ()
 export function setUsageLimitsSource(source: () => ReadonlyMap<string, ServerProviderUsageLimits>): void {
   usageLimitsSource = source;
   built = null;
+  providersChanged();
 }
 
 let built: { providers: unknown; session: unknown; limits: unknown; value: ReadonlyArray<ServerProvider> } | null = null;

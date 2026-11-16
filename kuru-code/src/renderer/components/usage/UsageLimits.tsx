@@ -349,11 +349,9 @@ export function ResetCredits({
 
 /** Advance now only on explicit refresh to avoid page repaints from ticking. */
 export function UsageLimitsSection({
-  selectedEnvironmentIds,
   hiddenProviders,
   now,
 }: {
-  readonly selectedEnvironmentIds: ReadonlySet<EnvironmentId> | null;
   readonly hiddenProviders: ReadonlySet<UsageProviderKind>;
   readonly now: number;
 }) {
@@ -362,7 +360,6 @@ export function UsageLimitsSection({
   const isVisible = (instanceId: string) => !hiddenProviders.has(instanceId);
   const selected = new Map(
     [...presentations].flatMap(([id, presentation]) => {
-      if (selectedEnvironmentIds !== null && !selectedEnvironmentIds.has(id)) return [];
       const config = presentation.serverConfig;
       if (hiddenProviders.size === 0 || config === null) return [[id, presentation] as const];
       return [

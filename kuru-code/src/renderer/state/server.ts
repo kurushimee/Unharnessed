@@ -23,6 +23,9 @@ import { useAtomValue } from "@effect/atom-react";
 import { Atom, AsyncResult } from "effect/reactivity";
 import { DEFAULT_RESOLVED_KEYBINDINGS } from "~/shared/keybindings";
 import { serverConfigAtom, updateServerSettings } from "~/kuru/serverConfig";
+import { refreshUsageLimits } from "~/kuru/limits";
+import { serverProvidersOf } from "~/kuru/providers";
+import { useStore } from "~/state";
 import {
   createEnvironmentRpcCommand,
   createEnvironmentRpcQueryAtomFamily,
@@ -102,7 +105,14 @@ export const serverEnvironment = {
     staleTimeMs: 60_000,
   }),
   refreshUsageRates: rpcCommand("environment-data:server:refresh-usage-rates", WS_METHODS.serverRefreshUsageRates),
-  refreshProviders: rpcCommand("environment-data:server:refresh-providers", WS_METHODS.serverRefreshProviders),
+  // Unharnessed's providers come with the session; what a refresh reads again is their usage limits.
+  refreshProviders: createLocalCommand({
+    label: "environment-data:server:refresh-providers",
+    execute: async (target: { readonly environmentId: EnvironmentId; readonly input: { readonly modelCatalogOnly?: boolean } }) => {
+      if (target.input.modelCatalogOnly !== true) await refreshUsageLimits();
+      return { providers: serverProvidersOf(useStore.getState()) };
+    },
+  }),
   upsertKeybinding: createLocalCommand({
     label: "environment-data:server:upsert-keybinding",
     execute: (target: { readonly environmentId: EnvironmentId; readonly input: ServerUpsertKeybindingInput }) =>

@@ -12,6 +12,7 @@ import { appProjectIdOf, startShellAtoms } from "./shells";
 import { startThreadDetails } from "./threadDetails";
 import { startProviders } from "./providers";
 import { startServerConfig } from "./serverConfig";
+import { refreshUsageLimits } from "./limits";
 
 function followRoute(router: AnyRouter): void {
   let last: string | null = null;
@@ -47,4 +48,10 @@ export function startKuru(router: AnyRouter): void {
   startProviders();
   startServerConfig();
   followRoute(router);
+  // The subscriptions' limits, which the composer, thread details and Usage show: read now and
+  // every five minutes, as T3 Code's server probes its providers.
+  const readLimits = () =>
+    void refreshUsageLimits().catch((error) => console.error("kuru: the usage limits did not load", error));
+  readLimits();
+  setInterval(readLimits, 5 * 60_000);
 }

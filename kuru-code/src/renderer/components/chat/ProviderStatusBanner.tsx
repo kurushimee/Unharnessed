@@ -104,7 +104,6 @@ export const ProviderStatusBanner = memo(function ProviderStatusBanner({
   onOpenProviderSetup?: (instanceId: ProviderInstanceId) => void;
   status: ServerProvider | null;
 }) {
-  const canRefresh = useAtomValue(serverEnvironment.refreshProviders.permissionAtom(environmentId));
   const refreshProviders = useAtomCommand(serverEnvironment.refreshProviders, {
     label: "Refresh provider status",
   });
@@ -112,12 +111,12 @@ export const ProviderStatusBanner = memo(function ProviderStatusBanner({
   const [isRefreshing, setIsRefreshing] = useState(false);
 
   const refresh = async () => {
-    if (!status || !canRefresh || refreshingRef.current) return;
+    if (!status || refreshingRef.current) return;
     refreshingRef.current = true;
     setIsRefreshing(true);
     await refreshProviders({
       environmentId,
-      input: { instanceId: status.instanceId, refreshModels: true },
+      input: {},
     });
     refreshingRef.current = false;
     setIsRefreshing(false);
@@ -165,7 +164,7 @@ export const ProviderStatusBanner = memo(function ProviderStatusBanner({
               ) : null}
               <Button
                 aria-label={`Refresh ${providerName} provider status`}
-                disabled={!canRefresh || isRefreshing}
+                disabled={isRefreshing}
                 onClick={() => void refresh()}
                 size="xs"
                 variant="outline"

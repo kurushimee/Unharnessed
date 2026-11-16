@@ -104,6 +104,11 @@ export function setServerProvidersSource(source: () => ReadonlyArray<ServerProvi
   refresh(useStore.getState());
 }
 
+/** The providers' source answers anew (their usage limits were read). */
+export function providersChanged(): void {
+  refresh(useStore.getState());
+}
+
 const configAtom = Atom.make<ServerConfig | null>(null).pipe(
   Atom.keepAlive,
   Atom.withLabel("kuru:server-config"),

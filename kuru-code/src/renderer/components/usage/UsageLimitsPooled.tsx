@@ -620,7 +620,7 @@ export function UsageLimitsPooled({
     <div className="flex flex-col gap-8">
       {pools.length === 0 && notices.length === 0 && externalLinks.length === 0 ? (
         <p className="text-sm text-muted-foreground">
-          No provider on the selected environments reports subscription limits.
+          No provider reports subscription limits.
         </p>
       ) : null}
       <SegmentPopoverContext value={segmentPopover}>
