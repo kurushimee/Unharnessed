@@ -18,7 +18,10 @@ Ways it can fail, each checked below:
 5. harness text (`/compact`, harness notices, the summarizer's own
    instructions) is listed as if the user wrote it;
 6. a compaction entry written by an older build (no list on it) breaks the
-   context instead of falling back to the summary alone.
+   context instead of falling back to the summary alone;
+7. a new compaction after such entries, or after one from the first build
+   with lists (whose list missed those prompts), drops the prompts they
+   summarized away, though those prompts are still in the session file.
 
 Writes <out-dir>/<step>.out (the command run, then its json-mode stdout),
 <step>.err, and <step>-requests.json for every run (UNHARNESSED_BIN picks
@@ -223,6 +226,66 @@ code, requests = run(work, "old-entry-turn", "P6_44e1 continue")
 joined = "\n".join(request_texts(requests[0])) if requests else ""
 check("old entry: the turn exits 0 with the summary and no prompt list (6)",
       code == 0 and SUMMARY in joined and "<user-prompts>" not in joined, (code, joined[:300]))
+
+# 7. A compaction by a build with no lists, one by the first build with
+# lists (an empty one), then a new compaction in
+# a new process: its list holds every prompt typed before its cut, read
+# back from the session file, and the next turn's request shows them.
+case = "after-old-entries"
+work = setup(case, 60)
+typed = []
+
+
+def legacy_turn(index, resume=True):
+    typed.append(PROMPTS[index])
+    code, requests = run(work, f"{case}-turn{index + 1}", PROMPTS[index], resume=resume)
+    check(f"{case}: turn {index + 1} exits 0", code == 0 and requests, code)
+    return requests[0] if requests else {"messages": []}
+
+
+legacy_turn(0, resume=False)
+legacy_turn(1)
+run(work, f"{case}-compact1", "/compact")
+legacy_turn(2)
+run(work, f"{case}-compact2", "/compact")
+lines = session_file(work).read_text(encoding="utf-8").splitlines()
+first_old = next(i for i, line in enumerate(lines) if line.strip() and json.loads(line).get("type") == "compaction")
+for i, line in enumerate(lines):
+    entry = json.loads(line) if line.strip() else None
+    if entry and entry.get("type") == "compaction":
+        details = entry.get("details") or {}
+        details.pop("userPromptsComplete", None)
+        # The older of the two from a build with no list; the newer from the
+        # first build with lists, whose list started from the prior one's: empty.
+        if i == first_old:
+            details.pop("userPrompts", None)
+        else:
+            details["userPrompts"] = []
+        lines[i] = json.dumps(entry, ensure_ascii=False)
+session_file(work).write_text("\n".join(lines) + "\n", encoding="utf-8")
+check(f"{case}: two compactions, neither with a complete list",
+      len(compactions(work)) == 2
+      and all("userPromptsComplete" not in (c.get("details") or {}) for c in compactions(work)))
+legacy_turn(3)
+code, _ = run(work, f"{case}-compact3", "/compact")
+check(f"{case}: the new /compact exits 0", code == 0 and len(compactions(work)) == 3, code)
+by_id = {e.get("id"): e for e in entries(work)}
+newest = compactions(work)[-1]
+# The prompts on the file's branch before the cut, root first.
+before_cut = []
+node = by_id.get(by_id[newest["firstKeptEntryId"]].get("parentId"))
+while node is not None:
+    message = node.get("message") or {}
+    if node.get("type") == "message" and message.get("role") == "user":
+        content = message.get("content")
+        before_cut.append(content if isinstance(content, str) else "\n".join(b.get("text", "") for b in content))
+    node = by_id.get(node.get("parentId"))
+before_cut.reverse()
+check(f"{case}: the new cut summarizes away the first three prompts", before_cut[:3] == typed[:3], len(before_cut))
+listed = (newest.get("details") or {}).get("userPrompts")
+check(f"{case}: the new entry lists every prompt before its cut, from the file, in order (7)",
+      listed == before_cut, (len(listed or []), len(before_cut)))
+check_turn_request(case, "after the new compaction, in a new process (7)", legacy_turn(4), typed)
 
 SERVER.shutdown()
 print(f"\n{len(FAILED)} failed" if FAILED else "\nall passed")

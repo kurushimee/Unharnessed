@@ -145,6 +145,54 @@ pub enum CompactOutcome {
     Skipped(&'static str),
 }
 
+/// Every user prompt before the cut at `first_kept_index`, in order. With a
+/// prior compaction that recorded its list: that list, then the prompts
+/// from its retained boundary to the cut. With none: the prompts before
+/// the cut. With a prior one from a build that recorded no complete list, the
+/// prompts it summarized away are no longer loaded (a windowed resume
+/// starts at its boundary) but are still in the session file: the whole
+/// branch is read from there, root to cut.
+async fn summarized_user_prompts(
+    session: &SessionManager,
+    entries: &[FileEntry],
+    boundary_start: usize,
+    first_kept_index: usize,
+) -> Vec<String> {
+    use crate::session::user_prompts::{
+        branch_user_prompts, collect_user_prompts, complete_compaction_user_prompts,
+    };
+    let since_boundary = || collect_user_prompts(&entries[boundary_start..first_kept_index]);
+    let prior = entries.iter().rev().find_map(|entry| match entry {
+        FileEntry::Compaction { payload, .. } => Some(complete_compaction_user_prompts(payload)),
+        _ => None,
+    });
+    match prior {
+        None => since_boundary(),
+        Some(Some(mut listed)) => {
+            listed.extend(since_boundary());
+            listed
+        }
+        Some(None) => {
+            let Some(cut_id) = entries.get(first_kept_index).and_then(FileEntry::id) else {
+                return since_boundary();
+            };
+            let file_entries = match session.get_session_file() {
+                Some(path) => {
+                    let path = path.to_path_buf();
+                    tokio::task::spawn_blocking(move || {
+                        crate::session::manager::load_entries_from_file(&path, false)
+                    })
+                    .await
+                    .unwrap_or_default()
+                }
+                None => Vec::new(),
+            };
+            branch_user_prompts(file_entries.iter().chain(entries.iter()), cut_id)
+                .unwrap_or_else(since_boundary)
+        }
+    }
+}
+
 /// Run compaction over the session: summarize the pre-cut prefix, persist the
 /// entry, and return the rebuilt post-compaction context messages.
 ///
@@ -444,22 +492,9 @@ pub async fn execute_compaction(
     };
     let mut entry = compaction_entry_for(&result, &details, options.custom_instructions);
     // The user's prompts never reduce to the summary: the entry keeps every
-    // one it summarizes away, verbatim and in order — the prior
-    // compaction's list, then the prompts between its retained boundary
-    // and the new cut (see `session::user_prompts`).
-    let mut user_prompts = entries
-        .iter()
-        .rev()
-        .find_map(|entry| match entry {
-            FileEntry::Compaction { payload, .. } => Some(
-                crate::session::user_prompts::compaction_user_prompts(payload),
-            ),
-            _ => None,
-        })
-        .unwrap_or_default();
-    user_prompts.extend(crate::session::user_prompts::collect_user_prompts(
-        &entries[preparation.boundary_start..first_kept_index],
-    ));
+    // one it summarizes away, verbatim and in order (see
+    // `session::user_prompts`).
+    let user_prompts = summarized_user_prompts(session, &entries, preparation.boundary_start, first_kept_index).await;
     crate::session::user_prompts::set_compaction_user_prompts(&mut entry, user_prompts);
     // TS `appendCompaction` persists the full record: `details`,
     // `fromHook`, `customInstructions` and `usage` ride on the durable row alongside the summary, boundary,

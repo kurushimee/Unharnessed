@@ -12,7 +12,13 @@
 //! [`USER_PROMPTS_DETAILS_KEY`]: a windowed resume loads only the entries
 //! after the latest compaction's boundary, so the older prompts must live
 //! on that entry itself.
+//!
+//! A prior compaction written before the list existed has none, but the
+//! prompts it summarized away are still in the session file: the next
+//! compaction then rebuilds the whole list from the branch, root to cut
+//! ([`branch_user_prompts`]).
 
+use std::collections::{HashMap, HashSet};
 use std::fmt::Write as _;
 
 use uh_types::ai::{UserContent, UserContentBlock};
@@ -20,6 +26,12 @@ use uh_types::session::{AgentMessage, CompactionEntry, FileEntry};
 
 /// The `details` key holding the summarized-away user prompts.
 pub const USER_PROMPTS_DETAILS_KEY: &str = "userPrompts";
+
+/// The `details` key saying the list is every prompt before the cut. The
+/// first build that recorded lists started each from the prior entry's,
+/// so after entries with no list its lists miss the prompts those
+/// summarized away; a list without this mark is rebuilt from the file.
+pub const USER_PROMPTS_COMPLETE_KEY: &str = "userPromptsComplete";
 
 /// What a non-text block of a user prompt becomes in the verbatim list.
 const IMAGE_PLACEHOLDER: &str = "[image]";
@@ -43,26 +55,57 @@ pub fn prompt_text(content: &UserContent) -> Option<String> {
     (!text.trim().is_empty()).then_some(text)
 }
 
-/// The user prompts among `entries`, in order. Harness notices are
-/// `custom_message` rows, never `user` messages, so they are not counted.
-#[must_use]
-pub fn collect_user_prompts(entries: &[FileEntry]) -> Vec<String> {
-    entries
-        .iter()
-        .filter_map(|entry| match entry {
-            FileEntry::Message {
-                message: AgentMessage::User(user),
-                ..
-            } => prompt_text(&user.content),
-            _ => None,
-        })
-        .collect()
+/// The user's prompt an entry holds. Harness notices are `custom_message`
+/// rows, never `user` messages, so they hold none.
+fn entry_prompt(entry: &FileEntry) -> Option<String> {
+    match entry {
+        FileEntry::Message {
+            message: AgentMessage::User(user),
+            ..
+        } => prompt_text(&user.content),
+        _ => None,
+    }
 }
 
-/// The user prompts a compaction entry recorded (none for entries written
-/// before this was recorded).
+/// The user prompts among `entries`, in order.
 #[must_use]
-pub fn compaction_user_prompts(entry: &CompactionEntry) -> Vec<String> {
+pub fn collect_user_prompts(entries: &[FileEntry]) -> Vec<String> {
+    entries.iter().filter_map(entry_prompt).collect()
+}
+
+/// Every user prompt on the branch that leads to the entry `cut_id`, root
+/// first, the cut entry itself excluded. `entries` is every entry known
+/// (the session file's, then the loaded ones; a later duplicate wins).
+/// `None` when `cut_id` is not among them.
+#[must_use]
+pub fn branch_user_prompts<'a>(
+    entries: impl IntoIterator<Item = &'a FileEntry>,
+    cut_id: &str,
+) -> Option<Vec<String>> {
+    let by_id: HashMap<&str, &FileEntry> = entries
+        .into_iter()
+        .filter_map(|entry| entry.id().map(|id| (id, entry)))
+        .collect();
+    let mut parent = by_id.get(cut_id)?.parent_id();
+    let mut seen = HashSet::new();
+    let mut prompts = Vec::new();
+    while let Some(id) = parent {
+        // A damaged file could loop its parent links.
+        if !seen.insert(id) {
+            break;
+        }
+        let Some(entry) = by_id.get(id) else { break };
+        prompts.extend(entry_prompt(entry));
+        parent = entry.parent_id();
+    }
+    prompts.reverse();
+    Some(prompts)
+}
+
+/// The user prompts a compaction entry recorded (what the model sees beside
+/// its summary; possibly incomplete, see [`complete_compaction_user_prompts`]).
+#[must_use]
+pub fn compaction_user_prompts(entry: &CompactionEntry) -> Option<Vec<String>> {
     entry
         .details
         .as_ref()
@@ -74,10 +117,23 @@ pub fn compaction_user_prompts(entry: &CompactionEntry) -> Vec<String> {
                 .filter_map(|prompt| prompt.as_str().map(str::to_string))
                 .collect()
         })
-        .unwrap_or_default()
 }
 
-/// Record `prompts` on a compaction entry's `details`.
+/// The user prompts a compaction entry recorded, when they are known to be
+/// every prompt before its cut; `None` otherwise (no list, or one from the
+/// build before [`USER_PROMPTS_COMPLETE_KEY`]).
+#[must_use]
+pub fn complete_compaction_user_prompts(entry: &CompactionEntry) -> Option<Vec<String>> {
+    let complete = entry
+        .details
+        .as_ref()
+        .and_then(|details| details.get(USER_PROMPTS_COMPLETE_KEY))
+        .and_then(serde_json::Value::as_bool)
+        == Some(true);
+    complete.then(|| compaction_user_prompts(entry)).flatten()
+}
+
+/// Record `prompts` (every prompt before the cut) on a compaction entry's `details`.
 pub fn set_compaction_user_prompts(entry: &mut CompactionEntry, prompts: Vec<String>) {
     let mut details = match entry.details.take() {
         Some(serde_json::Value::Object(map)) => map,
@@ -86,6 +142,10 @@ pub fn set_compaction_user_prompts(entry: &mut CompactionEntry, prompts: Vec<Str
     details.insert(
         USER_PROMPTS_DETAILS_KEY.to_string(),
         serde_json::Value::from(prompts),
+    );
+    details.insert(
+        USER_PROMPTS_COMPLETE_KEY.to_string(),
+        serde_json::Value::Bool(true),
     );
     entry.details = Some(serde_json::Value::Object(details));
 }

@@ -385,7 +385,7 @@ pub fn build_session_context(entries: &[FileEntry], leaf_id: Option<&str>) -> Se
         // verbatim beside the summary (see `user_prompts`).
         let summary = user_prompts::summary_with_user_prompts(
             &payload.summary,
-            &user_prompts::compaction_user_prompts(&payload),
+            &user_prompts::compaction_user_prompts(&payload).unwrap_or_default(),
         );
         messages.push(AgentMessage::CompactionSummary(CompactionSummaryMessage {
             summary,
