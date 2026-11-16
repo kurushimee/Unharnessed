@@ -3,6 +3,7 @@ pub mod discovery;
 pub mod manager;
 pub mod manager_ext;
 pub mod tree;
+pub mod user_prompts;
 pub mod window;
 mod window_cache;
 
@@ -380,8 +381,14 @@ pub fn build_session_context(entries: &[FileEntry], leaf_id: Option<&str>) -> Se
                 append_message(&entries[index], &mut retained);
             }
         }
+        // The user's prompts the compaction summarized away come back
+        // verbatim beside the summary (see `user_prompts`).
+        let summary = user_prompts::summary_with_user_prompts(
+            &payload.summary,
+            &user_prompts::compaction_user_prompts(&payload),
+        );
         messages.push(AgentMessage::CompactionSummary(CompactionSummaryMessage {
-            summary: payload.summary,
+            summary,
             tokens_before: payload.tokens_before,
             retained_message_count: Some(retained.len() as u64),
             custom_instructions: payload.custom_instructions,

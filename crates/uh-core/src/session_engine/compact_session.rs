@@ -363,16 +363,21 @@ pub async fn execute_compaction(
             .downcast_ref::<SummaryCallError>()
             .is_some_and(SummaryCallError::is_content_refusal)
     }) && !history.is_empty();
-    let (turn_prefix_slice, first_kept_entry, details) = if refused_prefix {
+    let (turn_prefix_slice, first_kept_entry, first_kept_index, details) = if refused_prefix {
         super::compaction_trace::trace(
             "compact.turn_prefix_refused",
             &serde_json::json!({ "firstKeptEntryIndex": history_end }),
         );
         let first_kept_entry = entries[history_end].id().unwrap_or_default().to_string();
         let details = details_for(&history, &entries, prev_compaction_index);
-        (None, first_kept_entry, details)
+        (None, first_kept_entry, history_end, details)
     } else {
-        (turn_prefix_slice?, first_kept_entry, details)
+        (
+            turn_prefix_slice?,
+            first_kept_entry,
+            cut.first_kept_entry_index,
+            details,
+        )
     };
     super::compaction_trace::trace(
         "compact.summarizer_resolved",
@@ -437,7 +442,25 @@ pub async fn execute_compaction(
         tokens_before,
         usage: summed_usage(&slices),
     };
-    let entry = compaction_entry_for(&result, &details, options.custom_instructions);
+    let mut entry = compaction_entry_for(&result, &details, options.custom_instructions);
+    // The user's prompts never reduce to the summary: the entry keeps every
+    // one it summarizes away, verbatim and in order — the prior
+    // compaction's list, then the prompts between its retained boundary
+    // and the new cut (see `session::user_prompts`).
+    let mut user_prompts = entries
+        .iter()
+        .rev()
+        .find_map(|entry| match entry {
+            FileEntry::Compaction { payload, .. } => Some(
+                crate::session::user_prompts::compaction_user_prompts(payload),
+            ),
+            _ => None,
+        })
+        .unwrap_or_default();
+    user_prompts.extend(crate::session::user_prompts::collect_user_prompts(
+        &entries[preparation.boundary_start..first_kept_index],
+    ));
+    crate::session::user_prompts::set_compaction_user_prompts(&mut entry, user_prompts);
     // TS `appendCompaction` persists the full record: `details`,
     // `fromHook`, `customInstructions` and `usage` ride on the durable row alongside the summary, boundary,
     // and token count.
