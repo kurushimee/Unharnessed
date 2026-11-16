@@ -1,11 +1,8 @@
-// From T3 Code's contracts/threadSearch.ts and orchestrationV2.ts (thread find).
 import * as Schema from "effect/Schema";
 
 import {
   IsoDateTime,
   MessageId,
-  NonNegativeInt,
-  RunId,
   ProjectId,
   ThreadId,
   TrimmedNonEmptyString,
@@ -61,46 +58,3 @@ export class OrchestrationSearchThreadsError extends Schema.TaggedError<Orchestr
     cause: Schema.optional(Schema.Defect()),
   },
 ) {}
-
-export const OrchestrationV2SearchThreadInput = Schema.Struct({
-  threadId: ThreadId,
-  skills: Schema.optionalKey(
-    Schema.Array(
-      Schema.Struct({
-        name: Schema.String.check(Schema.isMaxLength(200)),
-        displayName: Schema.optional(Schema.String.check(Schema.isMaxLength(200))),
-      }),
-    ).check(Schema.isMaxLength(1_000)),
-  ),
-  query: TrimmedNonEmptyString.check(Schema.isMaxLength(200)),
-  index: Schema.optionalKey(NonNegativeInt),
-  offset: Schema.optionalKey(Schema.Int),
-  start: Schema.optionalKey(
-    Schema.Struct({ entryId: TrimmedNonEmptyString, occurrence: NonNegativeInt }),
-  ),
-});
-export type OrchestrationV2SearchThreadInput = typeof OrchestrationV2SearchThreadInput.Type;
-
-export const OrchestrationV2ThreadFindMatch = Schema.Struct({
-  entryId: TrimmedNonEmptyString,
-  runId: Schema.NullOr(RunId),
-  occurrence: NonNegativeInt,
-});
-export const OrchestrationV2SearchThreadResult = Schema.Struct({
-  complete: Schema.optionalKey(Schema.Boolean),
-  snapshotSequence: NonNegativeInt,
-  totalMatches: NonNegativeInt,
-  activeIndex: NonNegativeInt,
-  match: Schema.NullOr(OrchestrationV2ThreadFindMatch),
-  navigation: Schema.optionalKey(
-    Schema.Array(
-      Schema.Struct({
-        entryId: TrimmedNonEmptyString,
-        runId: Schema.NullOr(RunId),
-        startIndex: NonNegativeInt,
-        count: NonNegativeInt,
-      }),
-    ).check(Schema.isMaxLength(17)),
-  ),
-});
-export type OrchestrationV2SearchThreadResult = typeof OrchestrationV2SearchThreadResult.Type;

@@ -1,21 +1,11 @@
-// The data shapes the T3 Code interface reads, for the Unharnessed agent.
-// T3 Code's contracts are Effect schemas of its own server; kuru code has no
-// such server, so each shape here is the part its screens read, filled by
-// kuru code's main process from Unharnessed (sessions, ACP, git, gh).
+// T3 Code's contracts (packages/contracts), the schemas its interface reads.
+// Most files are T3 Code's own; kuru code's main process fills them from
+// Unharnessed (sessions, ACP, git, gh). ipc.ts's window API is kept here.
 
-import { EnvironmentId, ProjectId, ThreadId } from "./baseSchemas";
+import { EnvironmentId } from "./baseSchemas";
 
 /** kuru code runs on one machine: every thread and project is in this environment. */
 export const LOCAL_ENVIRONMENT_ID = EnvironmentId.make("local");
-
-export interface ScopedThreadRef {
-  readonly environmentId: EnvironmentId;
-  readonly threadId: ThreadId;
-}
-export interface ScopedProjectRef {
-  readonly environmentId: EnvironmentId;
-  readonly projectId: ProjectId;
-}
 
 export * from "./baseSchemas";
 export * from "./keybindings";
@@ -24,11 +14,26 @@ export * from "./providerInstance";
 export * from "./vcs";
 export * from "./git";
 export * from "./sourceControl";
-
-/** A thread the sidebar lists: a top-level one (Unharnessed has no subagent or side-chat threads). */
-export function isListedThreadLineage(lineage: { readonly relationshipToParent: string | null }): boolean {
-  return lineage.relationshipToParent === null;
-}
+export * from "./pullRequest";
+export * from "./threadSearch";
+export * from "./chatAttachment";
+export * from "./threadPullRequest";
+export * from "./filesystem";
+export * from "./auth";
+export * from "./checkpointDiff";
+export * from "./composerContext";
+export * from "./environment";
+export * from "./guestShare";
+export * from "./model";
+export * from "./modelSelection";
+export * from "./orchestrationProject";
+export * from "./orchestrationV2";
+export * from "./orchestrationV2IdTable";
+export * from "./project";
+export * from "./providerPolicy";
+export * from "./providerRuntime";
+export * from "./secretReference";
+export * from "./threadTags";
 
 /** A native context menu's entry, from T3 Code's ipc.ts (kuru code shows them with Electron's Menu). */
 export interface ContextMenuItem<T extends string = string> {
@@ -42,13 +47,6 @@ export interface ContextMenuItem<T extends string = string> {
   separatorBefore?: boolean;
   checked?: boolean;
   children?: readonly ContextMenuItem<T>[];
-}
-
-/** From T3 Code's orchestrationV2.ts: when a thread was opened, for search ranking. */
-export interface OrchestrationV2ThreadOpens {
-  readonly openedAt: number;
-  readonly score: number;
-  readonly picks: ReadonlyArray<{ readonly query: string; readonly at: number }>;
 }
 
 /** From T3 Code's ipc.ts: what the window asks of its host. */
@@ -77,62 +75,44 @@ export interface LocalApi {
   };
 }
 
-/** The kind of machine an environment runs on; kuru code's one environment is this computer. */
-export type EnvironmentMachineKind =
-  | "server"
-  | "cloud"
-  | "linux"
-  | "desktop"
-  | "laptop"
-  | "mac-mini"
-  | "mac-studio";
-
-export type ProjectIconColor =
-  | "gray"
-  | "red"
-  | "orange"
-  | "amber"
-  | "yellow"
-  | "lime"
-  | "green"
-  | "emerald"
-  | "teal"
-  | "cyan"
-  | "sky"
-  | "blue"
-  | "indigo"
-  | "violet"
-  | "purple"
-  | "fuchsia"
-  | "pink"
-  | "rose";
-
-/** From T3 Code's contracts/environment.ts: the repository a project's folder is a checkout of. */
-export interface RepositoryIdentity {
-  readonly canonicalKey: string;
-  readonly locator: { readonly source: "git-remote"; readonly remoteName: string; readonly remoteUrl: string };
-  readonly webUrl?: string;
-  readonly rootPath?: string;
-  readonly displayName?: string;
-  readonly provider?: string;
-  readonly owner?: string;
-  readonly name?: string;
-  readonly origin?: { readonly canonicalKey: string; readonly remoteUrl?: string; readonly displayName?: string };
-}
-
-export function repositoryGroupingKeyOf(identity: RepositoryIdentity): string {
-  return identity.origin?.canonicalKey ?? identity.canonicalKey;
-}
-
-export function repositoryGroupingDisplayNameOf(identity: RepositoryIdentity): string | undefined {
-  return identity.origin
-    ? (identity.origin.displayName ?? identity.origin.canonicalKey)
-    : identity.displayName;
-}
-
-export * from "./pullRequest";
-export * from "./threadSearch";
-export * from "./chatAttachment";
-export * from "./projectScript";
-export * from "./threadPullRequest";
-export * from "./filesystem";
+export * from "./acpRegistry";
+export * from "./assets";
+export * from "./assistantCitations";
+export * from "./browserImport";
+export * from "./browserProfile";
+export * from "./desktopAppActivation";
+export * from "./device";
+export * from "./editor";
+export * from "./ipc";
+export * from "./managedPolicy";
+export * from "./preview";
+export * from "./previewCapture";
+export * from "./providerUsageLimits";
+export * from "./remoteAccess";
+export * from "./server";
+export * from "./settingsSecretValue";
+export * from "./speech";
+export * from "./usage";
+export * from "./usageLimitSourceId";
+export * from "./worktreeSetup";
+export * from "./agentSessions";
+export * from "./background";
+export * from "./clientRpcPermissions";
+export * from "./composerContextClipboard";
+export * from "./environmentHttp";
+export * from "./mcpApps";
+export * from "./orchestrationDispatch";
+export * from "./peerLink";
+export * from "./projectClone";
+export * from "./provider";
+export * from "./providerSetup";
+export * from "./pullRequestReviewGuide";
+export * from "./relay";
+export * from "./relayClient";
+export * from "./resourceTelemetry";
+export * from "./review";
+export * from "./rpc";
+export * from "./scheduledTask";
+export * from "./secretRequest";
+export * from "./terminal";
+export * from "./t3ProjectFile";

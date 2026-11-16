@@ -1,6 +1,7 @@
 import * as React from "react";
 
-export async function writeTextToClipboard(value: string): Promise<boolean> {
+/** T3 Code's signature; `_target` names what is copied in T3 Code's errors. */
+export async function writeTextToClipboard(value: string, _target = "text"): Promise<boolean> {
   if (!value) return false;
   await navigator.clipboard.writeText(value);
   return true;

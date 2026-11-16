@@ -4,7 +4,7 @@ import type { SavedSession } from "../../../vscode/src/agent";
 import { Conversation } from "../../../vscode/src/conversations";
 import type { Files as PanelFiles } from "../../../vscode/src/files";
 import type { ShownAgent } from "../../../vscode/src/shown";
-import type { AppState, Draft, ThreadRow } from "@shared/protocol";
+import type { AppState, Attachment, Draft, ThreadRow } from "@shared/protocol";
 import { Files } from "./files";
 import type { Git } from "./git";
 import { tagged } from "./log";
@@ -46,6 +46,8 @@ export class Threads {
   private rescan: NodeJS.Timeout | undefined;
   private emitTimer: NodeJS.Timeout | undefined;
   private readonly prLookups = new Set<string>();
+  /** The window's ids of new threads whose session is not made yet, or not yet noted. */
+  private readonly aliases = new WeakMap<Conversation, string>();
   private readonly createListeners = new Set<(conversation: Conversation) => void>();
   private readonly showListeners = new Set<() => void>();
   private readonly appListeners = new Set<(app: AppState) => void>();
@@ -108,6 +110,54 @@ export class Threads {
     }
   }
 
+  /** The session id of a thread the window names: its own, or the one its alias stands for. */
+  resolve(id: string): string {
+    for (const session of this.sessions) if (this.store.thread(session.id).alias === id) return session.id;
+    for (const conversation of this.open) {
+      if (this.aliases.get(conversation) === id && conversation.id) return conversation.id;
+    }
+    return id;
+  }
+
+  /** The id the window knows a thread by: its alias, else its session id. */
+  private windowId(conversation: Conversation): string | undefined {
+    const pending = this.aliases.get(conversation);
+    if (pending) return pending;
+    const { id } = conversation;
+    return id ? (this.store.thread(id).alias ?? id) : undefined;
+  }
+
+  private openByWindowId(id: string): Conversation | undefined {
+    return this.open.find((conversation) => this.windowId(conversation) === id || conversation.id === id);
+  }
+
+  /**
+   * A message to the thread `id`, on screen: an open one, a saved one (its
+   * agent starts on it), or a new one in `cwd` that `id` then names.
+   */
+  send(id: string, cwd: string, text: string, images: Attachment[], now: boolean): void {
+    let conversation = this.openByWindowId(id);
+    if (conversation) this.show(conversation, NO_DRAFT);
+    else if (this.sessions.some((session) => session.id === this.resolve(id))) {
+      this.openSaved(this.resolve(id));
+      conversation = this.shownOne;
+    } else {
+      const shown = this.shownOne;
+      conversation =
+        shown && shown.empty && this.cwdOf(shown) === cwd && !this.aliases.has(shown)
+          ? shown
+          : this.begin(undefined, cwd, NO_DRAFT);
+      this.aliases.set(conversation, id);
+      this.log.info(`threads: [${conversation.tag}] is the window's ${id}`);
+    }
+    conversation?.chat.send(text, images, undefined, now);
+  }
+
+  /** Stops the running turn of the thread `id`, open on screen or not. */
+  cancel(id: string): void {
+    this.openByWindowId(id)?.chat.cancel();
+  }
+
   /** A new thread on screen, in `cwd`; `draft` stays with the one it leaves. */
   newChat(cwd: string, draft: Draft = NO_DRAFT): void {
     const shown = this.shownOne;
@@ -120,8 +170,9 @@ export class Threads {
   }
 
   /** A saved thread on screen: as it is when it is open, else its agent starts on its file. */
-  openSaved(id: string, draft: Draft = NO_DRAFT): void {
-    const open = this.open.find((conversation) => conversation.id === id);
+  openSaved(windowId: string, draft: Draft = NO_DRAFT): void {
+    const open = this.openByWindowId(windowId);
+    const id = this.resolve(windowId);
     if (open) {
       this.show(open, draft);
       return;
@@ -142,8 +193,9 @@ export class Threads {
   }
 
   /** Deletes a saved thread: its agent stops first (it holds the file); the one on screen gives way to a new one. */
-  async remove(id: string): Promise<string | undefined> {
-    const conversation = this.open.find((open) => open.id === id);
+  async remove(windowId: string): Promise<string | undefined> {
+    const conversation = this.openByWindowId(windowId);
+    const id = this.resolve(windowId);
     if (conversation && conversation === this.shownOne) this.begin(undefined, this.cwdOf(conversation), NO_DRAFT);
     if (conversation) await this.close(conversation, "deleted");
     try {
@@ -168,14 +220,15 @@ export class Threads {
   }
 
   /** The thread's id was seen on screen. */
-  seen(id: string): void {
+  seen(windowId: string): void {
+    const id = this.resolve(windowId);
     this.store.setThread(id, { unread: undefined, seenAt: Date.now() });
     this.emit();
   }
 
   /** The thread's sidebar state changed (settled, pinned, snoozed, its order, unread...). */
-  setMeta(id: string, change: Partial<ThreadMeta>): void {
-    this.store.setThread(id, change);
+  setMeta(windowId: string, change: Partial<ThreadMeta>): void {
+    this.store.setThread(this.resolve(windowId), change);
     this.emit();
   }
 
@@ -208,7 +261,7 @@ export class Threads {
         }
       }
       const row: ThreadRow = {
-        id: session.id,
+        id: meta.alias ?? session.id,
         projectId: projectOf(session.cwd),
         cwd: session.cwd,
         title: meta.title ?? session.title,
@@ -242,7 +295,7 @@ export class Threads {
       projects,
       threads,
       shown: {
-        id: shown?.id,
+        id: shown ? this.windowId(shown) : undefined,
         cwd: shownCwd,
         projectId: projectOf(shownCwd),
         draft: shown ? shown.empty : true,
@@ -257,10 +310,12 @@ export class Threads {
   get searchable(): { id: string; path: string; projectId: string | null }[] {
     const app = this.app;
     const projectById = new Map(app.threads.map((row) => [row.id, row.projectId]));
+    const projectOfSession = (session: SessionSummary) =>
+      projectById.get(this.store.thread(session.id).alias ?? session.id) ?? null;
     return this.sessions.map((session) => ({
-      id: session.id,
+      id: this.store.thread(session.id).alias ?? session.id,
       path: session.path,
-      projectId: projectById.get(session.id) ?? null,
+      projectId: projectOfSession(session),
     }));
   }
 
@@ -369,6 +424,12 @@ export class Threads {
     this.worked.set(conversation, working);
     const away = conversation !== this.shownOne;
     const { id } = conversation;
+    const alias = this.aliases.get(conversation);
+    if (alias && id) {
+      this.store.setThread(id, { alias });
+      this.aliases.delete(conversation);
+      this.emit();
+    }
     if (!before && working && id) this.workingSince.set(id, Date.now());
     if (before && !working && id) {
       this.workingSince.delete(id);
@@ -394,7 +455,8 @@ export class Threads {
     const failed = last?.kind === "turn" && last.state === "failed";
     this.store.setThread(id, { turnEndedAt: Date.now(), failed: failed || undefined, ...(away ? {} : { seenAt: Date.now() }) });
     const title = this.store.thread(id).title ?? this.sessions.find((session) => session.id === id)?.title;
-    for (const listener of this.doneListeners) listener({ id, title, failed, shown: !away });
+    const windowId = this.store.thread(id).alias ?? id;
+    for (const listener of this.doneListeners) listener({ id: windowId, title, failed, shown: !away });
     const cwd = this.cwdOf(conversation);
     void this.git.branch(cwd).then((branch) => {
       const meta = this.store.thread(id);

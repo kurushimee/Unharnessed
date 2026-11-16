@@ -9,6 +9,14 @@ contextBridge.exposeInMainWorld("kuru", {
     return () => ipcRenderer.removeListener("host", wrapped);
   },
   invoke: (method: string, params?: unknown) => ipcRenderer.invoke("invoke", method, params),
+  rpc: (tag: string, payload: unknown) => ipcRenderer.invoke("rpc", tag, payload),
+  rpcSubscribe: (id: string, tag: string, payload: unknown) => ipcRenderer.invoke("rpc-subscribe", id, tag, payload),
+  rpcUnsubscribe: (id: string) => ipcRenderer.send("rpc-unsubscribe", id),
+  onRpcEvent: (listener: (event: unknown) => void) => {
+    const wrapped = (_event: unknown, message: unknown) => listener(message);
+    ipcRenderer.on("rpc-event", wrapped);
+    return () => ipcRenderer.removeListener("rpc-event", wrapped);
+  },
   pathForFile: (file: File) => webUtils.getPathForFile(file),
   platform: process.platform,
 });

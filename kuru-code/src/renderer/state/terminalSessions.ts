@@ -11,3 +11,16 @@ export function useThreadRunningTerminalIds(_thread: {
 }): ReadonlyArray<string> {
   return NONE;
 }
+
+export interface KnownTerminalSession {
+  readonly target: { readonly environmentId: EnvironmentId; readonly threadId: ThreadId; readonly terminalId: string };
+  readonly state: unknown;
+}
+const NO_SESSIONS: ReadonlyArray<KnownTerminalSession> = [];
+
+export function useKnownTerminalSessions(_input: {
+  readonly environmentId: EnvironmentId | null;
+  readonly threadId: ThreadId | null;
+}): ReadonlyArray<KnownTerminalSession> | null {
+  return NO_SESSIONS;
+}

@@ -1,5 +1,30 @@
-// From T3 Code's client-runtime state/providerInstanceDisplay.ts (its pure helpers).
-type ProviderDriverKind = string;
+import {
+  defaultInstanceIdForDriver,
+  PROVIDER_DISPLAY_NAMES,
+  type ProviderDriverKind,
+  type ServerProvider,
+} from "~/contracts";
+
+function humanizeSlug(slug: string): string {
+  return slug
+    .replace(/([a-z])([A-Z])/g, "$1 $2")
+    .replace(/[_-]+/g, " ")
+    .trim()
+    .replace(/\b\w/g, (char) => char.toUpperCase());
+}
+
+export function resolveProviderInstanceDisplayName(
+  snapshot: Pick<ServerProvider, "instanceId" | "driver" | "displayName">,
+): string {
+  const trimmedSnapshotName = snapshot.displayName?.trim();
+  const kindLabel = PROVIDER_DISPLAY_NAMES[snapshot.driver] ?? humanizeSlug(snapshot.driver);
+  if (trimmedSnapshotName && trimmedSnapshotName !== kindLabel) return trimmedSnapshotName;
+  if (snapshot.instanceId !== defaultInstanceIdForDriver(snapshot.driver)) {
+    const humanized = humanizeSlug(snapshot.instanceId);
+    if (humanized.length > 0) return humanized;
+  }
+  return trimmedSnapshotName || kindLabel;
+}
 
 export function providerInstanceInitials(label: string): string {
   // Punctuation separates words so "Codex (hub)" reads CH, not C(. An apostrophe

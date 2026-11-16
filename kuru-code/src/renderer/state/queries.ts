@@ -1,3 +1,11 @@
+import { useAtomValue } from "@effect/atom-react";
+import { type VcsRefTarget } from "~/rt/state/vcs";
+import type { VcsListRefsResult, VcsRef } from "~/contracts";
+import * as Cause from "effect/Cause";
+import { AsyncResult, Atom } from "effect/reactivity";
+import { appAtomRegistry } from "../rpc/atomRegistry";
+import { isPaginatedBranchesNextPagePending } from "./paginatedBranches";
+import { vcsEnvironment } from "./vcs";
 // Adapted from T3 Code's state/queries.ts: the sidebar's thread search over
 // message text. T3 Code asks each environment's server; kuru code asks its
 // main process, which reads the session files (main/search.ts).
@@ -93,4 +101,148 @@ export function useThreadSearch(
     ? visibleThreadSearch(normalizedQuery, ready, previous)
     : { query: "", matches: EMPTY_THREAD_SEARCH_MATCHES };
   return { matches: visible.matches, query: visible.query, isPending };
+}
+
+// T3 Code's turn item detail: kuru code's projection has every item whole.
+import type { OrchestrationV2GetTurnItemResult, ThreadId, TurnItemId } from "~/contracts";
+import { orchestrationEnvironment } from "~/state/orchestration";
+import { useEnvironmentQuery } from "~/state/query";
+
+/** Reads one item's detail from somewhere other than the environment, as the guest page does. */
+export type TurnItemDetailSource = (input: {
+  readonly threadId: ThreadId;
+  readonly itemId: TurnItemId;
+  readonly revision: string;
+}) => Atom.Atom<AsyncResult.AsyncResult<OrchestrationV2GetTurnItemResult, unknown>>;
+
+export function useTurnItemDetail(
+  target: {
+    readonly environmentId: EnvironmentId;
+    readonly threadId: ThreadId;
+    readonly itemId: TurnItemId;
+    readonly revision: string;
+  } | null,
+  source?: TurnItemDetailSource,
+) {
+  const input =
+    target === null ? null : { threadId: target.threadId, itemId: target.itemId, revision: target.revision };
+  return useEnvironmentQuery<OrchestrationV2GetTurnItemResult, unknown>(
+    target === null || input === null
+      ? null
+      : source
+        ? source(input)
+        : orchestrationEnvironment.turnItem({ environmentId: target.environmentId, input }),
+  );
+}
+
+// From T3 Code's state/queries.ts: the branch picker's pages of refs.
+const VCS_REF_LIST_LIMIT = 100;
+const INITIAL_BRANCH_CURSORS = [undefined] as const;
+const EMPTY_REFS: ReadonlyArray<VcsRef> = [];
+
+function vcsRefPageAtom(targetKey: string, cursor: number | undefined) {
+  const [environmentId, cwd, query] = JSON.parse(targetKey) as [EnvironmentId, string, string];
+  return vcsEnvironment.listRefs({
+    environmentId,
+    input: {
+      cwd,
+      ...(query.length > 0 ? { query } : {}),
+      ...(cursor === undefined ? {} : { cursor }),
+      limit: VCS_REF_LIST_LIMIT,
+    },
+  });
+}
+
+const EMPTY_VCS_REF_PAGES_ATOM = Atom.make<
+  ReadonlyArray<Atom.Type<ReturnType<typeof vcsRefPageAtom>>>
+>([]).pipe(Atom.withLabel("web:vcs-ref-pages:empty"));
+
+const vcsRefPagesAtom = Atom.family((pagesKey: string) => {
+  const [targetKey, cursors] = JSON.parse(pagesKey) as [string, Array<number | null>];
+  const pageAtoms = cursors.map((cursor) => vcsRefPageAtom(targetKey, cursor ?? undefined));
+  return Atom.make((get) => pageAtoms.map((atom) => get(atom))).pipe(
+    Atom.withLabel(`web:vcs-ref-pages:${pagesKey}`),
+  );
+});
+
+export function usePaginatedBranches(target: VcsRefTarget) {
+  // Leave unkeyed; mismatches already reset cursors, and a seeded key would break caching across the hook.
+  const [pagination, setPagination] = useState<{
+    readonly targetKey: string | null;
+    readonly cursors: ReadonlyArray<number | undefined>;
+  }>({
+    targetKey: null,
+    cursors: INITIAL_BRANCH_CURSORS,
+  });
+  const { environmentId, cwd } = target;
+  const query = target.query?.trim() ?? "";
+  const targetKey =
+    environmentId !== null && cwd !== null ? JSON.stringify([environmentId, cwd, query]) : null;
+  const cursors = pagination.targetKey === targetKey ? pagination.cursors : INITIAL_BRANCH_CURSORS;
+  const pagesKey = targetKey === null ? null : JSON.stringify([targetKey, cursors]);
+  const results = useAtomValue(
+    pagesKey === null ? EMPTY_VCS_REF_PAGES_ATOM : vcsRefPagesAtom(pagesKey),
+  );
+  const values = results.flatMap((result) => {
+    const value = AsyncResult.getOrElse(result, () => null);
+    return value === null ? [] : [value];
+  });
+  const refs = new Map<string, VcsRef>();
+  for (const value of values) {
+    for (const ref of value.refs) {
+      refs.set(ref.name, ref);
+    }
+  }
+  const first = values[0] ?? null;
+  const last = values.at(-1) ?? null;
+  const data: VcsListRefsResult | null =
+    first === null || last === null
+      ? null
+      : {
+          refs: [...refs.values()],
+          isRepo: first.isRepo,
+          hasPrimaryRemote: first.hasPrimaryRemote,
+          nextCursor: last.nextCursor,
+          totalCount: Math.max(...values.map((value) => value.totalCount)),
+        };
+  const failed = results.find((result) => result._tag === "Failure");
+  const isFetchingNextPage = isPaginatedBranchesNextPagePending(results);
+  const error =
+    failed?._tag === "Failure"
+      ? (() => {
+          const cause = Cause.squash(failed.cause);
+          return cause instanceof Error && cause.message.trim().length > 0
+            ? cause.message
+            : "Failed to load refs.";
+        })()
+      : null;
+  const refresh = () => {
+    setPagination({ targetKey, cursors: INITIAL_BRANCH_CURSORS });
+    if (targetKey !== null) {
+      appAtomRegistry.refresh(vcsRefPageAtom(targetKey, undefined));
+    }
+  };
+  const nextCursor = data?.nextCursor;
+  const loadNext = () => {
+    if (targetKey === null || nextCursor === null || nextCursor === undefined) {
+      return;
+    }
+    setPagination((current) => {
+      const currentCursors =
+        current.targetKey === targetKey ? current.cursors : INITIAL_BRANCH_CURSORS;
+      return currentCursors.includes(nextCursor)
+        ? { targetKey, cursors: currentCursors }
+        : { targetKey, cursors: [...currentCursors, nextCursor] };
+    });
+  };
+
+  return {
+    data,
+    refs: data?.refs ?? EMPTY_REFS,
+    error,
+    isPending: results.some((result) => result.waiting),
+    isFetchingNextPage,
+    refresh,
+    loadNext,
+  };
 }

@@ -1,6 +1,16 @@
 import { scopeProjectRef } from "~/rt/environment/index";
-import type { EnvironmentId, ProjectId, ScopedProjectRef } from "~/contracts";
-import type { DraftThreadEnvMode } from "../composerDraftStore";
+import type {
+  EnvironmentId,
+  ModelSelection,
+  ProjectId,
+  ScopedProjectRef,
+} from "~/contracts";
+import type { ComposerThreadDraftState, DraftThreadEnvMode } from "../composerDraftStore";
+
+type ComposerModelSelectionState = Pick<
+  ComposerThreadDraftState,
+  "activeProvider" | "modelSelectionByProvider" | "modelSelectionExplicit"
+>;
 
 interface ThreadContextLike {
   environmentId: EnvironmentId;
@@ -24,6 +34,37 @@ export interface ChatThreadActionContext {
   readonly activeThread: ThreadContextLike | undefined;
   readonly defaultProjectRef: ScopedProjectRef | null;
   readonly handleNewThread: NewThreadHandler;
+}
+
+export function resolveNewDraftStartFromOrigin(input: {
+  envMode: DraftThreadEnvMode;
+  newWorktreesStartFromOrigin: boolean;
+}): boolean {
+  return input.envMode === "worktree" && input.newWorktreesStartFromOrigin;
+}
+
+export function resolveNewThreadModelSelectionOverride(input: {
+  readonly projectDefaultSelection: ModelSelection | null;
+  readonly carrySelection: ModelSelection | null;
+  readonly carrySourceDraftId: string | null;
+  readonly destinationDraftId: string;
+}): ModelSelection | null {
+  return (
+    input.projectDefaultSelection ??
+    (input.carrySourceDraftId === input.destinationDraftId ? null : input.carrySelection)
+  );
+}
+
+export function hasExplicitComposerModelSelection(
+  draft: ComposerModelSelectionState | null | undefined,
+): boolean {
+  const activeProvider = draft?.activeProvider;
+  return (
+    draft?.modelSelectionExplicit === true &&
+    activeProvider !== null &&
+    activeProvider !== undefined &&
+    draft.modelSelectionByProvider[activeProvider] !== undefined
+  );
 }
 
 export function resolveThreadActionProjectRef(

@@ -1,3 +1,5 @@
+import { useEnvironmentQuery } from "../../state/query";
+import { useAtomMount } from "@effect/atom-react";
 // Adapted from T3 Code's components/sidebar/SidebarThreadRow.tsx.
 import { asLaunchingThread } from "~/rt/state/threadInbox";
 import { ThreadHoverCard, ThreadHoverCardPopup } from "../ThreadHoverCard";
@@ -63,7 +65,7 @@ import { useUiStateStore } from "../../uiStateStore";
 import { useThreadSelectionStore } from "../../threadSelectionStore";
 import { useNowMinute } from "../../hooks/useNowMinute";
 import { useNowSecond } from "../../hooks/useNowSecond";
-import { useVcsBranch } from "../../state/vcs";
+import { vcsEnvironment, vcsBranchRevalidation } from "../../state/vcs";
 import {
   AuthOrchestrationOperateScope,
   readEnvironmentScope,
@@ -633,7 +635,15 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
     leaseLiveStatus && (thread.branch != null || thread.worktreePath !== null) && gitCwd !== null
       ? { environmentId: thread.environmentId, cwd: gitCwd }
       : null;
-  const gitStatus = useVcsBranch(branchTarget === null ? null : branchTarget.cwd);
+  const gitStatus = useEnvironmentQuery(
+    branchTarget === null
+      ? null
+      : vcsEnvironment.branch({
+          environmentId: branchTarget.environmentId,
+          input: { cwd: branchTarget.cwd },
+        }),
+  );
+  useAtomMount(vcsBranchRevalidation(branchTarget));
   const visibleGitStatus = useRetainedValue(
     JSON.stringify([thread.environmentId, gitCwd]),
     gitStatus.data,
@@ -1585,7 +1595,15 @@ export const SidebarSearchResultRow = memo(function SidebarSearchResultRow(props
     leaseLiveStatus && (thread.branch != null || thread.worktreePath !== null) && gitCwd !== null
       ? { environmentId: thread.environmentId, cwd: gitCwd }
       : null;
-  const gitStatus = useVcsBranch(branchTarget === null ? null : branchTarget.cwd);
+  const gitStatus = useEnvironmentQuery(
+    branchTarget === null
+      ? null
+      : vcsEnvironment.branch({
+          environmentId: branchTarget.environmentId,
+          input: { cwd: branchTarget.cwd },
+        }),
+  );
+  useAtomMount(vcsBranchRevalidation(branchTarget));
   const visibleGitStatus = useRetainedValue(
     JSON.stringify([thread.environmentId, gitCwd]),
     gitStatus.data,

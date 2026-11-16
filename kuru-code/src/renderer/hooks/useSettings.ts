@@ -11,6 +11,25 @@ import {
   type EnvironmentIdentificationMode,
 } from "~/contracts/settings";
 import * as Equal from "effect/Equal";
+import * as Struct from "effect/Struct";
+import { RegistryContext, useAtomValue } from "@effect/atom-react";
+import { use, useRef } from "react";
+import {
+  DEFAULT_SERVER_SETTINGS,
+  LOCAL_ENVIRONMENT_ID,
+  type EnvironmentId,
+  type ProviderInstanceMutation,
+  type ProviderInstanceId,
+  ServerSettings,
+  type ServerSettingsPatch,
+} from "~/contracts";
+import type { UnifiedSettings } from "~/contracts/settings";
+import { AsyncResult, Atom } from "effect/reactivity";
+import { isAtomCommandInterrupted, squashAtomCommandFailure } from "~/rt/state/runtime";
+import { modelPreferencesMigrationPatch, resolveModelPreferences } from "~/shared/serverSettings";
+import { toastManager } from "~/components/ui/toast";
+import { primaryServerSettingsAtom, serverEnvironment } from "~/state/server";
+import { useAtomCommand } from "~/state/use-atom-command";
 import { ensureLocalApi } from "~/localApi";
 
 function safeErrorLogAttributes(error: unknown) {
@@ -245,4 +264,238 @@ export function useEnvironmentIdentificationMode(): EnvironmentIdentificationMod
 
 export function updateClientSettings(patch: ClientSettingsPatch): Promise<void> {
   return persistClientSettingsPatch(patch);
+}
+
+// ---- T3 Code's server settings: kuru code's environment's (kuru/serverConfig.ts), merged
+// with the client's as T3 Code merges them.
+
+type UnifiedSettingsPatch = ServerSettingsPatch & ClientSettingsPatch;
+
+const SERVER_SETTINGS_KEYS = new Set<string>(Struct.keys(ServerSettings.fields));
+
+function splitPatch(patch: UnifiedSettingsPatch): {
+  serverPatch: ServerSettingsPatch;
+  clientPatch: ClientSettingsPatch;
+} {
+  const serverPatch: Record<string, unknown> = {};
+  const clientPatch: Record<string, unknown> = {};
+  for (const [key, value] of Object.entries(patch)) {
+    if (SERVER_SETTINGS_KEYS.has(key)) {
+      serverPatch[key] = value;
+    } else {
+      clientPatch[key] = value;
+    }
+  }
+  return {
+    serverPatch: serverPatch as ServerSettingsPatch,
+    clientPatch: clientPatch as ClientSettingsPatch,
+  };
+}
+
+export function mergeEnvironmentSettings(
+  serverSettings: ServerSettings,
+  clientSettings: ClientSettings,
+): UnifiedSettings {
+  // Older untyped adapters can return retired client keys; server values must win.
+  return {
+    ...clientSettings,
+    ...serverSettings,
+    ...resolveModelPreferences(serverSettings, clientSettings),
+  };
+}
+
+const selectLegacyModelPreferences = (settings: ClientSettings) => ({
+  favorites: settings.favorites,
+  providerModelPreferences: settings.providerModelPreferences,
+});
+
+export function useMergedSettings<T = UnifiedSettings>(
+  serverSettings: ServerSettings,
+  selector?: (settings: UnifiedSettings) => T,
+): T {
+  return useClientSettings((clientSettings) => {
+    const merged = mergeEnvironmentSettings(serverSettings, clientSettings);
+    return selector ? selector(merged) : (merged as T);
+  });
+}
+
+export async function prepareModelPreferencesPatch(
+  settings: ServerSettings,
+  patch: ServerSettingsPatch,
+): Promise<ServerSettingsPatch> {
+  if (settings.favorites === null || settings.providerModelPreferences === null) {
+    await ensureClientSettingsHydrated();
+  }
+  return { ...modelPreferencesMigrationPatch(settings, getClientSettings()), ...patch };
+}
+
+export function useUpdateEnvironmentModelPreferences(environmentId: EnvironmentId | null) {
+  const settings = useAtomValue(
+    environmentId ? serverEnvironment.settingsValueAtom(environmentId) : noEnvironmentSettingsAtom,
+  );
+  const save = useAtomCommand(serverEnvironment.updateSettings, "model preferences update");
+  return async (patch: ServerSettingsPatch) => {
+    if (!environmentId || !settings) return;
+    let prepared: ServerSettingsPatch;
+    try {
+      prepared = await prepareModelPreferencesPatch(settings, patch);
+    } catch {
+      toastManager.add({
+        type: "error",
+        title: "Model preferences not saved",
+        description: "Could not load saved model preferences. Try again.",
+      });
+      return;
+    }
+    return save({ environmentId, input: { patch: prepared } });
+  };
+}
+
+/** Send the desired state so two clients adding a favorite do not cancel each other. */
+export function useToggleEnvironmentModelFavorite(environmentId: EnvironmentId | null) {
+  const registry = use(RegistryContext);
+  const pendingFavorites = useRef(
+    new Map<string, { favorite: boolean; settings: ServerSettings; pending: boolean }>(),
+  );
+  const save = useUpdateEnvironmentModelPreferences(environmentId);
+  return async (provider: ProviderInstanceId, model: string) => {
+    if (!environmentId) return;
+    const settingsAtom = serverEnvironment.settingsValueAtom(environmentId);
+    const settings = registry.get(settingsAtom);
+    if (!settings) return;
+    if (settings.favorites === null) {
+      try {
+        await ensureClientSettingsHydrated();
+      } catch {
+        toastManager.add({
+          type: "error",
+          title: "Favorites not saved",
+          description: "Could not load saved model preferences. Try again.",
+        });
+        return;
+      }
+    }
+    const currentSettings = registry.get(settingsAtom) ?? settings;
+    const favorites = resolveModelPreferences(currentSettings, getClientSettings()).favorites;
+    const key = JSON.stringify([environmentId, provider, model]);
+    const previous = pendingFavorites.current.get(key);
+    // Keep the acknowledged choice until the config stream catches up with the RPC reply.
+    const previousFavorite =
+      previous && (previous.pending || previous.settings.favorites === currentSettings.favorites)
+        ? previous.favorite
+        : favorites.some((favorite) => favorite.provider === provider && favorite.model === model);
+    const pending = {
+      favorite: !previousFavorite,
+      settings: currentSettings,
+      pending: true,
+    };
+    pendingFavorites.current.set(key, pending);
+    const result = await save({
+      setModelFavorites: [{ provider, model, favorite: pending.favorite }],
+    });
+    if (
+      result &&
+      AsyncResult.isSuccess(result) &&
+      registry.get(settingsAtom)?.favorites === currentSettings.favorites
+    ) {
+      pending.pending = false;
+    }
+    if (pending.pending && pendingFavorites.current.get(key) === pending) {
+      if (
+        previous &&
+        !previous.pending &&
+        registry.get(settingsAtom)?.favorites === previous.settings.favorites
+      ) {
+        pendingFavorites.current.set(key, previous);
+      } else {
+        pendingFavorites.current.delete(key);
+      }
+    }
+  };
+}
+
+const noEnvironmentSettingsAtom = Atom.make<ServerSettings | null>(null);
+
+export function useEnvironmentModelPreferences(environmentId: EnvironmentId | null) {
+  const settings = useAtomValue(
+    environmentId ? serverEnvironment.settingsValueAtom(environmentId) : noEnvironmentSettingsAtom,
+  );
+  const legacy = useClientSettings(selectLegacyModelPreferences);
+  return resolveModelPreferences(settings ?? DEFAULT_SERVER_SETTINGS, legacy);
+}
+
+export function useEnvironmentSettings<T = UnifiedSettings>(
+  environmentId: EnvironmentId,
+  selector?: (settings: UnifiedSettings) => T,
+): T {
+  const serverSettings = useAtomValue(serverEnvironment.settingsValueAtom(environmentId));
+  return useMergedSettings(serverSettings ?? DEFAULT_SERVER_SETTINGS, selector);
+}
+
+export function usePersistEnvironmentProviderInstanceMutation(environmentId: EnvironmentId) {
+  const mutateProviderInstance = useAtomCommand(serverEnvironment.mutateProviderInstance, {
+    reportFailure: false,
+  });
+  return (providerInstanceMutation: ProviderInstanceMutation, patch: ServerSettingsPatch = {}) =>
+    mutateProviderInstance({
+      environmentId,
+      input: { patch, providerInstanceMutation },
+    });
+}
+
+export function usePrimarySettings<T = UnifiedSettings>(
+  selector?: (settings: UnifiedSettings) => T,
+): T {
+  const settings = useAtomValue(primaryServerSettingsAtom);
+  return useMergedSettings(settings, selector);
+}
+
+export const PRIMARY_SETTINGS_UNAVAILABLE_MESSAGE =
+  "This setting is saved on a server, and the hosted app is not anchored to one. Change it from the desktop app or from the server's own address.";
+
+/** kuru code's primary environment is always this machine. */
+export function usePrimarySettingsAvailable(): boolean {
+  return true;
+}
+
+/** T3 Code's settings writer for one environment: the server part to it, the rest to the client. */
+function useUpdateSettingsTarget(environmentId: EnvironmentId | null) {
+  const persist = useAtomCommand(serverEnvironment.updateSettings, {
+    label: "server settings update",
+    reportFailure: false,
+  });
+  return (
+    patch: UnifiedSettingsPatch,
+    options?: { readonly onFailed?: () => void; readonly onSaved?: () => void },
+  ) => {
+    const { serverPatch, clientPatch } = splitPatch(patch);
+    if (Object.keys(serverPatch).length > 0) {
+      const target = environmentId ?? LOCAL_ENVIRONMENT_ID;
+      void persist({ environmentId: target, input: { patch: serverPatch } }).then((result) => {
+        if (result._tag === "Success") {
+          options?.onSaved?.();
+          return;
+        }
+        options?.onFailed?.();
+        if (isAtomCommandInterrupted(result)) return;
+        const error = squashAtomCommandFailure(result);
+        toastManager.add({
+          type: "error",
+          title: "Setting not saved",
+          description: error instanceof Error ? error.message : "The save failed.",
+        });
+      });
+    }
+    if (Object.keys(clientPatch).length > 0) {
+      void persistClientSettingsPatch(clientPatch);
+    }
+  };
+}
+
+export function useUpdateEnvironmentSettings(environmentId: EnvironmentId | null) {
+  return useUpdateSettingsTarget(environmentId);
+}
+
+export function useUpdatePrimarySettings() {
+  return useUpdateSettingsTarget(LOCAL_ENVIRONMENT_ID);
 }

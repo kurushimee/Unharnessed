@@ -1,23 +1,34 @@
-// Adapted from T3 Code's ProjectFavicon.tsx: the icon kuru code's main process
-// finds in the project's folder (main/favicons.ts), else T3 Code's monogram.
+// T3 Code's ProjectFavicon.tsx; the automatic icon is the one kuru code's
+// main process finds in the project's folder.
 import type { EnvironmentProject } from "~/rt/state/models";
-import type { ProjectIconColor } from "~/contracts";
 import { FolderCodeIcon } from "lucide-react";
 import type { ComponentType } from "react";
-import { useState } from "react";
+import { createElement, lazy, Suspense, useState } from "react";
 import { useProjectFaviconUrl } from "../state/assets";
 import { deriveProjectIdentity } from "../projectIdentity";
 import { projectIconColorClassName } from "../projectIconColors";
 import { ProjectMonogram } from "./ProjectMonogram";
 import { cn } from "~/lib/utils";
 
-export type ProjectFaviconProject = Pick<EnvironmentProject, "environmentId" | "workspaceRoot" | "title"> & {
-  readonly faviconPath?: string | null;
-  readonly projectIcon?:
-    | { readonly kind: "monogram"; readonly text: string; readonly color: ProjectIconColor }
-    | { readonly kind: "emoji"; readonly emoji: string }
-    | null;
-};
+// All lucide icons load as one chunk, only once a project uses a lucide override.
+const LucideProjectIcon = lazy(() =>
+  import("../lib/lucideIconByName").then(({ lucideIconByName }) => ({
+    default: function LucideProjectIcon(props: { name: string; className: string }) {
+      return createElement(lucideIconByName(props.name) ?? FolderCodeIcon, {
+        className: props.className,
+      });
+    },
+  })),
+);
+
+function DynamicProjectIconFallback() {
+  return <FolderCodeIcon className="size-full text-inherit" />;
+}
+
+export type ProjectFaviconProject = Pick<
+  EnvironmentProject,
+  "environmentId" | "workspaceRoot" | "title" | "faviconPath" | "projectIcon"
+>;
 export function ProjectFavicon(input: {
   project: ProjectFaviconProject;
   className?: string | undefined;
@@ -42,11 +53,30 @@ export function ProjectFavicon(input: {
       />
     );
   }
+  if (project.projectIcon?.kind === "lucide") {
+    const colorClassName = projectIconColorClassName(project.projectIcon.color);
+    const iconClassName = cn(
+      "inline-flex size-3.5 shrink-0 items-center justify-center",
+      colorClassName,
+      input.className,
+    );
+    return (
+      <span aria-hidden="true" className={iconClassName}>
+        <Suspense fallback={<DynamicProjectIconFallback />}>
+          <LucideProjectIcon
+            name={project.projectIcon.name}
+            className={cn("size-full", colorClassName)}
+          />
+        </Suspense>
+      </span>
+    );
+  }
   return <AutomaticProjectFavicon {...input} />;
 }
 
 function AutomaticProjectFavicon(input: Parameters<typeof ProjectFavicon>[0]) {
   const { project } = input;
+  // kuru code's main process finds the icon in the project's folder (main/favicons.ts).
   const src = useProjectFaviconUrl(project.workspaceRoot);
   const FallbackIcon = input.fallbackIcon ?? FolderCodeIcon;
 
@@ -60,7 +90,7 @@ function AutomaticProjectFavicon(input: Parameters<typeof ProjectFavicon>[0]) {
     );
   }
 
-  const cacheKey = JSON.stringify([project.environmentId, project.workspaceRoot]);
+  const cacheKey = `${project.environmentId}:${project.workspaceRoot}`;
 
   return (
     <ProjectFaviconImage

@@ -1,60 +1,81 @@
-// Adapted from T3 Code's client-runtime state/models.ts: the thread and project
-// shells the sidebar, the header and the thread's details read. kuru code
-// builds them from Unharnessed's sessions (see ../../kuru/shells.ts) instead
-// of T3 Code's orchestration projection; fields with no Unharnessed meaning
-// are gone.
+import { backgroundWorkHoldsCompletion } from "~/shared/orchestrationV2PendingBackgroundWork";
+import { threadPullRequestsOf } from "../threadPullRequests";
 import type {
+  ThreadLinkedPullRequest,
   EnvironmentId,
   MessageId,
+  OrchestrationProjectShell,
+  OrchestrationV2ProviderGoal,
+  OrchestrationV2RunStatus,
+  OrchestrationV2ProviderFailureClass,
+  OrchestrationV2ThreadProjection,
+  OrchestrationV2ThreadShell,
+  PlanId,
   ProjectId,
   ProviderInstanceId,
   RunId,
   ThreadId,
 } from "~/contracts";
+import * as DateTime from "effect/DateTime";
 
-export interface ModelSelection {
-  readonly instanceId: ProviderInstanceId;
-  readonly model: string;
-  readonly options?: ReadonlyArray<{ readonly id: string; readonly value: string | boolean }>;
-}
+import { formatSubagentDisplayTitle } from "./subagentDisplay";
 
-export interface EnvironmentProject {
+export interface EnvironmentProject extends OrchestrationProjectShell {
   readonly environmentId: EnvironmentId;
-  readonly id: ProjectId;
-  readonly title: string;
-  readonly workspaceRoot: string;
-  readonly defaultModelSelection: ModelSelection | null;
-  readonly faviconPath?: string | null;
-  /** T3 Code's project icon override. */
-  readonly projectIcon?:
-    | { readonly kind: "monogram"; readonly text: string; readonly color: import("~/contracts").ProjectIconColor }
-    | { readonly kind: "emoji"; readonly emoji: string }
-    | null;
-  /** The repository its folder is a checkout of: projects of one repository group together. */
-  readonly repositoryIdentity?: import("~/contracts").RepositoryIdentity | null;
-  readonly scripts: ReadonlyArray<never>;
-  readonly pinnedAt?: string | null;
-  readonly archivedAt?: string | null;
-  readonly createdAt: string;
-  readonly updatedAt: string;
-  /** Threads with no project: Unharnessed sessions started in the home folder. */
   readonly isScratch?: true;
-  /** The folder is gone. */
-  readonly missing?: boolean;
 }
 
-/** A run's status, as T3 Code names them; an Unharnessed turn is one run. */
-export type OrchestrationV2RunStatus =
-  | "preparing"
-  | "queued"
-  | "starting"
-  | "running"
-  | "waiting"
-  | "completed"
-  | "interrupted"
-  | "failed"
-  | "cancelled"
-  | "rolled_back";
+/**
+ * The projection stays nested so the server projection and all structurally
+ * shared collections retain their identities.
+ */
+export interface EnvironmentThread {
+  readonly environmentId: EnvironmentId;
+  readonly projection: OrchestrationV2ThreadProjection;
+}
+
+type ProjectionTurnItem = OrchestrationV2ThreadProjection["turnItems"][number];
+type StreamedProjectionTurnItem = Extract<
+  ProjectionTurnItem,
+  { readonly type: "assistant_message" | "reasoning" }
+>;
+
+/** A turn item without the fields that move while it streams. */
+export type ThreadStructureTurnItem =
+  | Exclude<ProjectionTurnItem, StreamedProjectionTurnItem>
+  | Omit<Extract<ProjectionTurnItem, { readonly type: "assistant_message" }>, "text" | "updatedAt">
+  | Omit<Extract<ProjectionTurnItem, { readonly type: "reasoning" }>, "text" | "updatedAt">;
+
+export type ThreadStructureVisibleTurnItem = Omit<
+  OrchestrationV2ThreadProjection["visibleTurnItems"][number],
+  "item"
+> & {
+  readonly item: ThreadStructureTurnItem;
+};
+
+/**
+ * A thread projection without the fields that move while a reply streams, so a
+ * reader of the quiet thread cannot depend on them and go stale. A full
+ * projection is assignable to it.
+ */
+export type ThreadStructureThread = Omit<
+  OrchestrationV2ThreadProjection["thread"],
+  "updatedAt" | "lastVisitedAt"
+>;
+
+export type ThreadStructure = Omit<
+  OrchestrationV2ThreadProjection,
+  "thread" | "turnItems" | "visibleTurnItems" | "updatedAt"
+> & {
+  readonly thread: ThreadStructureThread;
+  readonly turnItems: ReadonlyArray<ThreadStructureTurnItem>;
+  readonly visibleTurnItems: ReadonlyArray<ThreadStructureVisibleTurnItem>;
+};
+
+export interface EnvironmentThreadStructure {
+  readonly environmentId: EnvironmentId;
+  readonly projection: ThreadStructure;
+}
 
 export interface ThreadRunSummary {
   readonly runId: RunId;
@@ -63,7 +84,15 @@ export interface ThreadRunSummary {
   readonly startedAt: string | null;
   readonly completedAt: string | null;
   readonly assistantMessageId: MessageId | null;
+  /**
+   * The run is still open, but its provider turn already ended, so nothing is
+   * generating while the server settles it.
+   */
   readonly turnEnded?: boolean;
+  readonly sourcePlanRef?: {
+    readonly threadId: ThreadId;
+    readonly planId: PlanId;
+  };
 }
 
 export interface ThreadRuntimeSummary {
@@ -73,12 +102,13 @@ export interface ThreadRuntimeSummary {
   readonly providerInstanceId: ProviderInstanceId;
   readonly providerName: string | null;
   readonly lastError: string | null;
-  readonly lastErrorClass?: string | null;
+  readonly lastErrorClass?: OrchestrationV2ProviderFailureClass | null;
   readonly lastErrorCode?: string | null;
   readonly usageLimitResetAt?: string | null;
   readonly updatedAt: string;
 }
 
+/** The runtime summary a thread's structure determines; see ThreadStructure. */
 export type ThreadStructureRuntime = Omit<ThreadRuntimeSummary, "updatedAt">;
 
 export function threadRuntimeIsActive(runtime: ThreadStructureRuntime | null | undefined): boolean {
@@ -104,26 +134,42 @@ function threadRunStatusIsActive(status: ThreadRuntimeSummary["status"]): boolea
   );
 }
 
-export type { ThreadLinkedPullRequest } from "~/contracts";
-import type { ThreadLinkedPullRequest } from "~/contracts";
-
 export interface EnvironmentThreadShell {
   readonly environmentId: EnvironmentId;
   readonly id: ThreadId;
   readonly projectId: ProjectId;
   readonly title: string;
   readonly providerInstanceId: ProviderInstanceId;
-  readonly modelSelection: ModelSelection;
+  readonly modelSelection: OrchestrationV2ThreadShell["modelSelection"];
+  readonly runtimeMode: OrchestrationV2ThreadShell["runtimeMode"];
+  readonly interactionMode: OrchestrationV2ThreadShell["interactionMode"];
   readonly branch: string | null;
   readonly worktreePath: string | null;
+  readonly lineage: OrchestrationV2ThreadShell["lineage"];
+  readonly forkedFrom: OrchestrationV2ThreadShell["forkedFrom"];
+  readonly linkOrigin: OrchestrationV2ThreadShell["linkOrigin"] | null;
+  /** The thread in a linked environment that delegated this one, if one did. */
+  readonly delegatedFrom: OrchestrationV2ThreadShell["delegatedFrom"] | null;
+  readonly activeProviderThreadId: OrchestrationV2ThreadShell["activeProviderThreadId"];
   readonly latestRun: ThreadRunSummary | null;
   readonly runtime: ThreadRuntimeSummary | null;
+  readonly blockedOnThreadWait?: boolean;
   readonly latestUserMessageAt: string | null;
   readonly latestUserAuthoredMessageAt?: string | null;
   readonly hasPendingApprovals: boolean;
   readonly hasPendingUserInput: boolean;
   readonly pendingUserInputAt?: string | null;
+  readonly pendingSubagentRequest?: PendingSubagentRequest | null;
+  /** Guest messages waiting for the owner to send or dismiss. */
+  readonly pendingGuestMessageCount?: number;
+  readonly hasActionableProposedPlan: boolean;
+  readonly pendingBackgroundTasks: ReadonlyArray<
+    NonNullable<OrchestrationV2ThreadShell["pendingBackgroundTasks"]>[number]
+  >;
   readonly providerInstanceHistory: ReadonlyArray<ProviderInstanceId>;
+  readonly goal: OrchestrationV2ProviderGoal | null;
+  readonly itemCount: number;
+  readonly visibleItemCount: number;
   readonly createdAt: string;
   readonly updatedAt: string;
   readonly archivedAt: string | null;
@@ -132,58 +178,188 @@ export interface EnvironmentThreadShell {
   readonly unsettledAt: string | null;
   readonly snoozedUntil: string | null;
   readonly snoozedAt: string | null;
+  readonly limitRecovery?: import("~/contracts").OrchestrationV2LimitRecovery | null;
   readonly pinnedAt: string | null;
   readonly autoSettleDisabledAt?: string | null;
   readonly pinOrderKey: string | null;
   readonly activeOrderKey: string | null;
+  readonly pullRequests: ReadonlyArray<import("~/contracts").ThreadPullRequestLink>;
   readonly linkedPullRequest?: ThreadLinkedPullRequest | null;
   readonly branchPullRequest?: ThreadLinkedPullRequest | null;
-  readonly pullRequests: ReadonlyArray<import("~/contracts").ThreadPullRequestLink>;
-  /** The thread's Unharnessed goal, while one is set. */
-  readonly goal?: { readonly status: "active" | "paused" | "complete" } | null;
+  /**
+   * Server-tracked visited watermark. `undefined` means the environment's
+   * server predates visited tracking and clients should fall back to any
+   * local visited state they keep.
+   */
   readonly lastVisitedAt?: string | null;
-  /** When the thread was last opened, for search ranking (T3 Code's server-tracked opens). */
+  /** Server-tracked open history for search ranking. */
   readonly opens?: import("~/contracts").OrchestrationV2ThreadOpens | null;
   readonly titleRegeneration?: { readonly requestId: string; readonly startedAt: string } | null;
   readonly deletedAt: string | null;
-  // T3 Code's thread facets with no Unharnessed counterpart: they keep their
-  // resting values (a top-level thread, the default mode, nothing pending),
-  // so the copied sidebar logic reads them unchanged.
-  readonly lineage: ThreadLineage;
-  readonly interactionMode: "default" | "plan";
-  readonly hasActionableProposedPlan: boolean;
-  readonly pendingBackgroundTasks: ReadonlyArray<never>;
-  readonly blockedOnThreadWait?: boolean;
-  readonly pendingSubagentRequest?: PendingSubagentRequest | null;
-  readonly pendingGuestMessageCount?: number;
+  readonly source: OrchestrationV2ThreadShell;
 }
 
-/** Where a thread sits among others: Unharnessed threads are all top-level. */
-export interface ThreadLineage {
-  readonly relationshipToParent: null | "subagent" | "side_chat";
-  readonly parentThreadId: ThreadId | null;
+function iso(value: DateTime.Utc): string {
+  return DateTime.formatIso(value);
 }
 
-export const ROOT_THREAD_LINEAGE: ThreadLineage = { relationshipToParent: null, parentThreadId: null };
+function nullableIso(value: DateTime.Utc | null): string | null {
+  return value === null ? null : iso(value);
+}
 
-/** From T3 Code's session-logic.ts: the latest run ended and no run is active. */
-export function isLatestRunSettled(
-  latestRun: Pick<ThreadRunSummary, "runId" | "startedAt" | "completedAt" | "status"> | null,
-  runtime: Pick<ThreadRuntimeSummary, "status" | "activeRunId"> | null,
-): boolean {
-  if (latestRun === null) return false;
-  if (
-    latestRun.status === "preparing" ||
-    latestRun.status === "queued" ||
-    latestRun.status === "starting" ||
-    latestRun.status === "running" ||
-    latestRun.status === "waiting"
-  )
-    return false;
-  return runtime?.activeRunId !== latestRun.runId;
+function terminalRunStatus(status: OrchestrationV2RunStatus): boolean {
+  return (
+    status === "completed" ||
+    status === "interrupted" ||
+    status === "failed" ||
+    status === "cancelled" ||
+    status === "rolled_back"
+  );
+}
+
+// Only work the agent waits on holds it: commands and monitors it left running
+// unmarked, such as a dev server, present the run's own status. The
+// server suppresses the roster while an interruptible activity run exists, so a
+// remaining roster is stronger than checkpoint-oriented waiting.
+function shellRuntime(thread: OrchestrationV2ThreadShell): ThreadRuntimeSummary | null {
+  const parkAtIdle =
+    backgroundWorkHoldsCompletion(thread.pendingBackgroundTasks ?? []) &&
+    thread.status !== "failed";
+  if (thread.latestRunId === null && thread.activeProviderThreadId === null && !parkAtIdle) {
+    return null;
+  }
+  const status = parkAtIdle ? "idle" : (thread.activityRunStatus ?? thread.status);
+  return {
+    status,
+    activeRunId: thread.activeRunId,
+    activityStartedAt:
+      thread.activityRunStartedAt === undefined
+        ? undefined
+        : nullableIso(thread.activityRunStartedAt),
+    providerInstanceId: thread.providerInstanceId,
+    providerName: null,
+    lastError: thread.lastError ?? null,
+    lastErrorClass: thread.lastErrorClass ?? null,
+    lastErrorCode: thread.lastErrorCode ?? null,
+    usageLimitResetAt: thread.usageLimitResetAt ?? null,
+    updatedAt: iso(thread.updatedAt),
+  };
+}
+
+export function scopeProject(
+  environmentId: EnvironmentId,
+  project: OrchestrationProjectShell,
+): EnvironmentProject {
+  return { ...project, environmentId };
 }
 
 export type PendingSubagentRequest = "approval" | "user_input";
+
+export function presentThreadShell(
+  environmentId: EnvironmentId,
+  thread: OrchestrationV2ThreadShell,
+  pendingSubagentRequest: PendingSubagentRequest | null = null,
+): EnvironmentThreadShell {
+  const updatedAt = iso(thread.updatedAt);
+  const latestRun =
+    thread.latestRunId === null
+      ? null
+      : ({
+          runId: thread.latestRunId,
+          status: thread.status === "idle" ? "completed" : thread.status,
+          requestedAt: nullableIso(thread.latestRunRequestedAt ?? null),
+          startedAt: nullableIso(thread.latestRunStartedAt ?? null),
+          completedAt:
+            thread.latestRunCompletedAt === undefined
+              ? thread.status === "idle" || terminalRunStatus(thread.status)
+                ? updatedAt
+                : null
+              : nullableIso(thread.latestRunCompletedAt),
+          assistantMessageId: null,
+        } satisfies ThreadRunSummary);
+  const runtime = shellRuntime(thread);
+  return {
+    environmentId,
+    id: thread.id,
+    projectId: thread.projectId,
+    title:
+      thread.lineage.relationshipToParent === "subagent"
+        ? formatSubagentDisplayTitle(thread.title)
+        : thread.title,
+    providerInstanceId: thread.providerInstanceId,
+    modelSelection: thread.modelSelection,
+    runtimeMode: thread.runtimeMode,
+    interactionMode: thread.interactionMode,
+    branch: thread.branch,
+    worktreePath: thread.worktreePath,
+    pullRequests: threadPullRequestsOf(thread),
+    linkedPullRequest: thread.linkedPullRequest ?? null,
+    branchPullRequest: thread.branchPullRequest ?? null,
+    lineage: thread.lineage,
+    forkedFrom: thread.forkedFrom,
+    linkOrigin: thread.linkOrigin ?? null,
+    delegatedFrom: thread.delegatedFrom ?? null,
+    activeProviderThreadId: thread.activeProviderThreadId,
+    latestRun,
+    runtime,
+    blockedOnThreadWait: thread.blockedOnThreadWait ?? false,
+    latestUserMessageAt: nullableIso(thread.latestUserMessageAt),
+    ...(thread.latestUserAuthoredMessageAt === undefined
+      ? {}
+      : { latestUserAuthoredMessageAt: nullableIso(thread.latestUserAuthoredMessageAt) }),
+    hasPendingApprovals:
+      thread.pendingRuntimeRequest !== null &&
+      thread.pendingRuntimeRequest.kind !== "user_input" &&
+      thread.pendingRuntimeRequest.kind !== "auth_refresh",
+    // Async questions count too, so a thread with any open question leaves Working.
+    hasPendingUserInput: thread.pendingRuntimeRequest?.kind === "user_input",
+    pendingUserInputAt:
+      thread.pendingRuntimeRequest?.kind === "user_input"
+        ? iso(thread.pendingRuntimeRequest.createdAt)
+        : null,
+    pendingSubagentRequest,
+    pendingGuestMessageCount: thread.pendingGuestMessageCount ?? 0,
+    hasActionableProposedPlan: thread.hasActionableProposedPlan,
+    pendingBackgroundTasks: thread.pendingBackgroundTasks ?? [],
+    providerInstanceHistory: thread.providerInstanceHistory ?? [],
+    goal: thread.goal ?? null,
+    itemCount: thread.itemCount,
+    visibleItemCount: thread.visibleItemCount,
+    createdAt: iso(thread.createdAt),
+    updatedAt,
+    archivedAt: nullableIso(thread.archivedAt),
+    settledOverride: thread.settledOverride,
+    settledAt: nullableIso(thread.settledAt),
+    unsettledAt: nullableIso(thread.unsettledAt ?? null),
+    snoozedUntil: nullableIso(thread.snoozedUntil ?? null),
+    snoozedAt: nullableIso(thread.snoozedAt ?? null),
+    limitRecovery: thread.limitRecovery ?? null,
+    pinnedAt: nullableIso(thread.pinnedAt ?? null),
+    autoSettleDisabledAt: nullableIso(thread.autoSettleDisabledAt ?? null),
+    pinOrderKey: thread.pinOrderKey ?? null,
+    activeOrderKey: thread.activeOrderKey ?? null,
+    ...(thread.lastVisitedAt === undefined
+      ? {}
+      : { lastVisitedAt: nullableIso(thread.lastVisitedAt) }),
+    opens: thread.opens ?? null,
+    titleRegeneration:
+      thread.titleRegeneration == null
+        ? null
+        : {
+            requestId: thread.titleRegeneration.requestId,
+            startedAt: iso(thread.titleRegeneration.startedAt),
+          },
+    deletedAt: nullableIso(thread.deletedAt),
+    source: thread,
+  };
+}
+
+export function scopeThreadShell(
+  environmentId: EnvironmentId,
+  thread: OrchestrationV2ThreadShell,
+): EnvironmentThreadShell {
+  return presentThreadShell(environmentId, thread);
+}
 
 const THREAD_PROVIDER_STACK_LIMIT = 3;
 
@@ -222,4 +398,30 @@ export function formatWorkingDurationLabel(elapsedMs: number): string {
   const minutes = Math.floor(seconds / 60);
   if (minutes < 60) return `${minutes}m`;
   return `${Math.floor(minutes / 60)}h ${minutes % 60}m`;
+}
+
+// kuru code's additions.
+export type { ModelSelection, OrchestrationV2RunStatus, ThreadLinkedPullRequest } from "~/contracts";
+export type ThreadLineage = import("~/contracts").OrchestrationV2AppThreadLineage;
+
+/** A top-level thread's lineage: Unharnessed threads have no parent. */
+export function rootThreadLineage(threadId: ThreadId): ThreadLineage {
+  return { relationshipToParent: null, parentThreadId: null, rootThreadId: threadId };
+}
+
+/** From T3 Code's session-logic.ts: the latest run ended and no run is active. */
+export function isLatestRunSettled(
+  latestRun: Pick<ThreadRunSummary, "runId" | "startedAt" | "completedAt" | "status"> | null,
+  runtime: Pick<ThreadRuntimeSummary, "status" | "activeRunId"> | null,
+): boolean {
+  if (latestRun === null) return false;
+  if (
+    latestRun.status === "preparing" ||
+    latestRun.status === "queued" ||
+    latestRun.status === "starting" ||
+    latestRun.status === "running" ||
+    latestRun.status === "waiting"
+  )
+    return false;
+  return runtime?.activeRunId !== latestRun.runId;
 }

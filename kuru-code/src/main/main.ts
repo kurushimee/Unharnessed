@@ -11,6 +11,7 @@ import type { Conversation } from "../../../vscode/src/conversations";
 import type { AppPrefs, HostMessage, WebviewMessage } from "@shared/protocol";
 import { showContextMenu } from "./contextMenu";
 import { Git } from "./git";
+import { createRpc } from "./rpc";
 import { projectFavicon } from "./favicons";
 import { searchThreads } from "./search";
 import { createLog } from "./log";
@@ -314,16 +315,13 @@ async function start(): Promise<void> {
         break;
       }
       case "settle":
-        store.setThread(message.id, { settledAt: message.settled ? Date.now() : undefined });
-        threads.emit();
+        threads.setMeta(message.id, { settledAt: message.settled ? Date.now() : undefined });
         break;
       case "pin":
-        store.setThread(message.id, { pinnedAt: message.pinned ? Date.now() : undefined });
-        threads.emit();
+        threads.setMeta(message.id, { pinnedAt: message.pinned ? Date.now() : undefined });
         break;
       case "rename":
-        store.setThread(message.id, { title: message.title?.trim() || undefined });
-        threads.emit();
+        threads.setMeta(message.id, { title: message.title?.trim() || undefined });
         break;
       case "addProject":
         void addProject();
@@ -444,6 +442,22 @@ async function start(): Promise<void> {
         threads.searchable.filter((session) => scope === null || (session.projectId !== null && scope.has(session.projectId))),
       );
     },
+    "threads.send": ({ id, projectId: project, text, images, now }) => {
+      const cwd =
+        typeof project === "string"
+          ? (threads.app.projects.find((candidate) => candidate.id === project)?.path ?? home)
+          : home;
+      threads.send(String(id), cwd, String(text ?? ""), Array.isArray(images) ? images : [], now === true);
+      return null;
+    },
+    "threads.cancel": ({ id }) => {
+      threads.cancel(String(id));
+      return null;
+    },
+    "threads.open": ({ id }) => {
+      if (threads.app.shown.id !== id) threads.openSaved(String(id));
+      return null;
+    },
     "threads.delete": ({ id }) => threads.remove(String(id)).then((error) => error ?? null),
     "threads.update": ({ id, change }) => {
       threads.setMeta(String(id), threadMetaChange(change));
@@ -451,6 +465,11 @@ async function start(): Promise<void> {
     },
     "project.favicon": ({ cwd }) => projectFavicon(String(cwd)),
     "clientSettings.get": () => store.clientSettings,
+    "serverSettings.get": () => store.serverSettings,
+    "serverSettings.set": ({ settings }) => {
+      store.setServerSettings(settings);
+      return null;
+    },
     "clientSettings.set": ({ settings }) => {
       store.setClientSettings(settings);
       return null;
@@ -466,6 +485,11 @@ async function start(): Promise<void> {
       return picked.canceled ? null : (picked.filePaths[0] ?? null);
     },
   };
+  const rpc = createRpc({ git, log, writeMessage: (cwd) => writeCommitMessage(binary, cwd, log), changed: () => void threads.refresh() });
+  ipcMain.handle("rpc", (_event, tag: string, payload: unknown) => rpc.call(tag, payload));
+  ipcMain.handle("rpc-subscribe", (event, id: string, tag: string, payload: unknown) => rpc.subscribe(event.sender, id, tag, payload));
+  ipcMain.on("rpc-unsubscribe", (_event, id: string) => rpc.unsubscribe(id));
+
   ipcMain.handle("invoke", async (_event, method: string, params: unknown) => {
     const handler = handlers[method];
     if (!handler) throw new Error(`no method ${method}`);

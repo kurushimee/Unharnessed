@@ -31,6 +31,11 @@ export type ThreadMeta = {
   /** Its branch's pull request, when last looked up. */
   pr?: PullRequestRef | null;
   prCheckedAt?: number;
+  /**
+   * The id kuru code's window gave it before Unharnessed made its session: a
+   * T3 Code draft names its thread before the first message creates it.
+   */
+  alias?: string;
 };
 
 type SavedProject = {
@@ -64,6 +69,8 @@ type Saved = {
   lastCwd?: string;
   /** The window's client settings (T3 Code's ClientSettings), as it last wrote them. */
   clientSettings?: Record<string, unknown>;
+  /** T3 Code's server settings (encoded), the ones Unharnessed's own settings do not hold. */
+  serverSettings?: Record<string, unknown>;
 };
 
 /** A folder's project id: Windows paths are compared without case. */
@@ -102,6 +109,7 @@ export class Store {
         window: read.window,
         lastCwd: read.lastCwd,
         clientSettings: read.clientSettings,
+        serverSettings: read.serverSettings,
       };
     } catch {
       // A first start.
@@ -123,6 +131,15 @@ export class Store {
 
   setClientSettings(settings: Record<string, unknown>): void {
     this.data.clientSettings = settings;
+    this.save();
+  }
+
+  get serverSettings(): Record<string, unknown> | null {
+    return this.data.serverSettings ?? null;
+  }
+
+  setServerSettings(settings: Record<string, unknown>): void {
+    this.data.serverSettings = settings;
     this.save();
   }
 

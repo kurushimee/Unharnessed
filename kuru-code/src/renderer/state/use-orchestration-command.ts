@@ -1,11 +1,37 @@
-// T3 Code's state/use-orchestration-command.ts runs a command through its
-// atom registry, reporting failures as toasts unless told not to. kuru code's
-// commands are plain calls to its main process, so this returns the command.
-import type { OrchestrationCommand } from "./threads";
+import type {
+  AtomCommand,
+  AtomCommandOptions,
+  AtomCommandResult,
+} from "~/rt/state/runtime";
+import {
+  AuthOrchestrationOperateScope,
+  EnvironmentAuthorizationError,
+  type EnvironmentId,
+} from "~/contracts";
+import * as Cause from "effect/Cause";
+import { AsyncResult } from "effect/reactivity";
 
-export function useOrchestrationCommand<I>(
-  command: OrchestrationCommand<I>,
-  _options: { readonly reportFailure?: boolean } = {},
-): OrchestrationCommand<I> {
-  return command;
+import { readEnvironmentScope } from "./session";
+import { useAtomCommand } from "./use-atom-command";
+
+const ORCHESTRATION_OPERATE_DENIED_MESSAGE = "This connection cannot change threads or projects.";
+
+export function useOrchestrationCommand<W extends { readonly environmentId: EnvironmentId }, A, E>(
+  command: AtomCommand<W, A, E>,
+  options?: string | AtomCommandOptions,
+): (value: W) => Promise<AtomCommandResult<A, E | EnvironmentAuthorizationError>> {
+  const run = useAtomCommand(command, options);
+  return async (value: W): Promise<AtomCommandResult<A, E | EnvironmentAuthorizationError>> => {
+    if (!readEnvironmentScope(value.environmentId, AuthOrchestrationOperateScope)) {
+      return AsyncResult.failure(
+        Cause.fail(
+          new EnvironmentAuthorizationError({
+            requiredScope: AuthOrchestrationOperateScope,
+            message: ORCHESTRATION_OPERATE_DENIED_MESSAGE,
+          }),
+        ),
+      );
+    }
+    return run(value);
+  };
 }

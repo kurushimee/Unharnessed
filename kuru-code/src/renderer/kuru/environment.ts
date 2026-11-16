@@ -1,59 +1,104 @@
 // kuru code's one environment: this machine. T3 Code connects to several
-// servers (environments); its sidebar and pages ask which ones are known and
-// connected, so kuru code answers with the local one, always connected.
-import { LOCAL_ENVIRONMENT_ID, type EnvironmentId } from "~/contracts";
-import { useStore } from "~/state";
+// servers (environments) and its screens ask which are known, how they are
+// connected, and what their servers are; kuru code answers with its own
+// machine, served by its main process, always connected, whose server config
+// is kuru/serverConfig.ts's.
+import { useAtomValue } from "@effect/atom-react";
+import * as Option from "effect/Option";
+import { Atom } from "effect/reactivity";
+import { LOCAL_ENVIRONMENT_ID, type EnvironmentId, type ServerProvider } from "~/contracts";
+import type {
+  ConnectionCatalogEntry,
+  EnvironmentPresentation,
+  EnvironmentServerConfig,
+  PreparedConnection,
+} from "~/rt/connection/index";
+import type { EnvironmentCatalogState } from "~/rt/state/connections";
+import { LOCAL_ASSET_BASE_URL } from "~/state/session";
+import { serverConfigAtom } from "./serverConfig";
 
-/** From T3 Code's connection/presentation.ts; kuru code's one environment is always connected. */
-export type EnvironmentConnectionPhase =
-  | "available"
-  | "offline"
-  | "connecting"
-  | "reconnecting"
-  | "connected"
-  | "error"
-  | "unsupported";
+export type { EnvironmentConnectionPhase, EnvironmentServerConfig } from "~/rt/connection/index";
 
-/** The part of T3 Code's server config its sidebar reads. */
-export interface EnvironmentServerConfig {
-  readonly environment: {
-    readonly environmentId: EnvironmentId;
-    readonly label: string;
-    readonly capabilities: { readonly threadAutoSettleOptOut: boolean };
-  };
-  /** Where threads with no project run: the home folder. */
-  readonly scratchWorkspaceRoot: string | null;
+export const LOCAL_ENVIRONMENT_LABEL = "This computer";
+
+const LOCAL_ENTRY: ConnectionCatalogEntry = {
+  target: {
+    _tag: "PrimaryConnectionTarget",
+    environmentId: LOCAL_ENVIRONMENT_ID,
+    label: LOCAL_ENVIRONMENT_LABEL,
+    httpBaseUrl: LOCAL_ASSET_BASE_URL,
+  },
+  profile: Option.none(),
+  enabled: true,
+};
+
+export const LOCAL_CONNECTION_ENTRY = LOCAL_ENTRY;
+
+export const LOCAL_PREPARED_CONNECTION: PreparedConnection = {
+  environmentId: LOCAL_ENVIRONMENT_ID,
+  label: LOCAL_ENVIRONMENT_LABEL,
+  httpBaseUrl: LOCAL_ASSET_BASE_URL,
+  socketUrl: "",
+  httpAuthorization: null,
+  target: LOCAL_ENTRY.target,
+};
+
+export const environmentCatalogAtom = Atom.make<EnvironmentCatalogState>({
+  isReady: true,
+  entries: new Map([[LOCAL_ENVIRONMENT_ID, LOCAL_ENTRY]]),
+}).pipe(Atom.keepAlive, Atom.withLabel("kuru:environment-catalog"));
+
+/** T3 Code's connection/catalog.ts atoms: the catalog, and the network kuru code never waits on. */
+export const environmentCatalog = {
+  catalogValueAtom: environmentCatalogAtom,
+  networkStatusValueAtom: Atom.make({ online: true } as const),
+};
+
+function withoutProviders(config: import("~/contracts").ServerConfig): EnvironmentServerConfig {
+  const { providers: _providers, ...rest } = config;
+  return rest;
 }
 
-const configs = new Map<string, ReadonlyMap<EnvironmentId, EnvironmentServerConfig>>();
-
-function localConfig(home: string): ReadonlyMap<EnvironmentId, EnvironmentServerConfig> {
-  let map = configs.get(home);
-  if (!map) {
-    map = new Map([
-      [
-        LOCAL_ENVIRONMENT_ID,
-        {
-          environment: {
-            environmentId: LOCAL_ENVIRONMENT_ID,
-            label: "This computer",
-            capabilities: { threadAutoSettleOptOut: true },
-          },
-          scratchWorkspaceRoot: home,
-        },
-      ],
-    ]);
-    configs.set(home, map);
+let lastConfig: import("~/contracts").ServerConfig | null = null;
+let lastStripped: EnvironmentServerConfig | null = null;
+const serverConfigsAtom = Atom.make((get): ReadonlyMap<EnvironmentId, EnvironmentServerConfig> => {
+  const config = get(serverConfigAtom(LOCAL_ENVIRONMENT_ID));
+  if (config === null) return new Map();
+  if (config !== lastConfig) {
+    const stripped = withoutProviders(config);
+    // Provider pushes alone keep the config without them unchanged.
+    if (lastStripped === null || JSON.stringify(lastStripped) !== JSON.stringify(stripped)) lastStripped = stripped;
+    lastConfig = config;
   }
-  return map;
-}
+  return new Map([[LOCAL_ENVIRONMENT_ID, lastStripped!]]);
+}).pipe(Atom.withLabel("kuru:server-configs"));
 
-const NO_CONFIGS: ReadonlyMap<EnvironmentId, EnvironmentServerConfig> = new Map();
+const presentationsAtom = Atom.make((get): ReadonlyMap<EnvironmentId, EnvironmentPresentation> => {
+  const serverConfig = get(serverConfigsAtom).get(LOCAL_ENVIRONMENT_ID) ?? null;
+  return new Map([
+    [
+      LOCAL_ENVIRONMENT_ID,
+      { entry: LOCAL_ENTRY, connection: { phase: "connected", error: null, traceId: null }, serverConfig },
+    ],
+  ]);
+}).pipe(Atom.withLabel("kuru:environment-presentations"));
 
-/** The server configs by environment: the local one, once the main process said where home is. */
+const providersByEnvironmentAtom = Atom.make((get): ReadonlyMap<EnvironmentId, ReadonlyArray<ServerProvider>> => {
+  const providers = get(serverConfigAtom(LOCAL_ENVIRONMENT_ID))?.providers ?? [];
+  return new Map([[LOCAL_ENVIRONMENT_ID, providers]]);
+}).pipe(Atom.withLabel("kuru:providers-by-environment"));
+
+/** T3 Code's state/presentation.ts atoms for kuru code's one environment. */
+export const environmentPresentations = {
+  presentationsAtom,
+  serverConfigsAtom,
+  providersByEnvironmentAtom,
+  presentationAtom: (environmentId: EnvironmentId | null) =>
+    Atom.make((get) => (environmentId === null ? null : (get(presentationsAtom).get(environmentId) ?? null))),
+};
+
 export function useServerConfigs(): ReadonlyMap<EnvironmentId, EnvironmentServerConfig> {
-  const home = useStore((state) => state.app?.home ?? null);
-  return home === null ? NO_CONFIGS : localConfig(home);
+  return useAtomValue(serverConfigsAtom);
 }
 
 const CONNECTED: readonly EnvironmentId[] = [LOCAL_ENVIRONMENT_ID];

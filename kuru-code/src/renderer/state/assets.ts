@@ -33,3 +33,8 @@ export function useProjectFaviconUrl(cwd: string): string | null {
 export function invalidateProjectFavicons(): void {
   asked.clear();
 }
+
+import { createAssetEnvironmentAtoms } from "~/rt/state/assets";
+
+/** T3 Code's asset URLs, answered by kuru code's main process. */
+export const assetEnvironment = createAssetEnvironmentAtoms();

@@ -82,3 +82,41 @@ export function resolveActiveThreadRouteRef(
   }
   return draftThread.promotedTo;
 }
+
+import type { EnvironmentShellStatus } from "./state/shell";
+import type { EnvironmentThreadState } from "~/rt/state/threadState";
+import * as RouteOption from "effect/Option";
+
+export type ThreadRouteRenderState = "loading" | "ready" | "missing";
+
+export function isThreadRouteSnapshotAuthoritative(
+  status: EnvironmentShellStatus | null | undefined,
+): boolean {
+  return status === "live";
+}
+
+export function resolveThreadRouteRenderState(input: {
+  bootstrapComplete: boolean;
+  serverThreadExists: boolean;
+  serverThreadDeleted: boolean;
+  unlistedThreadDetail: EnvironmentThreadState;
+  draftThreadExists: boolean;
+}): ThreadRouteRenderState {
+  if (input.draftThreadExists || (input.serverThreadExists && !input.serverThreadDeleted)) {
+    return "ready";
+  }
+  if (!input.bootstrapComplete) {
+    return "loading";
+  }
+  if (input.serverThreadExists || input.unlistedThreadDetail.status === "deleted") {
+    return "missing";
+  }
+  // Shell membership can lag a new thread; its detail decides.
+  const projection = RouteOption.getOrNull(input.unlistedThreadDetail.data);
+  if (projection === null) {
+    return "loading";
+  }
+  return projection.thread.deletedAt !== null || projection.thread.archivedAt !== null
+    ? "missing"
+    : "ready";
+}

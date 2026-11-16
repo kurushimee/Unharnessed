@@ -8,6 +8,7 @@ import { DEFAULT_PREFS } from "@shared/protocol";
 import { post } from "./bridge";
 import { startMainAppLocationTracking } from "./components/sidebar/mainAppLocation";
 import { getRouter } from "./router";
+import { startKuru } from "./kuru/start";
 import { applyTheme, connect } from "./state";
 import "./index.css";
 
@@ -21,6 +22,7 @@ connect();
 
 const router = getRouter(createHashHistory());
 startMainAppLocationTracking(router);
+startKuru(router);
 
 void router.load().then(() => {
   createRoot(document.getElementById("root")!, {

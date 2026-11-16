@@ -1,5 +1,7 @@
 import { type CxOptions, cx } from "class-variance-authority";
 import { extendTailwindMerge } from "tailwind-merge";
+import { MessageId, ProjectId, ThreadId } from "~/contracts";
+import { DraftId } from "~/composerDraftStore";
 
 // Register extra font sizes and background images so tailwind-merge does not
 // treat text-2xs or bg-composer-seam-below as colors.
@@ -29,3 +31,17 @@ export function normalizeSearchText(value: string): string {
 export function randomUUID(): string {
   return globalThis.crypto.randomUUID();
 }
+
+export function getLocalFileManagerName(platform: string): string {
+  if (isMacPlatform(platform)) return "Finder";
+  if (isWindowsPlatform(platform)) return "File Explorer";
+  return "Files";
+}
+
+export const newProjectId = (): ProjectId => ProjectId.make(randomUUID());
+
+export const newThreadId = (): ThreadId => ThreadId.make(randomUUID());
+
+export const newDraftId = (): DraftId => DraftId.make(randomUUID());
+
+export const newMessageId = (): MessageId => MessageId.make(randomUUID());

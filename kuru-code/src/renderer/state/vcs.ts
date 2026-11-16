@@ -1,44 +1,40 @@
-// Adapted from T3 Code's state/vcs.ts: a folder's checked-out branch, shared
-// by every sidebar row showing a thread of it. Read when first shown, again
-// once it is 15 seconds old and when the window regains focus.
-import { useSyncExternalStore } from "react";
-import { invoke } from "~/bridge";
+import {
+  createVcsActionManager,
+  createVcsEnvironmentAtoms,
+  createVcsStatusRevalidationAtomFamily,
+} from "~/rt/state/vcs";
+import * as Equal from "effect/Equal";
+import { AsyncResult, Atom } from "effect/reactivity";
 
-const STALE_MS = 15_000;
-const branches = new Map<string, { refName: string | null; at: number }>();
-const pending = new Set<string>();
-const listeners = new Set<() => void>();
+import { connectionAtomRuntime } from "../connection/runtime";
+import { subscribeDocumentReturn } from "../lib/documentActivity";
 
-function read(cwd: string): void {
-  if (pending.has(cwd)) return;
-  const known = branches.get(cwd);
-  if (known && Date.now() - known.at < STALE_MS) return;
-  pending.add(cwd);
-  void invoke<string | null>("git.branch", { cwd })
-    .catch(() => null)
-    .then((refName) => {
-      pending.delete(cwd);
-      const before = branches.get(cwd);
-      branches.set(cwd, { refName, at: Date.now() });
-      if (before?.refName !== refName) for (const listener of listeners) listener();
-    });
-}
+export const vcsEnvironment = createVcsEnvironmentAtoms(connectionAtomRuntime);
+export const vcsActionManager = createVcsActionManager(connectionAtomRuntime);
 
-if (typeof window !== "undefined") {
-  window.addEventListener("focus", () => {
-    for (const cwd of branches.keys()) branches.set(cwd, { ...branches.get(cwd)!, at: 0 });
-    for (const listener of listeners) listener();
-  });
-}
+/** Only what a chat view reads, so changing file counts don't re-render it on every edit. */
+export const chatGitStatusAtom = Atom.family((status: ReturnType<typeof vcsEnvironment.status>) =>
+  Atom.map(status, (result) => {
+    const data = AsyncResult.getOrElse(result, () => null);
+    if (data === null) return null;
+    const { isRepo, refName, hasWorkingTreeChanges, pr } = data;
+    return { isRepo, refName, hasWorkingTreeChanges, pr };
+  }).pipe(Atom.withEquality(Equal.equals)),
+);
+export const NO_CHAT_GIT_STATUS_ATOM: ReturnType<typeof chatGitStatusAtom> = Atom.make(null);
 
-function subscribe(listener: () => void): () => void {
-  listeners.add(listener);
-  return () => listeners.delete(listener);
-}
+/**
+ * Refreshes a checkout's status when the user comes back to the window, where
+ * edits made in another app or terminal may be waiting.
+ */
+export const vcsStatusRevalidation = createVcsStatusRevalidationAtomFamily({
+  refreshStatus: vcsEnvironment.refreshStatus,
+  subscribeWake: subscribeDocumentReturn,
+  wakeDebounceMs: 250,
+});
 
-/** The folder's branch (`data.refName`), or no data until read; `null` cwd reads nothing. */
-export function useVcsBranch(cwd: string | null): { data: { refName: string | null } | undefined } {
-  if (cwd !== null) read(cwd);
-  const known = useSyncExternalStore(subscribe, () => (cwd === null ? undefined : branches.get(cwd)));
-  return { data: known };
-}
+export const vcsBranchRevalidation = createVcsStatusRevalidationAtomFamily({
+  refreshStatus: vcsEnvironment.refreshBranch,
+  subscribeWake: subscribeDocumentReturn,
+  wakeDebounceMs: 250,
+});

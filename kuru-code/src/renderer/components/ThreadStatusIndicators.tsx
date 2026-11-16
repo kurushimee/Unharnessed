@@ -33,18 +33,21 @@ import {
 
 export { resolveThreadPullRequestBadge, type ThreadPullRequestBadge };
 
-export interface ThreadPr {
+/** T3 Code's: a branch's pull request as git status reports it (VcsStatusResult["pr"]), or none. */
+export type ThreadPr = {
   readonly number: number;
   readonly url: string;
   readonly title: string;
   readonly state: "open" | "closed" | "merged";
-  readonly isDraft?: boolean;
-  readonly headRef?: string | null;
-}
-type SourceControlProvider = { readonly kind: "github"; readonly name: string; readonly baseUrl: string };
+  readonly isDraft?: boolean | undefined;
+  readonly headRef?: string | null | undefined;
+  readonly baseRef?: string | undefined;
+  readonly updatedAt?: string | null | undefined;
+} | null;
+type SourceControlProvider = { readonly kind: string; readonly name: string; readonly baseUrl: string };
 
 export interface LinkedThreadPullRequestStatus {
-  readonly pr: ThreadPr;
+  readonly pr: NonNullable<ThreadPr>;
   readonly sourceControlProvider: SourceControlProvider;
 }
 
@@ -385,7 +388,7 @@ export function ChangeRequestStatusIcon({
   state,
   isDraft = false,
   className,
-}: Pick<ThreadPr, "state"> & {
+}: Pick<NonNullable<ThreadPr>, "state"> & {
   readonly isDraft?: boolean | undefined;
   readonly className?: string | undefined;
 }) {
