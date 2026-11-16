@@ -28,7 +28,6 @@ const CAPABILITIES = {
   pullRequests: true,
   threadSettlement: true,
   threadAutoSettlement: true,
-  threadSnooze: true,
   threadPinning: true,
   threadPinReorder: true,
   threadActiveReorder: true,

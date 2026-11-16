@@ -12,7 +12,7 @@ import { readPrimaryServerKeybindings } from "../state/server";
 import * as ThreadUndo from "~/rt/state/threadUndo";
 
 type UndoOptions = {
-  action: "Settled" | "Snoozed" | "Unpinned" | "Archived" | "Discarded";
+  action: "Settled" | "Unpinned" | "Archived" | "Discarded";
   undo: () => Promise<AtomCommandResult<unknown, unknown>>;
   failureTitle: string;
   claim: ReturnType<typeof ThreadUndo.begin>;

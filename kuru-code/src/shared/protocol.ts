@@ -67,9 +67,6 @@ export type ThreadRow = {
   activeOrderKey?: string;
   /** When it was taken back out of Settled, ms. */
   unsettledAt?: number;
-  /** Snoozed until then (ISO time), since `snoozedAt`. */
-  snoozedUntil?: string;
-  snoozedAt?: string;
   /** Kept out of automatic settling since then, ms. */
   autoSettleDisabledAt?: number;
   /** Archived then, ms. */

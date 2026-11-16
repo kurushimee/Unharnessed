@@ -227,11 +227,6 @@ export const threadEnvironment = {
   delete: deleteThread,
   settle: metaCommand<{ readonly threadId: ThreadId }>("settle", () => ({ settledAt: Date.now(), pinnedAt: null })),
   unsettle: metaCommand<{ readonly threadId: ThreadId }>("unsettle", () => ({ settledAt: null, unsettledAt: Date.now() })),
-  snooze: metaCommand<{ readonly threadId: ThreadId; readonly snoozedUntil: string }>("snooze", (input) => ({
-    snoozedUntil: input.snoozedUntil,
-    snoozedAt: new Date().toISOString(),
-  })),
-  unsnooze: metaCommand<{ readonly threadId: ThreadId }>("unsnooze", () => ({ snoozedUntil: null, snoozedAt: null })),
   archive: metaCommand<{ readonly threadId: ThreadId }>("archive", () => ({ archivedAt: Date.now() })),
   unarchive: metaCommand<{ readonly threadId: ThreadId }>("unarchive", () => ({ archivedAt: null })),
   markUnread: metaCommand<{ readonly threadId: ThreadId }>("mark-unread", () => ({ unread: true })),

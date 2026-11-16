@@ -14,7 +14,6 @@ import { CheckIcon, CopyIcon } from "lucide-react";
 
 import { APP_DISPLAY_NAME, APP_VERSION } from "../branding";
 import { AppSidebarLayout } from "../components/AppSidebarLayout";
-import { CustomSnoozeDialogHost } from "../components/CustomSnoozeDialog";
 import { ConfirmDialogHost } from "../components/ConfirmDialogHost";
 import { KuruHosts } from "../components/KuruHosts";
 import { useCopyToClipboard } from "../hooks/useCopyToClipboard";
@@ -54,7 +53,6 @@ function RootRouteView() {
     <ToastProvider>
       <AnchoredToastProvider>
         <ConfirmDialogHost />
-        <CustomSnoozeDialogHost />
         <KuruHosts />
         <AppSidebarLayout>
           <Outlet />

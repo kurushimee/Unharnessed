@@ -160,8 +160,6 @@ function toWireThread(row: ThreadRow): OrchestrationV2ThreadShell {
     settledOverride: row.settled ? "settled" : row.unsettledAt !== undefined ? "active" : null,
     settledAt: row.settled ? utc(row.settledAt ?? updated) : null,
     unsettledAt: utcOrNull(row.unsettledAt),
-    snoozedUntil: row.snoozedUntil ? DateTime.makeUnsafe(row.snoozedUntil) : null,
-    snoozedAt: row.snoozedAt ? DateTime.makeUnsafe(row.snoozedAt) : null,
     pinnedAt: row.pinned ? utc(row.pinnedAt ?? updated) : null,
     autoSettleDisabledAt: utcOrNull(row.autoSettleDisabledAt),
     pinOrderKey: row.pinOrderKey ?? null,

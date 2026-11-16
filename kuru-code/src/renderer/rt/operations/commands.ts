@@ -104,14 +104,6 @@ export interface ReorderActiveThreadInput extends ThreadCommandInput {
   readonly orderKey: string;
 }
 
-export interface SnoozeThreadInput extends ThreadCommandInput {
-  readonly snoozedUntil: string;
-}
-
-export interface UnsnoozeThreadInput extends ThreadCommandInput {
-  readonly reason: "user";
-}
-
 export interface VisitThreadInput extends ThreadCommandInput {
   readonly visitedAt: string;
   /** Counts toward search frecency; `searchQuery` is the palette query that picked it. */

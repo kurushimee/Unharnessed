@@ -232,7 +232,6 @@ interface ComposerSendInput {
   readonly setThreadError: ReturnType<typeof makeThreadErrorSetter>;
   readonly setKeepFullHistory: (threadKey: string, keep: boolean) => void;
   readonly anchorNewTurn: TimelineFollow["anchorNewTurn"];
-  readonly acknowledgeActiveThreadWoke: () => void;
   /** Resolves true once the side chat started and got the prompt. */
   readonly onSideChat?: ((prompt: string) => Promise<boolean>) | undefined;
   /** Refuses `/side` with this reason and keeps the draft. */
@@ -319,7 +318,6 @@ export function useComposerSend(input: ComposerSendInput) {
     setThreadError,
     setKeepFullHistory,
     anchorNewTurn,
-    acknowledgeActiveThreadWoke,
     onSideChat,
     sideChatDisabledReason,
     handleNewThreadInActiveProject,
@@ -1288,7 +1286,6 @@ export function useComposerSend(input: ComposerSendInput) {
         if (turnUsesAttachmentUploads) {
           releaseDraftAttachments(composerAttachmentsSnapshot);
         }
-        acknowledgeActiveThreadWoke();
         // A draft still on screen finalizes once its thread route takes over.
         if (sentDraftThreadRef) {
           if (backgroundDraftOpened || currentRouteThreadKeyRef.current !== routeThreadKey) {

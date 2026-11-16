@@ -15,9 +15,7 @@ type ThreadItem = Extract<SidebarListItem, { kind: "thread" }>;
 type Layout = Parameters<SortingStrategy>[0];
 const isShelfHeader = (item: SidebarListItem | undefined) =>
   item?.kind === "marker" &&
-  (item.marker === "working-header" ||
-    item.marker === "snoozed-header" ||
-    item.marker === "settled-header");
+  (item.marker === "working-header" || item.marker === "settled-header");
 
 export function restrictBelowSidebarLabel(
   { transform, containerNodeRect, draggingNodeRect }: Parameters<Modifier>[0],
@@ -56,7 +54,7 @@ export function createSidebarCollisionDetection(
       if (pointer.x >= boundary.left && pointer.x <= boundary.right) {
         if (pointer.y < previousY && pointer.y <= boundary.bottom) boundarySection = "pinned";
         else if (pointer.y > previousY && pointer.y >= boundary.top) boundarySection = "active";
-        const nextHeader = (["working-header", "snoozed-header", "settled-header"] as const)
+        const nextHeader = (["working-header", "settled-header"] as const)
           .map((marker) =>
             args.droppableContainers.find((container) => container.id === sidebarMarkerId(marker)),
           )
@@ -97,7 +95,6 @@ export function createSidebarSortingStrategy(input: {
   settledExpanded: boolean;
   settledVisibleCount?: number;
   routeThreadKey?: string | null;
-  snoozedThreadCount?: number;
   cardHeight?: number;
   slimHeight?: number;
   boundaryLabelHeight?: number;
@@ -118,7 +115,6 @@ export function createSidebarSortingStrategy(input: {
       pinned: [],
       active: [],
       working: [],
-      snoozed: [],
       settled: [],
     };
     let cardHeight = input.cardHeight;
@@ -179,14 +175,6 @@ export function createSidebarSortingStrategy(input: {
     if (items.some((item) => item.kind === "marker" && item.marker === "working-header")) {
       marker("working-header");
       projected.push(...groups.working);
-    }
-    if (
-      groups.snoozed.length > 0 ||
-      ((active.section !== "snoozed" || (input.snoozedThreadCount ?? 0) > 1) &&
-        items.some((item) => item.kind === "marker" && item.marker === "snoozed-header"))
-    ) {
-      marker("snoozed-header");
-      projected.push(...groups.snoozed);
     }
     marker("settled-header");
     section("settled");

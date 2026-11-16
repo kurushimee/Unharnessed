@@ -1,16 +1,15 @@
 // Adapted from T3 Code's hooks/useThreadActions.ts. T3 Code's thread actions
 // are orchestration commands to its server; kuru code's change the thread's
-// notes in its main process (settled, pinned, snoozed, their order...), and a
+// notes in its main process (settled, pinned, their order...), and a
 // delete asks the Unharnessed agent to remove the session. The rules each
-// command keeps on T3 Code's server (settling unpins and wakes, pinning
-// un-settles and wakes) are kept here, and so are the Undo notices.
+// command keeps on T3 Code's server (settling unpins, pinning un-settles)
+// are kept here, and so are the Undo notices.
 import * as Cause from "effect/Cause";
 import { AsyncResult } from "effect/reactivity";
 import { useRouter } from "@tanstack/react-router";
 import type { ScopedThreadRef } from "~/contracts";
 import { scopedThreadKey } from "~/rt/environment/index";
 import { threadRuntimeCanArchive } from "~/rt/state/models";
-import { canSnooze, threadWokeAt } from "~/rt/state/threadSettled";
 import { pinOrderKeyBetween } from "~/rt/state/threadSort";
 import * as ThreadUndo from "~/rt/state/threadUndo";
 import { invoke } from "~/bridge";
@@ -63,22 +62,9 @@ async function requestThreadUnpinConfirmation(input: {
   );
 }
 
-export function useAcknowledgeThreadWoke() {
-  const markThreadVisited = useUiStateStore((state) => state.markThreadVisited);
-  return (target: ScopedThreadRef, wokeAt: string) => {
-    markThreadVisited(scopedThreadKey(target), wokeAt);
-  };
-}
-
-/** T3 Code turns a No project thread with its own worktree into a project; Unharnessed threads have none. */
-export function canTurnThreadIntoProject(_threadRef: ScopedThreadRef): boolean {
-  return false;
-}
-
 export function useThreadActions() {
   const router = useRouter();
   const confirmThreadUnpin = useClientSettings((settings) => settings.confirmThreadUnpin);
-  const markThreadVisited = useUiStateStore((state) => state.markThreadVisited);
 
   const isRouteThread = (target: ScopedThreadRef) => {
     const params = router.state.matches.at(-1)?.params as
@@ -94,12 +80,8 @@ export function useThreadActions() {
         switch (step.action) {
           case "unsettle":
             return unsettleThread(target);
-          case "unsnooze":
-            return unsnoozeThread(target);
           case "pin":
             return pinThread(target, step.orderKey === undefined ? {} : { orderKey: step.orderKey });
-          case "snooze":
-            return update(target, { snoozedUntil: step.snoozedUntil, snoozedAt: now() });
         }
       },
       (result) => result._tag === "Success",
@@ -107,24 +89,19 @@ export function useThreadActions() {
 
   const settleThread = async (target: ScopedThreadRef): Promise<Result> => {
     const thread = readThreadShell(target);
-    const wokeAt = thread ? threadWokeAt(thread, { now: now() }) : null;
     const undoPlan = ThreadUndo.planThreadUndo("settle", thread);
     ThreadUndo.invalidate("pin", scopedThreadKey(target));
-    ThreadUndo.invalidate("snooze", scopedThreadKey(target));
     const action = ThreadUndo.begin("settle", scopedThreadKey(target));
     const result = await update(target, {
       settledAt: Date.now(),
       unsettledAt: null,
       pinnedAt: null,
       pinOrderKey: null,
-      snoozedUntil: null,
-      snoozedAt: null,
     });
     if (result._tag !== "Success") {
       action.finish();
       return result;
     }
-    if (wokeAt !== null) markThreadVisited(scopedThreadKey(target), wokeAt);
     showThreadUndoNotice({
       action: "Settled",
       claim: action,
@@ -149,13 +126,10 @@ export function useThreadActions() {
     const orderKey = opts.orderKey ?? topOfPinnedRunOrderKey();
     ThreadUndo.invalidate("pin", scopedThreadKey(target));
     ThreadUndo.invalidate("settle", scopedThreadKey(target));
-    ThreadUndo.invalidate("snooze", scopedThreadKey(target));
     return update(target, {
       pinnedAt: Date.now(),
       pinOrderKey: orderKey ?? null,
       settledAt: null,
-      snoozedUntil: null,
-      snoozedAt: null,
     });
   };
 
@@ -198,37 +172,6 @@ export function useThreadActions() {
   const reorderActiveThread = async (target: ScopedThreadRef, orderKey: string): Promise<Result> =>
     update(target, { activeOrderKey: orderKey });
 
-  const snoozeThread = async (target: ScopedThreadRef, snoozedUntil: string): Promise<Result> => {
-    const thread = readThreadShell(target);
-    if (thread && !canSnooze(thread, { now: now() })) {
-      return fail("This thread is busy and cannot be snoozed now.");
-    }
-    const action = ThreadUndo.begin("snooze", scopedThreadKey(target));
-    const result = await update(target, {
-      snoozedUntil,
-      snoozedAt: now(),
-      settledAt: null,
-      pinnedAt: null,
-      pinOrderKey: null,
-    });
-    if (result._tag !== "Success") {
-      action.finish();
-      return result;
-    }
-    showThreadUndoNotice({
-      action: "Snoozed",
-      claim: action,
-      undo: () => runUndoPlan(target, ThreadUndo.planThreadUndo("snooze")),
-      failureTitle: "Failed to wake thread",
-    });
-    return result;
-  };
-
-  const unsnoozeThread = async (target: ScopedThreadRef): Promise<Result> => {
-    ThreadUndo.invalidate("snooze", scopedThreadKey(target));
-    return update(target, { snoozedUntil: null, snoozedAt: null });
-  };
-
   const markThreadUnread = (target: ScopedThreadRef) => {
     void update(target, { unread: true });
     useUiStateStore
@@ -256,7 +199,7 @@ export function useThreadActions() {
       action.finish();
       return result;
     }
-    for (const kind of ["settle", "snooze", "pin"]) ThreadUndo.invalidate(kind, scopedThreadKey(target));
+    for (const kind of ["settle", "pin"]) ThreadUndo.invalidate(kind, scopedThreadKey(target));
     opts.onArchived?.();
     showThreadUndoNotice({
       action: "Archived",
@@ -272,7 +215,7 @@ export function useThreadActions() {
     target: ScopedThreadRef,
     _opts: { deletedThreadKeys?: ReadonlySet<string> } = {},
   ): Promise<Result> => {
-    for (const kind of ["settle", "snooze", "pin", "archive"]) {
+    for (const kind of ["settle", "pin", "archive"]) {
       ThreadUndo.invalidate(kind, scopedThreadKey(target));
     }
     useComposerDraftStore.getState().clearComposerDraft(target);
@@ -282,19 +225,13 @@ export function useThreadActions() {
     return result;
   };
 
-  const turnThreadIntoProject = async (_target: ScopedThreadRef): Promise<Result> =>
-    fail("Unharnessed threads cannot become projects.");
-
   return {
     settleThread,
     unsettleThread,
-    snoozeThread,
-    unsnoozeThread,
     pinThread,
     unpinThread,
     confirmAndUnpinThread,
     setThreadAutoSettle,
-    turnThreadIntoProject,
     reorderPinnedThread,
     reorderActiveThread,
     markThreadUnread,

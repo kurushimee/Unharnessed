@@ -226,7 +226,7 @@ export class Threads {
     this.emit();
   }
 
-  /** The thread's sidebar state changed (settled, pinned, snoozed, its order, unread...). */
+  /** The thread's sidebar state changed (settled, pinned, its order, unread...). */
   setMeta(windowId: string, change: Partial<ThreadMeta>): void {
     this.store.setThread(this.resolve(windowId), change);
     this.emit();
@@ -277,8 +277,6 @@ export class Threads {
         unsettledAt: meta.unsettledAt,
         pinOrderKey: meta.pinOrderKey,
         activeOrderKey: meta.activeOrderKey,
-        snoozedUntil: meta.snoozedUntil,
-        snoozedAt: meta.snoozedAt,
         autoSettleDisabledAt: meta.autoSettleDisabledAt,
         archivedAt: meta.archivedAt,
         workingSince: working ? this.workingSince.get(session.id) : undefined,

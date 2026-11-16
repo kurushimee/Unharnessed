@@ -307,7 +307,7 @@ function MenuShortcut({ className, ...props }: React.ComponentProps<"kbd">) {
   );
 }
 
-// Trailing value on a menu row, such as the time a snooze preset wakes at.
+// Trailing value on a menu row.
 // Reads as text at the row's size; MenuShortcut is only for key chords.
 function MenuItemDetail({ className, ...props }: React.ComponentProps<"span">) {
   return (

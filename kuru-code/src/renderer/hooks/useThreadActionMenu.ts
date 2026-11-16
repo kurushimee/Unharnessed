@@ -1,16 +1,12 @@
 import { scopeProjectRef } from "~/rt/environment/index";
-import { requestCustomSnooze } from "../components/CustomSnoozeDialog";
 import {
   type AtomCommandResult,
   isAtomCommandInterrupted,
   settlePromise,
   squashAtomCommandFailure,
 } from "~/rt/state/runtime";
-import { canSnooze, effectiveSnoozed } from "~/rt/state/threadSettled";
 import { type ScopedThreadRef, type ThreadId } from "~/contracts";
 import { useRouter } from "@tanstack/react-router";
-
-import { pickSnoozePreset, resolveSnoozePresets } from "../components/Sidebar.snooze";
 import {
   buildThreadActionMenuItems,
   threadActionRequiresOperate,
@@ -38,7 +34,7 @@ import { threadRuntimeCanArchive } from "~/rt/state/models";
 import { useCopyToClipboard } from "./useCopyToClipboard";
 import { useNewThreadHandler } from "./useHandleNewThread";
 import { useClientSettings } from "./useSettings";
-import { canTurnThreadIntoProject, useThreadActions } from "./useThreadActions";
+import { useThreadActions } from "./useThreadActions";
 
 function failureToast(title: string, error: unknown) {
   toastManager.add(
@@ -55,9 +51,8 @@ export function useThreadActionMenu(input: {
   readonly projectCwd: string | null;
   readonly onStartRename: () => void;
   readonly onFind?: ((threadRef: ScopedThreadRef) => void) | undefined;
-  readonly canShareWithGuest: boolean;
 }) {
-  const { threadRef, projectCwd, onStartRename, onFind, canShareWithGuest } = input;
+  const { threadRef, projectCwd, onStartRename, onFind } = input;
   const router = useRouter();
   const projects = useProjects();
   const primaryEnvironmentId = usePrimaryEnvironmentId();
@@ -70,20 +65,16 @@ export function useThreadActionMenu(input: {
   const {
     settleThread,
     unsettleThread,
-    snoozeThread,
-    unsnoozeThread,
     pinThread,
     confirmAndUnpinThread,
     setThreadAutoSettle,
     archiveThread,
     deleteThread,
     markThreadUnread,
-    turnThreadIntoProject,
   } = useThreadActions();
   const handleNewThread = useNewThreadHandler();
   const confirmThreadDelete = useClientSettings((s) => s.confirmThreadDelete);
   const confirmThreadArchive = useClientSettings((s) => s.confirmThreadArchive);
-  const timestampFormat = useClientSettings((s) => s.timestampFormat);
   const { copyToClipboard: copyPathToClipboard } = useCopyToClipboard<{ path: string }>({
     onCopy: ({ path }) => {
       toastManager.add({ type: "success", title: "Path copied", description: path });
@@ -114,18 +105,12 @@ export function useThreadActionMenu(input: {
         failureToast("Thread actions unavailable", new Error("This thread has not loaded yet."));
         return;
       }
-      const now = new Date();
       const configLoaded = readEnvironmentServerConfigLoaded(threadRef.environmentId);
       const supports = {
         settlement: configLoaded,
         autoSettleOptOut: readEnvironmentSupportsAutoSettleOptOut(threadRef.environmentId),
-        snooze: configLoaded,
         pinning: configLoaded,
-        // Unharnessed names a session from its first message and has no title generator to ask again.
-        titleRegeneration: false,
       };
-      const isRegeneratingTitle = thread.titleRegeneration != null;
-      const snoozePresets = resolveSnoozePresets(now, timestampFormat, threadRef.environmentId);
       const items = buildThreadActionMenuItems({
         canOperate: readEnvironmentScope(threadRef.environmentId, AuthOrchestrationOperateScope),
         canFind: onFind !== undefined,
@@ -134,14 +119,8 @@ export function useThreadActionMenu(input: {
         isPinned: thread.pinnedAt != null,
         isSettled: supports.settlement && thread.settledOverride === "settled",
         autoSettleEnabled: thread.autoSettleDisabledAt == null,
-        isSnoozed: supports.snooze && effectiveSnoozed(thread, { now: now.toISOString() }),
-        canSnoozeNow: canSnooze(thread, { now: now.toISOString() }),
-        isRegeneratingTitle,
         isRunning: !threadRuntimeCanArchive(thread.runtime),
         supports,
-        snoozePresets,
-        canShareWithGuest,
-        canTurnIntoProject: canTurnThreadIntoProject(threadRef),
       });
       const clicked = await settlePromise(() => api.contextMenu.show(items, position));
       if (clicked._tag === "Failure" || clicked.value === null) return;
@@ -154,23 +133,6 @@ export function useThreadActionMenu(input: {
           "Thread action unavailable",
           new Error("This connection cannot change threads."),
         );
-        return;
-      }
-      if (action.startsWith("snooze:")) {
-        const preset =
-          action === "snooze:custom"
-            ? await requestCustomSnooze()
-            : pickSnoozePreset(
-                snoozePresets,
-                action.slice("snooze:".length),
-                timestampFormat,
-                threadRef.environmentId,
-              );
-        if (!preset) return;
-        const result = await snoozeThread(threadRef, preset.snoozedUntil);
-        if (result._tag === "Failure" && !isAtomCommandInterrupted(result)) {
-          failureToast("Failed to snooze thread", squashAtomCommandFailure(result));
-        }
         return;
       }
       const reportFailure = async (
@@ -221,9 +183,6 @@ export function useThreadActionMenu(input: {
         case "unsettle":
           await reportFailure("Failed to un-settle thread", () => unsettleThread(threadRef));
           return;
-        case "unsnooze":
-          await reportFailure("Failed to wake thread", () => unsnoozeThread(threadRef));
-          return;
         case "pin":
           await reportFailure("Failed to pin thread", () => pinThread(threadRef));
           return;
@@ -243,19 +202,6 @@ export function useThreadActionMenu(input: {
         case "mark-unread":
           markThreadUnread(threadRef);
           return;
-        case "turn-into-project": {
-          const result = await turnThreadIntoProject(threadRef);
-          if (result._tag === "Success") {
-            toastManager.add({
-              type: "success",
-              title: "Project created",
-              description: thread.title,
-            });
-          } else if (!isAtomCommandInterrupted(result)) {
-            failureToast("Could not turn thread into a project", squashAtomCommandFailure(result));
-          }
-          return;
-        }
         case "copy-path": {
           const workspacePath = thread.worktreePath ?? projectCwd;
           if (!workspacePath) {

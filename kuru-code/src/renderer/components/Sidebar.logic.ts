@@ -25,10 +25,6 @@ import {
 import type { SidebarProjectSortOrder, SidebarThreadSortOrder } from "~/contracts";
 import type { AsyncResult } from "effect/reactivity";
 import {
-  effectiveSnoozed,
-  type ThreadSnoozeShell,
-} from "~/rt/state/threadSettled";
-import {
   getThreadSortTimestamp,
   planPinnedReorder,
   sortThreads,
@@ -50,16 +46,14 @@ import { shortcutModifierStore } from "../shortcutModifierState";
 export function shouldNavigateAfterThreadPark(input: {
   readonly threadKey: string;
   readonly currentThreadKey: string | null;
-  readonly action: "settle" | "snooze";
+  readonly action: "settle";
   readonly now: string;
-  readonly thread: (ThreadSnoozeShell & Pick<SidebarThreadSummary, "settledOverride">) | null;
+  readonly thread: Pick<SidebarThreadSummary, "settledOverride"> | null;
 }): boolean {
   return (
     input.threadKey === input.currentThreadKey &&
     input.thread !== null &&
-    (input.action === "settle"
-      ? input.thread.settledOverride === "settled"
-      : effectiveSnoozed(input.thread, { now: input.now }))
+    input.thread.settledOverride === "settled"
   );
 }
 
@@ -126,37 +120,6 @@ export function setFileDragActive(setActive: (active: boolean) => void, active: 
   fileDragClears.add(setActive);
 }
 
-/**
- * A clock that advances exactly when a snooze wake time passes, so a woken
- * thread leaves the shelf on time without a per-second clock.
- */
-export function useSnoozeWakeClock(
-  threads: ReadonlyArray<{ readonly snoozedUntil?: string | null | undefined }>,
-): number {
-  const [clockMs, setClockMs] = React.useState(() => Date.now());
-  const wakeTimes: number[] = [];
-  let nextWakeAt: number | null = null;
-  for (const thread of threads) {
-    const wakeAt = thread.snoozedUntil == null ? Number.NaN : Date.parse(thread.snoozedUntil);
-    if (!(wakeAt > clockMs)) continue;
-    wakeTimes.push(wakeAt);
-    if (nextWakeAt === null || wakeAt < nextWakeAt) nextWakeAt = wakeAt;
-  }
-  const woke = useDeadlinePassed(nextWakeAt);
-  // Advancing to the latest wake that has passed skips every wake that elapsed
-  // meanwhile, e.g. across a laptop sleep. Stepping one wake at a time would
-  // re-render once per elapsed wake and hit React's limit.
-  if (woke && nextWakeAt !== null) {
-    let nextClockMs = nextWakeAt;
-    for (const wakeAt of wakeTimes) {
-      if (wakeAt > nextClockMs && deadlineStore(wakeAt).getSnapshot()) nextClockMs = wakeAt;
-    }
-    setClockMs(nextClockMs);
-    return nextClockMs;
-  }
-  return clockMs;
-}
-
 export function useRetainedValue<T>(key: string | null, value: T | null): T | null {
   const [retained, setRetained] = React.useState<{
     readonly key: string;
@@ -173,16 +136,14 @@ export function useRetainedValue<T>(key: string | null, value: T | null): T | nu
 export const animateSidebarLayoutChanges: AnimateLayoutChanges = (args) =>
   args.isSorting ? defaultAnimateLayoutChanges(args) : false;
 
-// Snoozed rows cannot accept drops without a wake time. Working rows only drag out as chat context.
+// Working rows only drag out as chat context.
 
-export type SidebarSection = "pinned" | "active" | "working" | "snoozed" | "settled";
+export type SidebarSection = "pinned" | "active" | "working" | "settled";
 
 export function resolveSidebarThreadSection(input: {
-  readonly snoozed: boolean;
   readonly settled: boolean;
   readonly pinned: boolean;
 }): SidebarSection {
-  if (input.snoozed) return "snoozed";
   if (input.settled) return "settled";
   if (input.pinned) return "pinned";
   return "active";
@@ -196,7 +157,6 @@ export type SidebarListMarker =
   | "settled-placeholder"
   | "pinned-divider"
   | "working-header"
-  | "snoozed-header"
   | "settled-header";
 
 export function sidebarMarkerId(marker: SidebarListMarker): string {
@@ -218,7 +178,6 @@ function sectionAtSidebarSlot(items: readonly SidebarListItem[], index: number):
     if (item.kind !== "marker") continue;
     if (item.marker === "pinned-divider") section = "active";
     else if (item.marker === "working-header") section = "working";
-    else if (item.marker === "snoozed-header") section = "snoozed";
     else if (item.marker === "settled-header") section = "settled";
   }
   return section;
@@ -241,19 +200,14 @@ export function resolveSidebarDropTarget(
   const moved = items.filter((_, index) => index !== activeIndex);
   moved.splice(overIndex, 0, items[activeIndex]!);
   const section = sectionAtSidebarSlot(moved, overIndex);
-  if (section === "working" || section === "snoozed") return null;
+  if (section === "working") return null;
   const pinnedOrder: string[] = [];
   const activeOrder: string[] = [];
   let currentSection: SidebarSection = "pinned";
   for (const item of moved) {
     if (item.kind === "marker") {
       if (item.marker === "pinned-divider") currentSection = "active";
-      else if (
-        item.marker === "working-header" ||
-        item.marker === "snoozed-header" ||
-        item.marker === "settled-header"
-      )
-        break;
+      else if (item.marker === "working-header" || item.marker === "settled-header") break;
     } else if (currentSection === "pinned") pinnedOrder.push(item.key);
     else activeOrder.push(item.key);
   }
@@ -279,22 +233,21 @@ type SidebarThreadDropPlan =
       readonly assignments: ReadonlyArray<{ readonly id: string; readonly orderKey: string }>;
       readonly unpin: boolean;
       readonly unsettle: boolean;
-      readonly unsnooze: boolean;
     }
   | { readonly kind: "settle" };
 
-export type SidebarDropVerb = "pin" | "unpin" | "settle" | "unsettle" | "wake";
+export type SidebarDropVerb = "pin" | "unpin" | "settle" | "unsettle";
 
 export function resolveSidebarDropVerb(
   from: SidebarSection,
   to: SidebarSection | null,
 ): SidebarDropVerb | null {
-  if (to === null || to === from || to === "working" || to === "snoozed") return null;
+  if (to === null || to === from || to === "working") return null;
   if (to === "pinned") return "pin";
   if (to === "settled") return "settle";
   if (from === "pinned") return "unpin";
   if (from === "settled") return "unsettle";
-  return "wake";
+  return null;
 }
 
 export function resolveSidebarSweepKeys(
@@ -424,7 +377,6 @@ export function planSidebarThreadDrop(input: {
               assignments: [],
               unpin: activePinned,
               unsettle: activeSettled,
-              unsnooze: activeSection === "snoozed",
             };
       }
       const order = target.activeOrder;
@@ -443,7 +395,6 @@ export function planSidebarThreadDrop(input: {
         assignments,
         unpin: activePinned,
         unsettle: activeSettled,
-        unsnooze: activeSection === "snoozed",
       };
     }
     case "settled":
@@ -482,18 +433,15 @@ export function applySidebarThreadDrop<
     | "pinnedAt"
     | "pinOrderKey"
     | "activeOrderKey"
-    | "snoozedAt"
-    | "snoozedUntil"
     | "settledAt"
     | "settledOverride"
     | "unsettledAt"
   >,
 >(thread: T, section: "pinned" | "active" | "settled", now: string, orderKey?: string): T {
   const wasSettled = thread.settledOverride === "settled";
-  const awake = { ...thread, snoozedAt: null, snoozedUntil: null };
   if (section === "settled") {
     return {
-      ...awake,
+      ...thread,
       pinnedAt: null,
       pinOrderKey: null,
       activeOrderKey: null,
@@ -503,8 +451,8 @@ export function applySidebarThreadDrop<
     };
   }
   const resumed = wasSettled
-    ? { ...awake, settledOverride: "active" as const, settledAt: null, unsettledAt: now }
-    : awake;
+    ? { ...thread, settledOverride: "active" as const, settledAt: null, unsettledAt: now }
+    : thread;
   return {
     ...resumed,
     pinnedAt: section === "pinned" ? (thread.pinnedAt ?? now) : null,
@@ -899,7 +847,6 @@ export type SidebarThreadStatus =
 export function shouldRecedeSidebarThread(input: {
   status: SidebarThreadStatus;
   isUnread: boolean;
-  isWoke: boolean;
   isActive: boolean;
   isSelected: boolean;
 }): boolean {
@@ -915,7 +862,7 @@ export function shouldRecedeSidebarThread(input: {
     return true;
   }
   if (input.status === "ready" || input.status === "approval") {
-    return !input.isUnread && !input.isWoke;
+    return !input.isUnread;
   }
   return false;
 }
@@ -1268,8 +1215,7 @@ export function getFallbackThreadIdAfterDelete<
     Thread,
     "id" | "projectId" | "createdAt" | "updatedAt" | "settledOverride" | "lineage"
   > &
-    ThreadSortInput &
-    ThreadSnoozeShell,
+    ThreadSortInput,
 >(input: {
   threads: readonly T[];
   deletedThreadId: T["id"];
@@ -1291,7 +1237,6 @@ export function getFallbackThreadIdAfterDelete<
           thread.id !== deletedThreadId &&
           !deletedThreadIds?.has(thread.id) &&
           thread.settledOverride !== "settled" &&
-          !effectiveSnoozed(thread, { now }) &&
           !isSidebarHiddenThread(thread),
       ),
       sortOrder,

@@ -1147,7 +1147,6 @@ export function mergeDirectPreviewAnnotation(input: {
   return { images, previewAnnotations };
 }
 
-export { isThreadWokeUnseen } from "~/rt/state/threadSettled";
 
 export function formatOutgoingPrompt(params: {
   provider: ProviderDriverKind;

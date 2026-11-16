@@ -1,11 +1,9 @@
 import type { ContextMenuItem } from "~/contracts";
-import type { SnoozePreset } from "~/rt/state/threadSettled";
 
 export type ThreadActionMenuId =
   | "find"
   | "new-thread-on-branch"
   | "filter-by-project"
-  | "turn-into-project"
   | "project-settings"
   | "pin"
   | "unpin"
@@ -14,13 +12,8 @@ export type ThreadActionMenuId =
   | "auto-settle"
   | "auto-settle:enabled"
   | "auto-settle:disabled"
-  | "snooze"
-  | `snooze:${string}`
-  | "unsnooze"
   | "rename"
-  | "regenerate-title"
   | "mark-unread"
-  | "share-guest"
   | "copy"
   | "copy-path"
   | "copy-branch"
@@ -78,23 +71,13 @@ export interface ThreadActionMenuState {
   readonly isPinned: boolean;
   readonly isSettled: boolean;
   readonly autoSettleEnabled: boolean;
-  readonly isSnoozed: boolean;
-  readonly canSnoozeNow: boolean;
-  readonly isRegeneratingTitle: boolean;
   /** Archive rejects attached providers, so disable it while running. */
   readonly isRunning: boolean;
   readonly supports: {
     readonly settlement: boolean;
     readonly autoSettleOptOut: boolean;
-    readonly snooze: boolean;
     readonly pinning: boolean;
-    readonly titleRegeneration: boolean;
   };
-  readonly snoozePresets: ReadonlyArray<SnoozePreset>;
-  /** Guest links need their own grant, so the caller checks it instead of `canOperate`. */
-  readonly canShareWithGuest?: boolean;
-  /** A No project thread with its own folder, on a server that can promote it. */
-  readonly canTurnIntoProject?: boolean;
 }
 
 /** Local navigation, read markers, and copying remain available to read-only clients. */
@@ -104,7 +87,6 @@ export function threadActionRequiresOperate(action: ThreadActionMenuId): boolean
     "new-thread-on-branch",
     "project-settings",
     "mark-unread",
-    "share-guest",
     "copy",
     "copy-path",
     "copy-branch",
@@ -143,45 +125,8 @@ export function buildThreadActionMenuItems(
             : { id: "settle" as const, label: "Settle thread", icon: "circle-check" },
         ]
       : []),
-    ...(state.supports.snooze
-      ? [
-          state.isSnoozed
-            ? { id: "unsnooze" as const, label: "Wake thread", icon: "clock" }
-            : {
-                id: "snooze" as const,
-                label: "Snooze",
-                icon: "clock",
-                disabled: !state.canSnoozeNow,
-                children: [
-                  ...state.snoozePresets.map((preset) => ({
-                    id: `snooze:${preset.id}` as const,
-                    label: preset.label,
-                    detail: preset.whenLabel,
-                  })),
-                  {
-                    id: "snooze:custom" as const,
-                    label: "Custom…",
-                    separatorBefore: state.snoozePresets.length > 0,
-                  },
-                ],
-              },
-        ]
-      : []),
     { id: "rename", label: "Rename thread", icon: "pencil", separatorBefore: true },
-    ...(state.supports.titleRegeneration
-      ? [
-          {
-            id: "regenerate-title" as const,
-            label: state.isRegeneratingTitle ? "Regenerating…" : "Regenerate title",
-            icon: "refresh-cw",
-            disabled: state.isRegeneratingTitle,
-          },
-        ]
-      : []),
     { id: "mark-unread", label: "Mark unread", icon: "mail-open" },
-    ...(state.canShareWithGuest
-      ? [{ id: "share-guest" as const, label: "Share with guest", icon: "user-plus" }]
-      : []),
     ...(state.projectFilter
       ? [
           {
@@ -190,16 +135,6 @@ export function buildThreadActionMenuItems(
               ? "Show all projects"
               : `Filter by ${state.projectFilter.label}`,
             icon: "folder-tree",
-          },
-        ]
-      : []),
-    ...(state.canTurnIntoProject
-      ? [
-          {
-            id: "turn-into-project" as const,
-            label: "Turn into project",
-            icon: "folder-plus",
-            disabled: state.isRunning,
           },
         ]
       : []),

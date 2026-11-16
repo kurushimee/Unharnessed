@@ -1,7 +1,6 @@
 // @effect-diagnostics globalTimers:off - Shelf placement timers run in web and native clients, outside an Effect runtime.
 import { threadRuntimeIsActive, type EnvironmentThreadShell } from "./models";
 import { toSortableTimestamp } from "./threadSort";
-import { effectiveSnoozed } from "./threadSettled";
 
 type WorkingThreadInput = Pick<
   EnvironmentThreadShell,
@@ -117,8 +116,6 @@ type TrackedInboxThread = WorkingThreadInput &
       | "pinnedAt"
       | "settledOverride"
       | "settledAt"
-      | "snoozedAt"
-      | "snoozedUntil"
       | "activeOrderKey"
       | "pendingGuestMessageCount"
     >
@@ -198,8 +195,6 @@ export function createInboxReturnTracker() {
       }
       const present = new Set<string>();
       const at = now();
-      // @effect-diagnostics-next-line globalDate:off - Snooze checks compare wall-clock ISO times.
-      const observedAt = new Date(at).toISOString();
       for (const thread of threads) {
         const key = keyOf(thread);
         present.add(key);
@@ -213,8 +208,6 @@ export function createInboxReturnTracker() {
                 thread.pinnedAt,
                 thread.settledOverride,
                 thread.settledAt,
-                thread.snoozedAt,
-                thread.snoozedUntil,
                 thread.activeOrderKey,
               ])
             : null;
@@ -231,8 +224,7 @@ export function createInboxReturnTracker() {
           thread.archivedAt != null ||
           thread.deletedAt != null ||
           thread.pinnedAt != null ||
-          thread.settledOverride === "settled" ||
-          effectiveSnoozed(thread, { now: observedAt });
+          thread.settledOverride === "settled";
         // Only shelf placement is held: execution state and attention requests stay authoritative.
         const deadline =
           !actual && previous?.working && !actionable && !moved && !excluded

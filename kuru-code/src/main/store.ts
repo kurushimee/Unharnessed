@@ -11,9 +11,6 @@ export type ThreadMeta = {
   /** Its place among pinned threads, and among active ones (T3 Code's fractional order keys). */
   pinOrderKey?: string;
   activeOrderKey?: string;
-  /** Snoozed until then (ISO time), since `snoozedAt`. */
-  snoozedUntil?: string;
-  snoozedAt?: string;
   /** Kept out of automatic settling since then, ms. */
   autoSettleDisabledAt?: number;
   /** Archived then, ms: out of the sidebar, in Settings' archived threads. */

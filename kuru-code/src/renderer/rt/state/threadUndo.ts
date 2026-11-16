@@ -37,32 +37,23 @@ export function invalidate(kind: string, threadKey: string) {
 
 export type ThreadUndoStep =
   | { readonly action: "unsettle" }
-  | { readonly action: "unsnooze" }
-  | { readonly action: "pin"; readonly orderKey?: string }
-  | { readonly action: "snooze"; readonly snoozedUntil: string };
+  | { readonly action: "pin"; readonly orderKey?: string };
 
 export type ThreadUndoPlan = readonly [ThreadUndoStep, ...ThreadUndoStep[]];
 
 export function planThreadUndo(
-  action: "settle" | "snooze" | "unpin",
+  action: "settle" | "unpin",
   thread?: {
     readonly pinnedAt?: string | null;
     readonly pinOrderKey?: string | null;
-    readonly snoozedUntil?: string | null;
   } | null,
 ): ThreadUndoPlan {
-  if (action === "snooze") return [{ action: "unsnooze" }];
   const pin: ThreadUndoStep = {
     action: "pin",
     ...(thread?.pinOrderKey != null ? { orderKey: thread.pinOrderKey } : {}),
   };
-  // Pinning clears snooze on the server; restore it after restoring pin placement.
-  const snooze =
-    thread?.snoozedUntil != null
-      ? [{ action: "snooze" as const, snoozedUntil: thread.snoozedUntil }]
-      : [];
-  if (action === "unpin") return [pin, ...snooze];
-  return [{ action: "unsettle" }, ...(thread?.pinnedAt != null ? [pin] : []), ...snooze];
+  if (action === "unpin") return [pin];
+  return [{ action: "unsettle" }, ...(thread?.pinnedAt != null ? [pin] : [])];
 }
 
 export async function executeThreadUndo<Result>(
@@ -73,9 +64,6 @@ export async function executeThreadUndo<Result>(
   let result = await execute(plan[0]);
   for (const step of plan.slice(1)) {
     if (!succeeded(result)) return result;
-    // A snooze can expire before Undo runs, and the server rejects an expired restore.
-    // @effect-diagnostics-next-line globalDate:off
-    if (step.action === "snooze" && Date.parse(step.snoozedUntil) <= Date.now()) continue;
     result = await execute(step);
   }
   return result;

@@ -645,8 +645,6 @@ function threadMetaChange(change: unknown): Partial<ThreadMeta> {
     "unsettledAt",
     "pinOrderKey",
     "activeOrderKey",
-    "snoozedUntil",
-    "snoozedAt",
     "autoSettleDisabledAt",
     "archivedAt",
     "unread",
