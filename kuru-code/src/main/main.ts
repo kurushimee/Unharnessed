@@ -492,9 +492,20 @@ async function start(): Promise<void> {
     event.preventDefault();
     quitting = true;
     log.info("quitting: the agents stop, each saving its kernel");
-    window?.hide();
-    store.flush();
-    void threads.stopAll().finally(() => app.exit(0));
+    // Closed by its X, the window is already destroyed.
+    if (window && !window.isDestroyed()) window.hide();
+    try {
+      store.flush();
+    } catch (error) {
+      log.error(`store: not saved on quit: ${String(error)}`);
+    }
+    // Each agent is killed past its own wait (40 s); the app goes a little after, whatever happens.
+    const deadline = setTimeout(() => app.exit(0), 45_000);
+    void threads.stopAll().finally(() => {
+      clearTimeout(deadline);
+      log.info("quitting: every agent stopped");
+      app.exit(0);
+    });
   });
   app.on("window-all-closed", () => app.quit());
 

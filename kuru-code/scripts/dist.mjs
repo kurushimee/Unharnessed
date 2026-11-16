@@ -9,12 +9,12 @@ import { fileURLToPath } from "node:url";
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const repo = resolve(root, "..");
-const run = (command, args, cwd) => {
-  const result = spawnSync(command, args, { cwd, stdio: "inherit", shell: process.platform === "win32" });
+const run = (command, args, cwd, shell = false) => {
+  const result = spawnSync(command, args, { cwd, stdio: "inherit", shell });
   if (result.status !== 0) process.exit(result.status ?? 1);
 };
 
-if (!process.argv.includes("--no-cargo")) run("cargo", ["build", "--release", "--locked", "-p", "uh-cli", "--bin", "unharnessed"], repo);
+if (!process.argv.includes("--no-cargo")) run("cargo", ["build", "--release", "--locked", "-p", "uh-cli", "--bin", "unharnessed"], repo, process.platform === "win32");
 const exe = process.platform === "win32" ? "unharnessed.exe" : "unharnessed";
 const built = join(repo, "target", "release", exe);
 if (!existsSync(built)) {
