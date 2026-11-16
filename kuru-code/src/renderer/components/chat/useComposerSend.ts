@@ -76,7 +76,6 @@ import type { useLocalDispatchState } from "./useLocalDispatchState";
 import type { usePendingThreadRequests } from "./usePendingThreadRequests";
 import type { useQueuedRunEdit } from "./useQueuedRunEdit";
 import type { useTimelineFollow } from "./useTimelineFollow";
-import type { useUsageLimitsPanel } from "./useUsageLimitsPanel";
 
 function readEnvironmentPresentation(environmentId: EnvironmentId) {
   return appAtomRegistry.get(environmentPresentations.presentationsAtom).get(environmentId);
@@ -84,7 +83,6 @@ function readEnvironmentPresentation(environmentId: EnvironmentId) {
 
 type PendingThreadRequests = ReturnType<typeof usePendingThreadRequests>;
 type LocalDispatchState = ReturnType<typeof useLocalDispatchState>;
-type UsageLimitsPanel = ReturnType<typeof useUsageLimitsPanel>;
 type TimelineFollow = ReturnType<typeof useTimelineFollow>;
 
 interface ComposerSendInput {
@@ -124,7 +122,6 @@ interface ComposerSendInput {
   /** `/clear` can arm a fresh session on this thread. */
   readonly freshSessionAvailable: boolean;
   readonly resumeCompactionTokens: number | null;
-  readonly clearUsageLimitsFor: UsageLimitsPanel["clearFor"];
   readonly pendingApprovals: PendingThreadRequests["pendingApprovals"];
   readonly respondingRequestIds: PendingThreadRequests["respondingRequestIds"];
   readonly activePendingProgress: PendingThreadRequests["activePendingProgress"];
@@ -193,7 +190,6 @@ export function useComposerSend(input: ComposerSendInput) {
     keepFullHistory,
     freshSessionAvailable,
     resumeCompactionTokens,
-    clearUsageLimitsFor,
     pendingApprovals,
     respondingRequestIds,
     activePendingProgress,
@@ -716,7 +712,6 @@ export function useComposerSend(input: ComposerSendInput) {
         turnStartSucceeded = true;
         setKeepFullHistory(routeThreadKey, false);
         if (freshArm !== undefined) disarmFreshSession(routeThreadKey, freshArm);
-        clearUsageLimitsFor(routeThreadKey);
         // A draft still on screen finalizes once its thread route takes over.
         if (sentDraftThreadRef) {
           if (backgroundDraftOpened || currentRouteThreadKeyRef.current !== routeThreadKey) {

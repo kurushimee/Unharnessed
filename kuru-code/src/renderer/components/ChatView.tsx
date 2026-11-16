@@ -34,7 +34,6 @@ import { DEFAULT_RUNTIME_MODE, type UsageLimitSourceSnapshots } from "~/contract
 import { requestWorkspaceContentFocus, requestWorkspaceFocus } from "~/lib/workspaceFocus";
 import { freshSessionBannerItem } from "./chat/ComposerFreshSession";
 import { armFreshSession, disarmFreshSession, useFreshSessionArmed } from "./chat/freshSessionArms";
-import { useUsageLimitsPanel } from "./chat/useUsageLimitsPanel";
 import { useChatShortcuts } from "./chat/useChatShortcuts";
 import { ChatBannerLane } from "./chat/ChatBannerLane";
 import * as Schema from "effect/Schema";
@@ -250,7 +249,6 @@ import {
 
 const EMPTY_PROVIDERS: ServerProvider[] = [];
 const EMPTY_PROVIDER_MODELS: ServerProvider["models"] = [];
-const EMPTY_USAGE_LIMIT_SOURCES: UsageLimitSourceSnapshots = [];
 
 const EMPTY_FEEDBACK_SUBMISSIONS: ReadonlyArray<CodexFeedbackSubmission> = [];
 const EMPTY_PROVIDER_SKILLS: ServerProvider["skills"] = [];
@@ -895,30 +893,6 @@ export default function ChatView(props: ChatViewProps) {
   );
   const onHeldRequestIdsChange = useStableCallback((requestIds: ReadonlySet<string>) => {
     setHeldApprovalRequestIds((current) => (shallow(current, requestIds) ? current : requestIds));
-  });
-  // Answering an approval or question on any client resumes quota spending, so include it in the key.
-  const usageLimitsKey =
-    activeProviderInstanceId === null || (isServerThread && activeThread === undefined)
-      ? null
-      : [
-          routeThreadKey,
-          activeProviderInstanceId,
-          activeThread?.latestRun?.runId ?? "",
-          activePendingApproval?.requestId ?? activePendingUserInput?.requestId ?? "",
-        ].join(":");
-  const {
-    banner: usageLimitsBanner,
-    offered: usageLimitsOffered,
-    open: openUsageLimits,
-    clearFor: clearUsageLimitsFor,
-  } = useUsageLimitsPanel({
-    environmentId,
-    threadKey: routeThreadKey,
-    panelKey: usageLimitsKey,
-    providerInstanceId: activeProviderInstanceId,
-    providerDriver: activeProviderStatus?.driver ?? null,
-    providers: providerStatuses,
-    sources: serverConfig?.usageLimitSources ?? EMPTY_USAGE_LIMIT_SOURCES,
   });
   const {
     beginLocalDispatch,
@@ -1572,7 +1546,6 @@ export default function ChatView(props: ChatViewProps) {
     sendInFlightRef,
     setOptimisticUserMessages,
     setThreadError,
-    clearUsageLimitsFor,
     beginLocalDispatch,
     resetLocalDispatch,
     scrollToEnd,
@@ -1707,19 +1680,17 @@ export default function ChatView(props: ChatViewProps) {
       deriveProviderExtensionStatuses(serverProjection),
     );
     const extensionStatusItems = extensionStatusBanner === null ? [] : [extensionStatusBanner];
-    const usageLimitsItems = usageLimitsBanner === null ? [] : [usageLimitsBanner];
     // An approval's feedback goes to that approval; the armed session waits for the next message.
     const freshSessionItems =
       freshSessionAvailable && freshSessionArmed && activePendingApproval === null
         ? [freshSessionBannerItem(() => disarmFreshSession(routeThreadKey))]
         : [];
     if (!localCheckoutBranchMismatch || !showBranchMismatchBanner || !activeBranchMismatchKey) {
-      return [...fallbackItems, ...extensionStatusItems, ...usageLimitsItems, ...freshSessionItems];
+      return [...fallbackItems, ...extensionStatusItems, ...freshSessionItems];
     }
     return [
       ...fallbackItems,
       ...extensionStatusItems,
-      ...usageLimitsItems,
       ...freshSessionItems,
       branchMismatchBannerItem({
         mismatchKey: activeBranchMismatchKey,
@@ -1846,7 +1817,6 @@ export default function ChatView(props: ChatViewProps) {
     localCheckoutBranchMismatch,
     composerRef,
     persistThreadSettingsForNextTurn,
-    clearUsageLimitsFor,
     scrollToEnd,
     setThreadError,
   });
@@ -1883,7 +1853,6 @@ export default function ChatView(props: ChatViewProps) {
     keepFullHistory,
     freshSessionAvailable: freshSessionCommandAvailable,
     resumeCompactionTokens,
-    clearUsageLimitsFor,
     pendingApprovals,
     respondingRequestIds,
     activePendingProgress,
@@ -2482,7 +2451,6 @@ export default function ChatView(props: ChatViewProps) {
                   usage={{
                     providerInstanceId: activeProviderInstanceId,
                     providers: providerStatuses,
-                    sources: serverConfig?.usageLimitSources ?? EMPTY_USAGE_LIMIT_SOURCES,
                     contextWindow: activeContextWindow,
                   }}
                 />

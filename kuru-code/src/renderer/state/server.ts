@@ -115,7 +115,6 @@ export const serverEnvironment = {
     execute: (target: { readonly environmentId: EnvironmentId; readonly input: ServerRemoveKeybindingInput }) =>
       removeKeybinding(target.input),
   }),
-  consumeResetCredit: rpcCommand("environment-data:server:consume-reset-credit", WS_METHODS.providerConsumeResetCredit),
 };
 
 export const environmentServerConfigsAtom = Atom.make((get): ReadonlyMap<EnvironmentId, ServerConfig> => {
