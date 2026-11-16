@@ -9,7 +9,7 @@ import { Files } from "./files";
 import type { Git } from "./git";
 import { tagged } from "./log";
 import { listSessions, sessionsDir, type SessionSummary } from "./sessions";
-import { projectId, type Store } from "./store";
+import { projectId, type Store, type ThreadMeta } from "./store";
 
 /** A thread in the background sleeps after this long without work, like the extension's conversations. */
 const SLEEP_AFTER_MS = 90 * 60_000;
@@ -35,6 +35,8 @@ export class Threads {
   /** When each opened saved thread had last changed, before it opened. */
   private readonly idle = new WeakMap<Conversation, number>();
   private readonly worked = new Map<Conversation, boolean>();
+  /** When each working thread's running turn started, ms, by id. */
+  private readonly workingSince = new Map<string, number>();
   private readonly timers = new Map<Conversation, NodeJS.Timeout>();
   /** Agents still stopping, by id: one holds its file until it exits. */
   private readonly stopping = new Map<string, Promise<void>>();
@@ -167,10 +169,14 @@ export class Threads {
 
   /** The thread's id was seen on screen. */
   seen(id: string): void {
-    if (this.store.thread(id).unread) {
-      this.store.setThread(id, { unread: undefined });
-      this.emit();
-    }
+    this.store.setThread(id, { unread: undefined, seenAt: Date.now() });
+    this.emit();
+  }
+
+  /** The thread's sidebar state changed (settled, pinned, snoozed, its order, unread...). */
+  setMeta(id: string, change: Partial<ThreadMeta>): void {
+    this.store.setThread(id, change);
+    this.emit();
   }
 
   get app(): AppState {
@@ -213,6 +219,19 @@ export class Threads {
         model,
         settled: meta.settledAt !== undefined,
         pinned: meta.pinnedAt !== undefined,
+        settledAt: meta.settledAt,
+        pinnedAt: meta.pinnedAt,
+        unsettledAt: meta.unsettledAt,
+        pinOrderKey: meta.pinOrderKey,
+        activeOrderKey: meta.activeOrderKey,
+        snoozedUntil: meta.snoozedUntil,
+        snoozedAt: meta.snoozedAt,
+        autoSettleDisabledAt: meta.autoSettleDisabledAt,
+        archivedAt: meta.archivedAt,
+        workingSince: working ? this.workingSince.get(session.id) : undefined,
+        turnEndedAt: meta.turnEndedAt,
+        failed: meta.failed,
+        seenAt: meta.seenAt,
       };
       if (working) row.mark = "working";
       else if (unread) row.mark = "unread";
@@ -232,6 +251,17 @@ export class Threads {
       home: this.home,
       loaded: this.loaded,
     };
+  }
+
+  /** The saved threads' files and projects, for searching their messages. */
+  get searchable(): { id: string; path: string; projectId: string | null }[] {
+    const app = this.app;
+    const projectById = new Map(app.threads.map((row) => [row.id, row.projectId]));
+    return this.sessions.map((session) => ({
+      id: session.id,
+      path: session.path,
+      projectId: projectById.get(session.id) ?? null,
+    }));
   }
 
   /** Reads the sessions folder again, then tells the window. */
@@ -339,7 +369,11 @@ export class Threads {
     this.worked.set(conversation, working);
     const away = conversation !== this.shownOne;
     const { id } = conversation;
-    if (before && !working && id) this.ended(conversation, id, away);
+    if (!before && working && id) this.workingSince.set(id, Date.now());
+    if (before && !working && id) {
+      this.workingSince.delete(id);
+      this.ended(conversation, id, away);
+    }
     if (!away && id && this.store.thread(id).unread) this.store.setThread(id, { unread: undefined });
     if (before !== working) {
       this.emit();
@@ -358,6 +392,7 @@ export class Threads {
     }
     const last = conversation.chat.current.entries.findLast((entry) => entry.kind === "turn");
     const failed = last?.kind === "turn" && last.state === "failed";
+    this.store.setThread(id, { turnEndedAt: Date.now(), failed: failed || undefined, ...(away ? {} : { seenAt: Date.now() }) });
     const title = this.store.thread(id).title ?? this.sessions.find((session) => session.id === id)?.title;
     for (const listener of this.doneListeners) listener({ id, title, failed, shown: !away });
     const cwd = this.cwdOf(conversation);

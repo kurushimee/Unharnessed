@@ -1,13 +1,16 @@
+// The window's entry, as T3 Code's main.tsx and appInit.tsx: its router on
+// hash history (desktop), over kuru code's connection to its main process.
 import "@fontsource-variable/inter";
+import { createHashHistory, RouterProvider } from "@tanstack/react-router";
+import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
-import { App } from "./App";
+import { DEFAULT_PREFS } from "@shared/protocol";
 import { post } from "./bridge";
+import { startMainAppLocationTracking } from "./components/sidebar/mainAppLocation";
+import { getRouter } from "./router";
 import { applyTheme, connect } from "./state";
 import "./index.css";
-import "./panel.css";
-import { DEFAULT_PREFS } from "@shared/protocol";
 
-// The theme before the first paint: the one saved last time.
 try {
   applyTheme(JSON.parse(localStorage.getItem("kuru:theme") ?? "null") ?? DEFAULT_PREFS.theme);
 } catch {
@@ -16,10 +19,18 @@ try {
 document.documentElement.classList.add("electron", "electron-windows", "wco");
 connect();
 
-// A crash empties the window: what threw goes to the log.
-createRoot(document.getElementById("root")!, {
-  onUncaughtError: (error, info) => {
-    const text = error instanceof Error ? (error.stack ?? error.message) : String(error);
-    post({ type: "crashed", error: `${text}${info.componentStack ?? ""}` });
-  },
-}).render(<App />);
+const router = getRouter(createHashHistory());
+startMainAppLocationTracking(router);
+
+void router.load().then(() => {
+  createRoot(document.getElementById("root")!, {
+    onUncaughtError: (error, info) => {
+      const text = error instanceof Error ? (error.stack ?? error.message) : String(error);
+      post({ type: "crashed", error: `${text}${info.componentStack ?? ""}` });
+    },
+  }).render(
+    <StrictMode>
+      <RouterProvider router={router} />
+    </StrictMode>,
+  );
+});

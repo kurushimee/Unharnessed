@@ -23,6 +23,7 @@ import {
   writeLocalStorageValue,
 } from "~/hooks/useLocalStorage";
 import { resolveSidebarState, type ResponsiveSidebarState } from "./sidebarState";
+import * as Schema from "effect/Schema";
 import { announceSidebarVisibility } from "~/lib/accessibilityAnnouncements";
 
 const SIDEBAR_WIDTH = "16rem";
@@ -107,7 +108,7 @@ function isMobileViewport(): boolean {
 function readStoredSidebarOpen(storageKey: string | undefined): boolean | null {
   if (!storageKey) return null;
   try {
-    return getLocalStorageItem(storageKey);
+    return getLocalStorageItem(storageKey, Schema.Boolean);
   } catch (error) {
     console.error("Could not restore persisted sidebar state.", error);
     return null;
@@ -153,7 +154,7 @@ function createSidebarOpenStore(defaultOpen: boolean, storageKey: string | undef
       if (!isMobileViewport()) announceSidebarVisibility(open);
       publish({ ...state, open });
     }
-    if (storageKey) writeLocalStorageValue(storageKey, open, defaultOpen);
+    if (storageKey) writeLocalStorageValue(storageKey, open, defaultOpen, Schema.Boolean);
   };
   const setOpenMobile = (openMobile: boolean) => {
     if (openMobile !== state.openMobile) publish({ ...state, openMobile });
@@ -498,7 +499,7 @@ function SidebarRail({
         suppressClickRef.current = moved;
         if (options.storageKey) {
           try {
-            setLocalStorageItem(options.storageKey, finalWidth);
+            setLocalStorageItem(options.storageKey, finalWidth, Schema.Finite);
           } catch (error) {
             console.error("Could not persist sidebar width.", error);
           }

@@ -12,3 +12,12 @@ contextBridge.exposeInMainWorld("kuru", {
   pathForFile: (file: File) => webUtils.getPathForFile(file),
   platform: process.platform,
 });
+
+/** T3 Code's desktop bridge, the part its window reads: menu actions from the main process. */
+contextBridge.exposeInMainWorld("desktopBridge", {
+  onMenuAction: (listener: (action: string) => void) => {
+    const wrapped = (_event: unknown, action: string) => listener(action);
+    ipcRenderer.on("menu-action", wrapped);
+    return () => ipcRenderer.removeListener("menu-action", wrapped);
+  },
+});

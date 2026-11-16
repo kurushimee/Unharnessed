@@ -1,11 +1,27 @@
 import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
 import { basename, dirname, join, resolve } from "node:path";
-import { DEFAULT_PREFS, type AppPrefs, type Project, type PullRequestRef } from "@shared/protocol";
+import { DEFAULT_PREFS, type AppPrefs, type Project, type ProjectIconOverride, type PullRequestRef } from "@shared/protocol";
 
 /** What the app keeps of a thread beside its session file. */
 export type ThreadMeta = {
   settledAt?: number;
   pinnedAt?: number;
+  /** When it was taken back out of Settled, ms. */
+  unsettledAt?: number;
+  /** Its place among pinned threads, and among active ones (T3 Code's fractional order keys). */
+  pinOrderKey?: string;
+  activeOrderKey?: string;
+  /** Snoozed until then (ISO time), since `snoozedAt`. */
+  snoozedUntil?: string;
+  snoozedAt?: string;
+  /** Kept out of automatic settling since then, ms. */
+  autoSettleDisabledAt?: number;
+  /** Archived then, ms: out of the sidebar, in Settings' archived threads. */
+  archivedAt?: number;
+  /** When it was last on screen, and when its last turn ended (and whether it failed), ms. */
+  seenAt?: number;
+  turnEndedAt?: number;
+  failed?: boolean;
   /** A title the user gave it. */
   title?: string;
   /** A turn ended in it while another thread was on screen, not seen since. */
@@ -17,9 +33,28 @@ export type ThreadMeta = {
   prCheckedAt?: number;
 };
 
+type SavedProject = {
+  path: string;
+  name?: string;
+  addedAt: number;
+  pinnedAt?: number;
+  archivedAt?: number;
+  projectIcon?: ProjectIconOverride;
+  faviconPath?: string;
+};
+
+/** What the window may change of a project; `null` clears a field. */
+export type ProjectChange = {
+  title?: string | null;
+  pinned?: boolean;
+  archived?: boolean;
+  projectIcon?: ProjectIconOverride | null;
+  faviconPath?: string | null;
+};
+
 type Saved = {
   version: 1;
-  projects: { path: string; name?: string; addedAt: number }[];
+  projects: SavedProject[];
   /** Projects removed from the sidebar: their threads' folders are not added back. */
   hidden: string[];
   threads: Record<string, ThreadMeta>;
@@ -27,6 +62,8 @@ type Saved = {
   window?: { x?: number; y?: number; width: number; height: number; maximized: boolean };
   /** The folder the last thread started in: the next start's. */
   lastCwd?: string;
+  /** The window's client settings (T3 Code's ClientSettings), as it last wrote them. */
+  clientSettings?: Record<string, unknown>;
 };
 
 /** A folder's project id: Windows paths are compared without case. */
@@ -64,6 +101,7 @@ export class Store {
         prefs: { ...DEFAULT_PREFS, ...read.prefs },
         window: read.window,
         lastCwd: read.lastCwd,
+        clientSettings: read.clientSettings,
       };
     } catch {
       // A first start.
@@ -76,6 +114,15 @@ export class Store {
 
   setPrefs(prefs: Partial<AppPrefs>): void {
     this.data.prefs = { ...this.data.prefs, ...prefs };
+    this.save();
+  }
+
+  get clientSettings(): Record<string, unknown> | null {
+    return this.data.clientSettings ?? null;
+  }
+
+  setClientSettings(settings: Record<string, unknown>): void {
+    this.data.clientSettings = settings;
     this.save();
   }
 
@@ -105,7 +152,16 @@ export class Store {
     const hidden = new Set(this.data.hidden);
     for (const saved of this.data.projects) {
       const id = projectId(saved.path);
-      byId.set(id, { id, path: saved.path, name: saved.name ?? projectName(saved.path), missing: !existsSync(saved.path) || undefined });
+      byId.set(id, {
+        id,
+        path: saved.path,
+        name: saved.name ?? projectName(saved.path),
+        missing: !existsSync(saved.path) || undefined,
+        pinnedAt: saved.pinnedAt,
+        archivedAt: saved.archivedAt,
+        projectIcon: saved.projectIcon,
+        faviconPath: saved.faviconPath,
+      });
     }
     for (const cwd of threadCwds) {
       const id = projectId(cwd);
@@ -123,6 +179,21 @@ export class Store {
     }
     this.save();
     return id;
+  }
+
+  /** Changes a project; one only found through its threads is added to the saved ones first. */
+  updateProject(id: string, path: string, change: ProjectChange): void {
+    let saved = this.data.projects.find((project) => projectId(project.path) === id);
+    if (!saved) {
+      saved = { path, addedAt: Date.now() };
+      this.data.projects.push(saved);
+    }
+    if (change.title !== undefined) saved.name = change.title?.trim() || undefined;
+    if (change.pinned !== undefined) saved.pinnedAt = change.pinned ? (saved.pinnedAt ?? Date.now()) : undefined;
+    if (change.archived !== undefined) saved.archivedAt = change.archived ? (saved.archivedAt ?? Date.now()) : undefined;
+    if (change.projectIcon !== undefined) saved.projectIcon = change.projectIcon ?? undefined;
+    if (change.faviconPath !== undefined) saved.faviconPath = change.faviconPath ?? undefined;
+    this.save();
   }
 
   removeProject(id: string): void {

@@ -18,7 +18,18 @@ export type Project = {
   name: string;
   /** The folder is gone. */
   missing?: boolean;
+  /** When it was pinned, or archived, ms. */
+  pinnedAt?: number;
+  archivedAt?: number;
+  /** Its icon, when set (T3 Code's project icon override), and a chosen favicon file. */
+  projectIcon?: ProjectIconOverride;
+  faviconPath?: string;
 };
+
+/** T3 Code's project icon override: a monogram or an emoji. */
+export type ProjectIconOverride =
+  | { kind: "monogram"; text: string; color: string }
+  | { kind: "emoji"; emoji: string };
 
 /** A pull request a thread's branch has on GitHub. */
 export type PullRequestRef = {
@@ -48,6 +59,28 @@ export type ThreadRow = {
   settled: boolean;
   pinned: boolean;
   pr?: PullRequestRef;
+  /** When it was settled or pinned, ms. */
+  settledAt?: number;
+  pinnedAt?: number;
+  /** Its pinned order among pinned threads (T3 Code's fractional order key), and among active ones. */
+  pinOrderKey?: string;
+  activeOrderKey?: string;
+  /** When it was taken back out of Settled, ms. */
+  unsettledAt?: number;
+  /** Snoozed until then (ISO time), since `snoozedAt`. */
+  snoozedUntil?: string;
+  snoozedAt?: string;
+  /** Kept out of automatic settling since then, ms. */
+  autoSettleDisabledAt?: number;
+  /** Archived then, ms. */
+  archivedAt?: number;
+  /** When its running turn started, ms. */
+  workingSince?: number;
+  /** When its last turn ended, ms, and whether it failed. */
+  turnEndedAt?: number;
+  failed?: boolean;
+  /** When it was last on screen, ms. */
+  seenAt?: number;
 };
 
 /** The thread on screen: a saved one, or a new one nothing was asked in yet (a draft). */

@@ -21,6 +21,7 @@ const common = {
   alias: {
     vscode: resolve(root, "src/main/vscode-runtime.ts"),
     "@shared": resolve(root, "src/shared"),
+    "~": resolve(root, "src/renderer"),
   },
   // The extension's modules (../vscode/src) take their packages from here.
   nodePaths: [resolve(root, "node_modules")],

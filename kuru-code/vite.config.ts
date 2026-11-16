@@ -1,4 +1,5 @@
 import tailwindcss from "@tailwindcss/vite";
+import { tanstackRouter } from "@tanstack/router-plugin/vite";
 import react from "@vitejs/plugin-react";
 import { readFileSync, realpathSync } from "node:fs";
 import { dirname, resolve } from "node:path";
@@ -38,7 +39,17 @@ function extensionPanel(): Plugin {
 export default defineConfig({
   root,
   base: "./",
-  plugins: [extensionPanel(), react(), tailwindcss()],
+  plugins: [
+    extensionPanel(),
+    // T3 Code's file routes (src/renderer/routes), and its React Compiler.
+    tanstackRouter({
+      routesDirectory: resolve(root, "src/renderer/routes"),
+      generatedRouteTree: resolve(root, "src/renderer/routeTree.gen.ts"),
+      autoCodeSplitting: true,
+    }),
+    react({ compiler: true }),
+    tailwindcss(),
+  ],
   resolve: {
     alias: {
       "~": resolve(root, "src/renderer"),

@@ -9,10 +9,13 @@ import { Settings } from "../../../vscode/src/settings";
 import { ShownAgent } from "../../../vscode/src/shown";
 import type { Conversation } from "../../../vscode/src/conversations";
 import type { AppPrefs, HostMessage, WebviewMessage } from "@shared/protocol";
+import { showContextMenu } from "./contextMenu";
 import { Git } from "./git";
+import { projectFavicon } from "./favicons";
+import { searchThreads } from "./search";
 import { createLog } from "./log";
 import { Limits } from "./limits";
-import { projectId, Store } from "./store";
+import { projectId, Store, type ProjectChange, type ThreadMeta } from "./store";
 import { Threads } from "./threads";
 import { usageReport } from "./usage";
 import { writeCommitMessage } from "./writer";
@@ -386,6 +389,7 @@ async function start(): Promise<void> {
       void threads.refresh();
       return error ?? null;
     },
+    "git.branch": ({ cwd }) => git.branch(String(cwd)).then((name) => name ?? null),
     "git.init": ({ cwd }) => git.init(cwd).then((error) => error ?? null),
     "git.act": (request) => git.act(request, (cwd) => writeCommitMessage(binary, cwd, log)),
     "git.changedFiles": ({ cwd, against }) => git.changedFiles(cwd, against),
@@ -426,6 +430,41 @@ async function start(): Promise<void> {
       return id;
     },
     "app.projectId": ({ path }) => projectId(path),
+    "projects.update": ({ id, change }) => {
+      const project = threads.app.projects.find((candidate) => candidate.id === id);
+      if (!project) return "That project is gone.";
+      store.updateProject(project.id, project.path, change as ProjectChange);
+      threads.emit();
+      return null;
+    },
+    "threads.search": ({ query, projectIds }) => {
+      const scope = Array.isArray(projectIds) ? new Set(projectIds.map(String)) : null;
+      return searchThreads(
+        String(query),
+        threads.searchable.filter((session) => scope === null || (session.projectId !== null && scope.has(session.projectId))),
+      );
+    },
+    "threads.delete": ({ id }) => threads.remove(String(id)).then((error) => error ?? null),
+    "threads.update": ({ id, change }) => {
+      threads.setMeta(String(id), threadMetaChange(change));
+      return null;
+    },
+    "project.favicon": ({ cwd }) => projectFavicon(String(cwd)),
+    "clientSettings.get": () => store.clientSettings,
+    "clientSettings.set": ({ settings }) => {
+      store.setClientSettings(settings);
+      return null;
+    },
+    "contextMenu.show": ({ items, position }) => {
+      const shown = live();
+      return shown ? showContextMenu(shown, items, position) : null;
+    },
+    "dialogs.pickFolder": async () => {
+      const owner = live();
+      if (!owner) return null;
+      const picked = await dialog.showOpenDialog(owner, { title: "Add project", properties: ["openDirectory", "createDirectory"] });
+      return picked.canceled ? null : (picked.filePaths[0] ?? null);
+    },
   };
   ipcMain.handle("invoke", async (_event, method: string, params: unknown) => {
     const handler = handlers[method];
@@ -572,4 +611,29 @@ async function openIn(path: string, target: string): Promise<string | null> {
       resolveOpen(null);
     });
   });
+}
+
+/** The sidebar state the window may set on a thread; `null` clears a field. */
+function threadMetaChange(change: unknown): Partial<ThreadMeta> {
+  const keys = [
+    "settledAt",
+    "pinnedAt",
+    "unsettledAt",
+    "pinOrderKey",
+    "activeOrderKey",
+    "snoozedUntil",
+    "snoozedAt",
+    "autoSettleDisabledAt",
+    "archivedAt",
+    "unread",
+    "title",
+  ] as const;
+  const next: Partial<ThreadMeta> = {};
+  const given = (change ?? {}) as Record<string, unknown>;
+  for (const key of keys) {
+    if (!(key in given)) continue;
+    const value = given[key];
+    (next as Record<string, unknown>)[key] = value === null ? undefined : value;
+  }
+  return next;
 }

@@ -1,5 +1,4 @@
-type ThreadId = string;
-type ScopedThreadRef = { environmentId: string; threadId: string };
+import type { ScopedThreadRef, ThreadId } from "~/contracts";
 
 /** Base UI updates omit undefined; clear actions with defined actionProps and empty children, treated as
  * invisible. */

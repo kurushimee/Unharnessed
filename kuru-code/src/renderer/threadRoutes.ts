@@ -1,0 +1,84 @@
+import { scopeThreadRef } from "~/rt/environment/index";
+import type { EnvironmentId, ScopedThreadRef, ThreadId } from "~/contracts";
+import type { DraftId } from "./composerDraftStore";
+
+export type ThreadRouteTarget =
+  | {
+      kind: "server";
+      threadRef: ScopedThreadRef;
+    }
+  | {
+      kind: "draft";
+      draftId: DraftId;
+    };
+
+type DraftThreadRouteState = {
+  environmentId: EnvironmentId;
+  threadId: ThreadId;
+  promotedTo?: ScopedThreadRef | null;
+};
+
+export function buildThreadRouteParams(ref: ScopedThreadRef): {
+  environmentId: EnvironmentId;
+  threadId: ThreadId;
+} {
+  return {
+    environmentId: ref.environmentId,
+    threadId: ref.threadId,
+  };
+}
+
+/** Whether a (decoded) location pathname is `ref`'s own thread route, `/$environmentId/$threadId`. */
+export function isThreadRoutePathname(pathname: string, ref: ScopedThreadRef): boolean {
+  const { environmentId, threadId } = buildThreadRouteParams(ref);
+  return pathname.replace(/\/$/, "") === `/${environmentId}/${threadId}`;
+}
+
+export function buildDraftThreadRouteParams(draftId: DraftId): {
+  draftId: DraftId;
+} {
+  return { draftId };
+}
+
+export function resolveThreadRouteRef(
+  params: Partial<Record<"environmentId" | "threadId", string | undefined>>,
+): ScopedThreadRef | null {
+  if (!params.environmentId || !params.threadId) {
+    return null;
+  }
+
+  return scopeThreadRef(params.environmentId as EnvironmentId, params.threadId as ThreadId);
+}
+
+export function resolveThreadRouteTarget(
+  params: Partial<Record<"environmentId" | "threadId" | "draftId", string | undefined>>,
+): ThreadRouteTarget | null {
+  if (params.environmentId && params.threadId) {
+    return {
+      kind: "server",
+      threadRef: scopeThreadRef(params.environmentId as EnvironmentId, params.threadId as ThreadId),
+    };
+  }
+
+  if (!params.draftId) {
+    return null;
+  }
+
+  return {
+    kind: "draft",
+    draftId: params.draftId as DraftId,
+  };
+}
+
+export function resolveActiveThreadRouteRef(
+  target: ThreadRouteTarget | null,
+  draftThread: DraftThreadRouteState | null,
+): ScopedThreadRef | null {
+  if (target?.kind === "server") {
+    return target.threadRef;
+  }
+  if (target?.kind !== "draft" || !draftThread?.promotedTo) {
+    return null;
+  }
+  return draftThread.promotedTo;
+}
