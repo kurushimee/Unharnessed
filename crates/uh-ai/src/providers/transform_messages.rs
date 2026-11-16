@@ -5,6 +5,8 @@ use std::collections::{HashMap, HashSet};
 
 use serde_json::Map;
 
+use crate::providers::anthropic::get_anthropic_compat;
+
 use crate::types::{
     AssistantContent, AssistantMessage, Message, Model, ModelExt, StopReason, TextContent,
     ToolCall, ToolResultMessage, UserMessage, UserMessageContent, UserOrToolContent,
@@ -70,6 +72,17 @@ fn downgrade_unsupported_images(messages: &[Message], model: &Model) -> Vec<Mess
         .collect()
 }
 
+/// Whether the turn's signed reasoning and tool-call ids are valid for `model`.
+/// A provider whose models all front one Claude model (`claudeModel`) shares
+/// them across its aliases, so a model switch keeps the prompt cache.
+fn shares_reasoning(assistant: &AssistantMessage, model: &Model) -> bool {
+    if assistant.provider != model.provider || assistant.api != model.api {
+        return false;
+    }
+
+    assistant.model == model.id || get_anthropic_compat(model).claude_model.is_some()
+}
+
 type Normalizer<'a> = dyn Fn(&str, &Model, &AssistantMessage) -> Option<String> + 'a;
 
 /// Core port of `transformMessages`: tool-call ID normalization plus
@@ -101,9 +114,7 @@ pub fn transform_messages_with_normalizer(
                 msg.clone()
             }
             Message::Assistant(assistant) => {
-                let is_same_model = assistant.provider == model.provider
-                    && assistant.api == model.api
-                    && assistant.model == model.id;
+                let is_same_model = shares_reasoning(assistant, model);
 
                 let transformed_content: Vec<AssistantContent> = assistant
                     .content

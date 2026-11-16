@@ -162,10 +162,12 @@ pub fn convert_messages(
                                 }));
                                 continue;
                             }
-                            if thinking.thinking.trim().is_empty() {
+                            let signature = thinking.thinking_signature.as_deref().unwrap_or("");
+                            // A signed block goes back even without text (an
+                            // omitted display): the signature is the thinking.
+                            if thinking.thinking.trim().is_empty() && signature.trim().is_empty() {
                                 continue;
                             }
-                            let signature = thinking.thinking_signature.as_deref().unwrap_or("");
                             if signature.trim().is_empty() {
                                 blocks.push(json!({
                                     "type": "text",

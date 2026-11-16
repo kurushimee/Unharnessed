@@ -7,7 +7,7 @@
 //! models.json is written whole again: `//` comments in it do not survive a
 //! save.
 
-use std::collections::HashMap;
+use std::collections::{BTreeMap, HashMap};
 use std::path::Path;
 use std::time::Duration;
 
@@ -15,7 +15,9 @@ use futures::future::join_all;
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Map, Value};
 
-use super::custom::{load_custom_models, parse_models_config, strip_json_comments};
+use super::custom::{
+    load_custom_models, parse_models_config, strip_json_comments, ModelDefinition,
+};
 
 /// What the servers speak.
 const API: &str = "openai-completions";
@@ -92,6 +94,163 @@ pub struct LocalModel {
     pub context_window: Option<u64>,
     pub image: bool,
     pub reasoning: bool,
+}
+
+/// What a model can take and give, as the user sets it: written over the
+/// model's definition in models.json. A server rarely tells all of it.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", default)]
+pub struct ModelSpecs {
+    /// Absent: the registry default.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub context_window: Option<u64>,
+    /// The longest answer. Absent: the registry default.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub max_tokens: Option<u64>,
+    pub image: bool,
+    pub reasoning: bool,
+    /// The levels above `high` it offers ([`TOP_LEVELS`]): a reasoning
+    /// model offers them only when its thinking level map names them.
+    pub top_levels: Vec<String>,
+    /// The Claude model it stands for (`claude-opus-5-5`): it is then asked
+    /// through the Anthropic Messages API of the same server, shaped for
+    /// that model.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub claude_model: Option<String>,
+}
+
+/// The thinking levels above `high`, sent under their own names.
+const TOP_LEVELS: [&str; 2] = ["xhigh", "max"];
+
+const ANTHROPIC_API: &str = "anthropic-messages";
+
+impl ModelSpecs {
+    fn of(definition: &ModelDefinition) -> Self {
+        let mapped = |level: &&str| {
+            definition
+                .thinking_level_map
+                .as_ref()
+                .is_some_and(|map| matches!(map.get(*level), Some(Some(_))))
+        };
+
+        ModelSpecs {
+            context_window: definition.context_window,
+            max_tokens: definition.max_tokens,
+            image: definition
+                .input
+                .as_ref()
+                .is_some_and(|input| input.iter().any(|kind| kind == "image")),
+            reasoning: definition.reasoning.unwrap_or(false),
+            top_levels: TOP_LEVELS
+                .into_iter()
+                .filter(mapped)
+                .map(ToString::to_string)
+                .collect(),
+            claude_model: definition
+                .compat
+                .as_ref()
+                .and_then(|compat| compat.get("claudeModel"))
+                .and_then(Value::as_str)
+                .map(ToString::to_string),
+        }
+    }
+
+    fn check(&self, model: &str) -> Result<(), String> {
+        if self.context_window == Some(0) || self.max_tokens == Some(0) {
+            return Err(format!("{model}: a token count must be above 0."));
+        }
+
+        if let Some(level) = self
+            .top_levels
+            .iter()
+            .find(|level| !TOP_LEVELS.contains(&level.as_str()))
+        {
+            return Err(format!("{model}: no thinking level {level} above high."));
+        }
+
+        match (self.context_window, self.max_tokens) {
+            (Some(window), Some(answer)) if answer > window => Err(format!(
+                "{model}: the longest answer ({answer}) is larger than the context ({window})."
+            )),
+            _ => Ok(()),
+        }
+    }
+
+    fn write_into(&self, definition: &mut Value) {
+        let Some(definition) = definition.as_object_mut() else {
+            return;
+        };
+
+        set_or_remove(definition, "contextWindow", self.context_window);
+        set_or_remove(definition, "maxTokens", self.max_tokens);
+
+        let input = if self.image {
+            json!(["text", "image"])
+        } else {
+            json!(["text"])
+        };
+        definition.insert("input".to_string(), input);
+        definition.insert("reasoning".to_string(), json!(self.reasoning));
+
+        self.write_top_levels(definition);
+        self.write_claude_model(definition);
+    }
+
+    /// Other compat entries stay; the API goes back to the provider's when
+    /// the model stands for no Claude model.
+    fn write_claude_model(&self, definition: &mut Map<String, Value>) {
+        let claude_model = self
+            .claude_model
+            .as_deref()
+            .map(str::trim)
+            .filter(|id| !id.is_empty());
+
+        let mut compat = match definition.shift_remove("compat") {
+            Some(Value::Object(compat)) => compat,
+            _ => Map::new(),
+        };
+
+        if let Some(id) = claude_model {
+            compat.insert("claudeModel".to_string(), json!(id));
+            definition.insert("api".to_string(), json!(ANTHROPIC_API));
+        } else {
+            compat.shift_remove("claudeModel");
+            if definition.get("api").and_then(Value::as_str) == Some(ANTHROPIC_API) {
+                definition.shift_remove("api");
+            }
+        }
+
+        if !compat.is_empty() {
+            definition.insert("compat".to_string(), Value::Object(compat));
+        }
+    }
+
+    /// Other entries of the map (a user's own wire names) stay as they are.
+    fn write_top_levels(&self, definition: &mut Map<String, Value>) {
+        let mut map = match definition.shift_remove("thinkingLevelMap") {
+            Some(Value::Object(map)) => map,
+            _ => Map::new(),
+        };
+
+        for level in TOP_LEVELS {
+            if self.reasoning && self.top_levels.iter().any(|on| on == level) {
+                map.insert(level.to_string(), json!(level));
+            } else {
+                map.shift_remove(level);
+            }
+        }
+
+        if !map.is_empty() {
+            definition.insert("thinkingLevelMap".to_string(), Value::Object(map));
+        }
+    }
+}
+
+fn set_or_remove(definition: &mut Map<String, Value>, key: &str, value: Option<u64>) {
+    match value {
+        Some(value) => definition.insert(key.to_string(), json!(value)),
+        None => definition.shift_remove(key),
+    };
 }
 
 /// Why a server could not be read: `{ kind, message }`.
@@ -416,6 +575,8 @@ pub struct LocalProvider {
     pub name: String,
     pub base_url: String,
     pub models: Vec<String>,
+    /// Each model's specs, by id.
+    pub specs: BTreeMap<String, ModelSpecs>,
 }
 
 /// The local servers in `models_json`; none when it cannot be read.
@@ -432,15 +593,26 @@ pub fn local_providers(models_json: &Path) -> Vec<LocalProvider> {
         .into_iter()
         .filter(|(id, _)| !built_in(id))
         .filter_map(|(id, provider)| {
-            let models: Vec<String> = provider.models?.into_iter().map(|model| model.id).collect();
-            if models.is_empty() {
+            let definitions = provider.models?;
+            if definitions.is_empty() {
                 return None;
             }
+
+            let specs = definitions
+                .iter()
+                .map(|definition| (definition.id.clone(), ModelSpecs::of(definition)))
+                .collect();
+            let models = definitions
+                .into_iter()
+                .map(|definition| definition.id)
+                .collect();
+
             Some(LocalProvider {
                 name: provider.name.unwrap_or_else(|| id.clone()),
                 base_url: provider.base_url.unwrap_or_default(),
                 id,
                 models,
+                specs,
             })
         })
         .collect()
@@ -459,20 +631,36 @@ pub struct SaveServer {
     /// Kept as it is when absent.
     pub api_key: Option<String>,
     pub models: Vec<LocalModel>,
+    /// The specs the user set, by model id: they replace what the
+    /// definition had.
+    pub specs: BTreeMap<String, ModelSpecs>,
+}
+
+impl SaveServer {
+    fn with_specs(&self, model: &str, mut definition: Value) -> Value {
+        if let Some(specs) = self.specs.get(model) {
+            specs.write_into(&mut definition);
+        }
+        definition
+    }
 }
 
 /// Write the server into `models_json`: a new provider, or the one already
 /// there for its address, whose models become those picked. A model that
 /// was there keeps its definition; the others get what the server told of
-/// them. Answers the provider id.
+/// them. The specs the user set go over either. Answers the provider id.
 ///
 /// # Errors
 ///
-/// When the address is not one, no model is picked, `provider_id` names no
-/// local server, models.json cannot be read or is not valid, or it cannot
-/// be written.
+/// When the address is not one, no model is picked, a spec is not valid,
+/// `provider_id` names no local server, models.json cannot be read or is not
+/// valid, or it cannot be written.
 pub fn save_server(models_json: &Path, request: &SaveServer) -> Result<String, String> {
     let base_url = normalize(&request.base_url).map_err(|error| error.message)?;
+    for (model, specs) in &request.specs {
+        specs.check(model)?;
+    }
+
     let mut picked: Vec<&LocalModel> = Vec::new();
     for model in &request.models {
         if !model.id.trim().is_empty() && !picked.iter().any(|seen| seen.id == model.id) {
@@ -517,7 +705,10 @@ pub fn save_server(models_json: &Path, request: &SaveServer) -> Result<String, S
             .collect();
         let models = picked
             .iter()
-            .map(|model| kept.remove(&model.id).unwrap_or_else(|| definition(model)))
+            .map(|model| {
+                let definition = kept.remove(&model.id).unwrap_or_else(|| definition(model));
+                request.with_specs(&model.id, definition)
+            })
             .collect();
         provider.insert("baseUrl".to_string(), json!(base_url));
         if let Some(key) = api_key {
@@ -531,7 +722,10 @@ pub fn save_server(models_json: &Path, request: &SaveServer) -> Result<String, S
             "" => host_of(&base_url),
             name => name.to_string(),
         };
-        let models: Vec<Value> = picked.iter().map(|model| definition(model)).collect();
+        let models: Vec<Value> = picked
+            .iter()
+            .map(|model| request.with_specs(&model.id, definition(model)))
+            .collect();
         providers.insert(
             id.clone(),
             json!({

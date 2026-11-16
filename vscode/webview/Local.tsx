@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState, type SubmitEvent } from "react";
-import type { HostMessage, LocalModel, LocalProbe, LocalSave, LocalServer, Provider } from "../src/protocol";
-import { IconImage } from "./icons";
+import type { HostMessage, LocalModel, LocalProbe, LocalSave, LocalServer, ModelSpecs, Provider } from "../src/protocol";
+import { IconImage, IconSliders } from "./icons";
+import { ModelSpecsEditor } from "./ModelSpecsEditor";
 import { tokens } from "./models";
 import { post } from "./vscode";
 
@@ -49,6 +50,11 @@ export function LocalForm({
   const [picked, setPicked] = useState<ReadonlySet<string>>(() => new Set(added?.models));
   /** Picks the user made; until then a new server's models are all on. */
   const touched = useRef(added !== undefined);
+  /** Specs by model id: saved ones first, then the user's edits. */
+  const [specs, setSpecs] = useState<ReadonlyMap<string, ModelSpecs>>(() => new Map(Object.entries(added?.specs ?? {})));
+  const [edited, setEdited] = useState<ReadonlySet<string>>(() => new Set());
+  /** The model whose specs are open. */
+  const [open, setOpen] = useState<string | null>(null);
 
   useEffect(() => {
     if (!added) post({ type: "scanLocal" });
@@ -104,6 +110,19 @@ export function LocalForm({
     });
   };
 
+  const specsOf = (model: LocalModel): ModelSpecs =>
+    specs.get(model.id) ?? {
+      contextWindow: model.contextWindow,
+      image: model.image,
+      reasoning: model.reasoning,
+      topLevels: [],
+    };
+
+  const edit = (id: string, next: ModelSpecs) => {
+    setSpecs((specs) => new Map(specs).set(id, next));
+    setEdited((edited) => new Set(edited).add(id));
+  };
+
   // The models added that the server does not list (yet) stay, to be switched off.
   const listed = server?.models ?? [];
   const missing = (added?.models ?? []).filter((id) => !listed.some((model) => model.id === id));
@@ -118,6 +137,8 @@ export function LocalForm({
     event.preventDefault();
     if (!ready || busy) return;
     const chosen = models.filter((model) => picked.has(model.id));
+    const changed = chosen.filter((model) => edited.has(model.id));
+
     onSave({
       providerId: provider?.id,
       id: server?.id ?? provider?.id ?? "local",
@@ -126,6 +147,7 @@ export function LocalForm({
       ...(apiKey.trim() ? { apiKey: apiKey.trim() } : {}),
       // A model added before keeps its definition: its id is enough.
       models: chosen.map(({ missing, ...model }) => (missing ? { id: model.id } : model)),
+      specs: Object.fromEntries(changed.map((model) => [model.id, specsOf(model)])),
     });
   };
 
@@ -201,31 +223,52 @@ export function LocalForm({
       )}
       {models.length > 0 && (
         <ul className="local-models" aria-label="Models">
-          {models.map((model) => (
-            <li key={model.id}>
-              <button
-                className="local-model"
-                type="button"
-                role="switch"
-                aria-checked={picked.has(model.id)}
-                disabled={busy}
-                onClick={() => toggle(model.id)}
-              >
-                <span className="local-model-name">{model.id}</span>
-                <span className="local-model-specs">
-                  {model.missing && server ? "not listed" : model.contextWindow ? tokens(model.contextWindow) : null}
-                  {model.image && (
-                    <span className="local-model-image" data-tip="Reads images">
-                      <IconImage />
+          {models.map((model) => {
+            const shown = specsOf(model);
+            const opened = open === model.id;
+
+            return (
+              <li key={model.id} className="local-model-row">
+                <div className="local-model-line">
+                  <button
+                    className="local-model"
+                    type="button"
+                    role="switch"
+                    aria-checked={picked.has(model.id)}
+                    disabled={busy}
+                    onClick={() => toggle(model.id)}
+                  >
+                    <span className="local-model-name">{model.id}</span>
+                    <span className="local-model-specs">
+                      {model.missing && server ? "not listed" : shown.contextWindow ? tokens(shown.contextWindow) : null}
+                      {shown.image && (
+                        <span className="local-model-image" data-tip="Reads images">
+                          <IconImage />
+                        </span>
+                      )}
                     </span>
-                  )}
-                </span>
-                <span className={picked.has(model.id) ? "switch is-on" : "switch"} aria-hidden="true">
-                  <span className="switch-knob" />
-                </span>
-              </button>
-            </li>
-          ))}
+                    <span className={picked.has(model.id) ? "switch is-on" : "switch"} aria-hidden="true">
+                      <span className="switch-knob" />
+                    </span>
+                  </button>
+                  <button
+                    className={opened ? "local-model-edit is-on" : "local-model-edit"}
+                    type="button"
+                    aria-label={`Specs of ${model.id}`}
+                    aria-expanded={opened}
+                    data-tip="Context, answer length, images, thinking"
+                    disabled={busy}
+                    onClick={() => setOpen(opened ? null : model.id)}
+                  >
+                    <IconSliders />
+                  </button>
+                </div>
+                {opened && (
+                  <ModelSpecsEditor specs={shown} disabled={busy} onChange={(next) => edit(model.id, next)} />
+                )}
+              </li>
+            );
+          })}
         </ul>
       )}
       {error && <p className="error">{error}</p>}

@@ -5,8 +5,8 @@ use serde_json::{json, Map, Value};
 
 use crate::providers::anthropic::convert::{convert_messages, convert_tools};
 use crate::providers::anthropic::{
-    get_anthropic_compat, is_always_on_adaptive_thinking_model, supports_adaptive_thinking,
-    AnthropicOptions, AnthropicThinkingDisplay, CacheControl,
+    feature_id, get_anthropic_compat, is_always_on_adaptive_thinking_model,
+    supports_adaptive_thinking, AnthropicOptions, AnthropicThinkingDisplay, CacheControl,
 };
 use crate::types::{Context, Model, SESSION_TAIL_PREFIX};
 use crate::utils_inner::sanitize_unicode::sanitize_surrogates;
@@ -23,6 +23,9 @@ pub(crate) fn build_params(
     let base = options
         .map(|options| options.base.clone())
         .unwrap_or_default();
+    let features = feature_id(model);
+    let always_thinks = is_always_on_adaptive_thinking_model(&features);
+
     let mut params = Map::new();
     params.insert("model".into(), json!(model.id));
     params.insert(
@@ -66,9 +69,7 @@ pub(crate) fn build_params(
     // Temperature is incompatible with extended thinking (adaptive or
     // budget-based), and always-on models reject sampling params outright.
     if let Some(temperature) = base.temperature {
-        if options.map(|options| options.thinking_enabled) != Some(Some(true))
-            && !is_always_on_adaptive_thinking_model(&model.id)
-        {
+        if options.map(|options| options.thinking_enabled) != Some(Some(true)) && !always_thinks {
             params.insert("temperature".into(), json!(temperature));
         }
     }
@@ -93,7 +94,7 @@ pub(crate) fn build_params(
             let display = options
                 .and_then(|options| options.thinking_display)
                 .unwrap_or(AnthropicThinkingDisplay::Summarized);
-            if supports_adaptive_thinking(&model.id) {
+            if supports_adaptive_thinking(&features) {
                 params.insert(
                     "thinking".into(),
                     json!({ "type": "adaptive", "display": display.as_str() }),
@@ -112,7 +113,7 @@ pub(crate) fn build_params(
                 );
             }
         } else if options.map(|options| options.thinking_enabled) == Some(Some(false))
-            && !is_always_on_adaptive_thinking_model(&model.id)
+            && !always_thinks
         {
             params.insert("thinking".into(), json!({ "type": "disabled" }));
         }

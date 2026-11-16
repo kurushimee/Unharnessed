@@ -86,6 +86,10 @@ pub struct AnthropicMessagesCompat {
     pub supports_eager_tool_input_streaming: Option<bool>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub supports_long_cache_retention: Option<bool>,
+    /// The Claude model this one stands for (`claude-opus-5-5`), when its id
+    /// does not say it: a gateway alias. Thinking features follow it.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub claude_model: Option<String>,
 }
 
 /// TS models `Model.compat` as an API-dependent conditional type. On the wire
@@ -101,7 +105,7 @@ pub struct ModelCompat {
     pub raw: JsonMap,
 }
 
-const ANTHROPIC_COMPAT_KEYS: &[&str] = &["supportsEagerToolInputStreaming"];
+const ANTHROPIC_COMPAT_KEYS: &[&str] = &["supportsEagerToolInputStreaming", "claudeModel"];
 const RESPONSES_COMPAT_KEYS: &[&str] = &["sendSessionIdHeader"];
 /// Which compat object a `Model.compat` wire value carries.
 #[derive(Debug, Clone, PartialEq)]

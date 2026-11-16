@@ -25,12 +25,27 @@ export type Provider = {
   note?: string;
   /** The Anthropic subscription warning, on the row that uses it. */
   warning?: string;
-  /** A server on this machine, from the agent's models.json: its address and the models picked from it. */
-  local?: { baseUrl: string; models: string[] };
+  /** A server on this machine, from the agent's models.json: its address, the models picked from it, and their specs. */
+  local?: { baseUrl: string; models: string[]; specs: Record<string, ModelSpecs> };
 };
 
 /** A model a local server serves, with what the server tells of it. */
 export type LocalModel = { id: string; contextWindow?: number; image: boolean; reasoning: boolean };
+
+/** The thinking levels above `high`, offered only when named. */
+export type TopLevel = "xhigh" | "max";
+
+/** What a model takes and gives, as the user sets it. An absent count is the agent's default. */
+export type ModelSpecs = {
+  contextWindow?: number;
+  /** The longest answer. */
+  maxTokens?: number;
+  image: boolean;
+  reasoning: boolean;
+  topLevels: TopLevel[];
+  /** The Claude model it stands for (`claude-opus-5-5`): asked through the server's Anthropic API. */
+  claudeModel?: string;
+};
 
 /** A local server (`_unharnessed/providers/local_probe`, `local_scan`). */
 export type LocalServer = {
@@ -57,6 +72,8 @@ export type LocalSave = {
   apiKey?: string;
   /** A model added before needs only its id: it keeps its definition. */
   models: (Pick<LocalModel, "id"> & Partial<LocalModel>)[];
+  /** The specs the user set, by model id: they replace the definition's. */
+  specs?: Record<string, ModelSpecs>;
 };
 
 /** One step of a running sign-in (`_unharnessed/providers/login_update`). */

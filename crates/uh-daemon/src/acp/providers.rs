@@ -38,7 +38,7 @@
 //!   models.json and answer as `set_api_key`. A local server's row carries
 //!   `local: { baseUrl, models }`.
 
-use std::collections::HashMap;
+use std::collections::{BTreeMap, HashMap};
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
 
@@ -162,6 +162,7 @@ struct ProviderEntry {
 struct LocalEntry {
     base_url: String,
     models: Vec<String>,
+    specs: BTreeMap<String, local::ModelSpecs>,
 }
 
 impl Providers {
@@ -552,6 +553,7 @@ impl Providers {
                     local: server.map(|server| LocalEntry {
                         base_url: server.base_url.clone(),
                         models: server.models.clone(),
+                        specs: server.specs.clone(),
                     }),
                 }
             })

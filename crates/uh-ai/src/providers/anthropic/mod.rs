@@ -151,6 +151,7 @@ pub struct AnthropicOptions {
 pub struct ResolvedAnthropicCompat {
     pub supports_eager_tool_input_streaming: bool,
     pub supports_long_cache_retention: bool,
+    pub claude_model: Option<String>,
 }
 
 pub fn get_anthropic_compat(model: &Model) -> ResolvedAnthropicCompat {
@@ -167,7 +168,18 @@ pub fn get_anthropic_compat(model: &Model) -> ResolvedAnthropicCompat {
             .as_ref()
             .and_then(|c| c.supports_long_cache_retention)
             .unwrap_or(true),
+        claude_model: compat
+            .and_then(|c| c.claude_model)
+            .filter(|id| !id.trim().is_empty()),
     }
+}
+
+/// The id the thinking features are read from: the Claude model a gateway
+/// alias stands for, else the model's own id.
+pub(crate) fn feature_id(model: &Model) -> String {
+    get_anthropic_compat(model)
+        .claude_model
+        .unwrap_or_else(|| model.id.clone())
 }
 
 pub(crate) fn resolve_cache_retention(cache_retention: Option<CacheRetention>) -> CacheRetention {
@@ -325,7 +337,8 @@ pub(crate) fn build_request_headers(
     session_id: Option<&str>,
 ) -> (Vec<(String, String)>, bool) {
     let is_oauth = is_oauth_token(api_key);
-    let needs_interleaved_beta = interleaved_thinking && !supports_adaptive_thinking(&model.id);
+    let needs_interleaved_beta =
+        interleaved_thinking && !supports_adaptive_thinking(&feature_id(model));
     let mut beta_features: Vec<&str> = Vec::new();
     if use_fine_grained_tool_streaming_beta {
         beta_features.push(FINE_GRAINED_TOOL_STREAMING_BETA);
@@ -473,7 +486,7 @@ pub fn stream_simple_anthropic(
     }
 
     // Adaptive thinking models use effort; older models use budgets.
-    if supports_adaptive_thinking(&model.id) {
+    if supports_adaptive_thinking(&feature_id(model)) {
         let effort = map_thinking_level_to_effort(model, reasoning);
         let mut anthropic_options = AnthropicOptions::from_base(base);
         anthropic_options.thinking_enabled = Some(true);
