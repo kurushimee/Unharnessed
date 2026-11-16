@@ -6,32 +6,29 @@ use std::process::{Command, Stdio};
 
 /// The opener program and its argument list for one URL.
 #[cfg(target_os = "macos")]
-fn opener(url: &str) -> (&'static str, Vec<String>) {
-    ("open", vec![url.to_string()])
+fn opener(url: &str) -> (String, Vec<String>) {
+    ("open".to_string(), vec![url.to_string()])
 }
 
 /// The opener program and its argument list for one URL.
 #[cfg(all(unix, not(target_os = "macos")))]
-fn opener(url: &str) -> (&'static str, Vec<String>) {
-    ("xdg-open", vec![url.to_string()])
+fn opener(url: &str) -> (String, Vec<String>) {
+    ("xdg-open".to_string(), vec![url.to_string()])
 }
 
 /// The opener program and its argument list for one URL.
 #[cfg(windows)]
-fn opener(url: &str) -> (&'static str, Vec<String>) {
+fn opener(url: &str) -> (String, Vec<String>) {
     // Absolute System32 path (the TS dialog resolves it from
     // `SystemRoot`, defaulting to `C:\Windows`).
     let system_root = std::env::var("SystemRoot").unwrap_or_else(|_| "C:\\Windows".to_string());
     let rundll32 = std::path::Path::new(&system_root)
         .join("System32")
         .join("rundll32.exe");
+
     (
-        "rundll32",
-        vec![
-            rundll32.to_string_lossy().into_owned(),
-            "url.dll,FileProtocolHandler".to_string(),
-            url.to_string(),
-        ],
+        rundll32.to_string_lossy().into_owned(),
+        vec!["url.dll,FileProtocolHandler".to_string(), url.to_string()],
     )
 }
 
