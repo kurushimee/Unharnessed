@@ -1,12 +1,5 @@
-import {
-  AuthOrchestrationOperateScope,
-  type EnvironmentId,
-  type ThreadId,
-} from "~/contracts";
-import {
-  isAtomCommandInterrupted,
-  squashAtomCommandFailure,
-} from "~/rt/state/runtime";
+import { type EnvironmentId } from "~/contracts";
+import { isAtomCommandInterrupted, squashAtomCommandFailure } from "~/rt/state/runtime";
 import { useDebouncedValue } from "@tanstack/react-pacer";
 import { useRef, useState } from "react";
 
@@ -19,7 +12,6 @@ import { cn } from "~/lib/utils";
 import { parsePullRequestReference } from "~/rt/pullRequestLinkInput";
 import { getSourceControlPresentation } from "~/sourceControlPresentation";
 import { useEnvironmentQuery } from "~/state/query";
-import { readEnvironmentScope, useEnvironmentScope } from "~/state/session";
 import { vcsEnvironment } from "~/state/vcs";
 import { offHeadPullRequestCheckoutToast } from "./pullRequest/pullRequestCheckoutToast";
 import { Button } from "./ui/button";
@@ -39,11 +31,10 @@ import { toastManager } from "./ui/toast";
 interface PullRequestThreadDialogProps {
   open: boolean;
   environmentId: EnvironmentId;
-  threadId: ThreadId;
   cwd: string | null;
   initialReference: string | null;
   onOpenChange: (open: boolean) => void;
-  onPrepared: (input: { branch: string; worktreePath: string | null }) => Promise<void> | void;
+  onPrepared: (input: { branch: string }) => Promise<void> | void;
 }
 
 function pullRequestStatusTone(state: string | undefined): string {
@@ -62,7 +53,6 @@ function pullRequestStatusTone(state: string | undefined): string {
 export function PullRequestThreadDialog({
   open,
   environmentId,
-  threadId,
   cwd,
   initialReference,
   onOpenChange,
@@ -71,7 +61,6 @@ export function PullRequestThreadDialog({
   const referenceInputRef = useRef<HTMLInputElement>(null);
   const [reference, setReference] = useState(initialReference ?? "");
   const [referenceDirty, setReferenceDirty] = useState(false);
-  const [preparingMode, setPreparingMode] = useState<"local" | "worktree" | null>(null);
   const [prepareErrorMessage, setPrepareErrorMessage] = useState<string | null>(null);
   const [debouncedReference, referenceDebouncer] = useDebouncedValue(
     reference,
@@ -104,7 +93,6 @@ export function PullRequestThreadDialog({
       reference: parsedReference,
     })?.pullRequest ?? null;
   const preparePullRequestThreadAction = usePreparePullRequestThreadAction({ environmentId, cwd });
-  const canOperateThread = useEnvironmentScope(environmentId, AuthOrchestrationOperateScope);
 
   const liveResolvedPullRequest =
     parsedReference !== null && parsedReference === parsedDebouncedReference
@@ -121,14 +109,8 @@ export function PullRequestThreadDialog({
       pullRequestResolution.isFetching);
   const statusTone = pullRequestStatusTone(resolvedPullRequest?.state);
 
-  const handleConfirm = async (mode: "local" | "worktree") => {
+  const handleConfirm = async () => {
     if (!preparePullRequestThreadAction.isAllowed) return;
-    if (
-      mode === "worktree" &&
-      !readEnvironmentScope(environmentId, AuthOrchestrationOperateScope)
-    ) {
-      return;
-    }
     if (!parsedReference) {
       setReferenceDirty(true);
       return;
@@ -137,13 +119,7 @@ export function PullRequestThreadDialog({
       return;
     }
     setPrepareErrorMessage(null);
-    setPreparingMode(mode);
-    const result = await preparePullRequestThreadAction.run({
-      reference: parsedReference,
-      mode,
-      ...(mode === "worktree" ? { threadId } : {}),
-    });
-    setPreparingMode(null);
+    const result = await preparePullRequestThreadAction.run({ reference: parsedReference });
     if (result._tag === "Failure") {
       if (isAtomCommandInterrupted(result)) {
         preparePullRequestThreadAction.resetError();
@@ -157,10 +133,7 @@ export function PullRequestThreadDialog({
       }
       return;
     }
-    await onPrepared({
-      branch: result.value.branch,
-      worktreePath: result.value.worktreePath,
-    });
+    await onPrepared({ branch: result.value.branch });
     if (!result.value.isOnPullRequestHead) {
       toastManager.add(offHeadPullRequestCheckoutToast(terminology));
     }
@@ -208,8 +181,8 @@ export function PullRequestThreadDialog({
             Checkout {terminology.singular}
           </DialogTitle>
           <DialogDescription>
-            Resolve a {sourceControlPresentation.providerName} {terminology.singular}, then create
-            the draft thread in the main repo or in a dedicated worktree.
+            Resolve a {sourceControlPresentation.providerName} {terminology.singular}, then check
+            out its branch in this project and start a draft thread on it.
           </DialogDescription>
         </DialogHeader>
         <DialogPanel>
@@ -234,7 +207,7 @@ export function PullRequestThreadDialog({
                 }
                 event.preventDefault();
                 if (!isResolving && !preparePullRequestThreadAction.isPending) {
-                  void handleConfirm("worktree");
+                  void handleConfirm();
                 }
               }}
             />
@@ -279,8 +252,7 @@ export function PullRequestThreadDialog({
           <Button
             type="button"
             size="sm"
-            variant="outline"
-            onClick={() => handleConfirm("local")}
+            onClick={() => handleConfirm()}
             disabled={
               !preparePullRequestThreadAction.isAllowed ||
               !cwd ||
@@ -289,22 +261,7 @@ export function PullRequestThreadDialog({
               preparePullRequestThreadAction.isPending
             }
           >
-            {preparingMode === "local" ? "Preparing local..." : "Local"}
-          </Button>
-          <Button
-            type="button"
-            size="sm"
-            onClick={() => handleConfirm("worktree")}
-            disabled={
-              !preparePullRequestThreadAction.isAllowed ||
-              !canOperateThread ||
-              !cwd ||
-              !resolvedPullRequest ||
-              isResolving ||
-              preparePullRequestThreadAction.isPending
-            }
-          >
-            {preparingMode === "worktree" ? "Preparing worktree..." : "Worktree"}
+            {preparePullRequestThreadAction.isPending ? "Checking out..." : "Check out"}
           </Button>
         </DialogFooter>
       </DialogPopup>

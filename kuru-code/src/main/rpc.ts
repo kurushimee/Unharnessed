@@ -523,6 +523,24 @@ export function createRpc(options: {
       await gitOk("removeWorktree", cwd, "worktree", "remove", ...(force ? ["--force"] : []), path);
       touch(cwd);
     },
+    // T3 Code's "Check out" of a pull request, in its local mode: kuru code keeps one checkout
+    // per project, so the pull request's branch is checked out in it with `gh pr checkout`.
+    "git.preparePullRequestThread": async ({ cwd, reference }) => {
+      const view = await gh(cwd, "pr", "view", String(reference), "--json", "number,title,url,baseRefName,headRefName,state,headRefOid");
+      if (view.code !== 0) throw managerError("preparePullRequestThread", cwd, view.stderr);
+      const pr = JSON.parse(view.stdout) as { number: number; title: string; url: string; baseRefName: string; headRefName: string; state: string; headRefOid: string };
+      const checkout = await gh(cwd, "pr", "checkout", String(pr.number));
+      touch(cwd);
+      if (checkout.code !== 0) throw managerError("preparePullRequestThread", cwd, checkout.stderr || checkout.stdout);
+      const branch = (await gitOk("preparePullRequestThread", cwd, "rev-parse", "--abbrev-ref", "HEAD")).trim();
+      const head = (await gitOk("preparePullRequestThread", cwd, "rev-parse", "HEAD")).trim();
+      return {
+        pullRequest: { number: pr.number, title: pr.title, url: pr.url, baseBranch: pr.baseRefName, headBranch: pr.headRefName, state: pr.state.toLowerCase() },
+        branch,
+        worktreePath: null,
+        isOnPullRequestHead: head === pr.headRefOid,
+      };
+    },
     "git.resolvePullRequest": async ({ cwd, reference }) => {
       const view = await gh(cwd, "pr", "view", String(reference), "--json", "number,title,url,baseRefName,headRefName,state");
       if (view.code !== 0) throw managerError("resolvePullRequest", cwd, view.stderr);

@@ -7,10 +7,9 @@ import {
 import { projectChangeRequestUrl } from "~/rt/changeRequestLinks";
 import { normalizeThreadPullRequestKey } from "~/rt/threadPullRequests";
 import { usePullRequestStack } from "~/state/usePullRequestStack";
-import { scopeProjectRef, scopeThreadRef } from "~/rt/environment/index";
+import { scopeProjectRef } from "~/rt/environment/index";
 import { isAtomCommandInterrupted, squashAtomCommandFailure } from "~/rt/state/runtime";
 import {
-  AuthOrchestrationOperateScope,
   AuthSourceControlWriteScope,
   type EnvironmentId,
   type PullRequestAction,
@@ -19,9 +18,7 @@ import {
   type PullRequestListEntry,
   type PullRequestUpdateMethod,
   type PullRequestRef,
-  type PullRequestReviewGuideStop,
   type PullRequestSummary,
-  resolveEnvironmentMachineKind,
   type ScopedThreadRef,
 } from "~/contracts";
 import {
@@ -44,8 +41,7 @@ import {
 } from "react";
 
 import { type DraftId, useComposerDraftStore } from "~/composerDraftStore";
-import { type PullRequestDetailTab, useRightPanelStore } from "~/rightPanelStore";
-import { useEnvironmentSettings } from "~/hooks/useSettings";
+import { type PullRequestDetailTab } from "~/rightPanelStore";
 import { useNewThreadHandler } from "~/hooks/useHandleNewThread";
 import { useCopyToClipboard } from "~/hooks/useCopyToClipboard";
 import { isCommandPaletteOpen } from "~/commandPaletteBus";
@@ -58,14 +54,12 @@ import { cn } from "~/lib/utils";
 import { readLocalApi } from "~/localApi";
 import type { ReviewCommentContext } from "~/reviewCommentContext";
 import { useProjects, useServerConfigs } from "~/state/entities";
-import { useEnvironments } from "~/state/environments";
 import { useEnvironmentQuery } from "~/state/query";
-import { readEnvironmentScope, useEnvironmentScope } from "~/state/session";
+import { readEnvironmentScope } from "~/state/session";
 import { useLiveRefresh } from "~/hooks/useLiveRefresh";
 import { pullRequestEnvironment, usePullRequestTurnRefresh } from "~/state/pullRequests";
 import { useAtomCommand } from "~/state/use-atom-command";
 import { PullRequestStackMenu } from "./PullRequestStackMenu";
-import { pullRequestCompletionScope } from "./PullRequestMarkdownTextarea";
 import { PullRequestChangeBreakdownStat } from "./PullRequestChangeBreakdownStat";
 import { capitalizeTerm, sourceControlClients } from "~/rt/sourceControlClients";
 import { PullRequestThreadLinks } from "./PullRequestThreadLinks";
@@ -88,7 +82,7 @@ import { pullRequestRefKey, usePullRequestDetail } from "./usePullRequestDetail"
 import { PullRequestActionsMenu } from "./PullRequestActionsMenu";
 import {
   PullRequestApproveWorkflowsButton,
-  PullRequestCheckoutMenu,
+  PullRequestCheckoutButton,
   PullRequestPrimaryAction,
   PullRequestResolveConflictsButton,
 } from "./PullRequestDetailActions";
@@ -107,7 +101,6 @@ import { PullRequestSummaryTab } from "./PullRequestSummaryTab";
 import { PullRequestTimelineTab } from "./PullRequestTimelineTab";
 import {
   buildAddSelectionToAgentHandoff,
-  buildAskAboutGuideStopHandoff,
   buildAskAboutPullRequestHandoff,
   buildExplainPullRequestHandoff,
   buildFixFindingHandoff,
@@ -140,7 +133,6 @@ import {
   type PullRequestFinding,
   shouldRefreshPullRequestActivity,
 } from "./pullRequestDetail.logic";
-import { resolvePickableEnvironments } from "./pullRequestProjectAssignment.logic";
 import { PullRequestChecksPopover } from "./PullRequestChecksPopover";
 import {
   PullRequestActorLabel,
@@ -152,9 +144,6 @@ import {
   resolvePullRequestState,
   summarizePullRequestChecks,
 } from "./pullRequestPresentation";
-import { PullRequestGuideTab } from "./PullRequestGuideTab";
-import { guideRunKey, useGuideRunStore } from "./guide/guideRunStore";
-import { useReviewGuideWriter } from "./guide/useReviewGuideWriter";
 
 const actionFailureLabels = (term: string): Record<PullRequestAction, string> => ({
   merge: `Could not merge this ${term}`,
@@ -196,7 +185,6 @@ const UPDATE_BRANCH_REBASE_FAILURE_HINT =
 
 const TABS: ReadonlyArray<{ value: PullRequestDetailTab; label: string }> = [
   { value: "summary", label: "Summary" },
-  { value: "guide", label: "Guide" },
   { value: "timeline", label: "Timeline" },
   { value: "code", label: "Code" },
 ];
@@ -276,14 +264,12 @@ export function PullRequestDetailPanel({
   reference: requestedReference,
   listEntry = null,
   refreshToken: forcedRefreshToken = 0,
-  tabOnPage = false,
   onActed,
   onClose,
   context = "page",
   composerDraftTarget,
   onBack,
   onSelectPullRequest,
-  onGuideShown,
   revealUrl,
   onRevealSettled,
   initialTab = "summary",
@@ -297,11 +283,6 @@ export function PullRequestDetailPanel({
   reference: PullRequestRef;
   listEntry?: PullRequestListEntry | null;
   refreshToken?: number;
-  /**
-   * The pull requests page's panel: its tab lives in the guide run store, where a review guide
-   * notification can switch it.
-   */
-  tabOnPage?: boolean;
   onActed?: (
     action?: PullRequestAction,
     phase?: "sent" | "done" | "failed",
@@ -311,7 +292,6 @@ export function PullRequestDetailPanel({
   context?: "page" | "thread";
   composerDraftTarget?: ScopedThreadRef | DraftId;
   onBack?: (() => void) | undefined;
-  onGuideShown?: (() => void) | undefined;
   /** A clicked link into this pull request, waiting to be shown. */
   revealUrl?: string | undefined;
   /** Reports the link it was given shown or missing, so a newer link stays pending. */
@@ -375,26 +355,18 @@ export function PullRequestDetailPanel({
     detail,
   } = usePullRequestDetail(environmentId, reference, matchingListEntry);
   const revealAnchor = parsePullRequestAnchor(revealUrl);
-  const [selectedTab, setTab] = useState<PullRequestDetailTab>(
-    () => linkedTab(revealAnchor) ?? initialTab,
-  );
-  const reviewGuidesEnabled = useEnvironmentSettings(
-    environmentId,
-    (settings) => settings.reviewGuidesEnabled,
-  );
-  const guideKey = guideRunKey(environmentId, reference);
-  const pageTab = useGuideRunStore((state) =>
-    tabOnPage && state.pageDetailTab?.key === guideKey ? state.pageDetailTab.tab : null,
-  );
-  const requestedTab = tabOnPage ? (pageTab ?? initialTab) : selectedTab;
+  // The tab chosen on this pull request; another one starts on its own.
+  const [selectedTab, setTab] = useState<{
+    readonly pullRequestKey: string;
+    readonly tab: PullRequestDetailTab;
+  }>(() => ({ pullRequestKey, tab: linkedTab(revealAnchor) ?? initialTab }));
+  const requestedTab = selectedTab.pullRequestKey === pullRequestKey ? selectedTab.tab : initialTab;
   const isTabAvailable = (value: PullRequestDetailTab) =>
-    (value !== "code" || detail === null || detail.capabilities.diff) &&
-    (value !== "guide" || reviewGuidesEnabled);
+    value !== "code" || detail === null || detail.capabilities.diff;
   // An unavailable tab falls back without overwriting the saved selection.
   const tab = isTabAvailable(requestedTab) ? requestedTab : "summary";
   const selectTab = (next: PullRequestDetailTab) => {
-    if (tabOnPage) useGuideRunStore.getState().showPageDetailTab(guideKey, next);
-    else setTab(next);
+    setTab({ pullRequestKey, tab: next });
     onTabChange?.(next);
   };
   const [timelineOrder, setTimelineOrder] = useState<"newest" | "oldest">("newest");
@@ -733,35 +705,8 @@ export function PullRequestDetailPanel({
   const [pendingAction, setPendingAction] = useState<PullRequestAction | null>(null);
   const actionPending = pendingAction !== null;
   const newThread = useNewThreadHandler();
-  const { environments } = useEnvironments();
-  const pickableEnvironments =
-    context === "page"
-      ? resolvePickableEnvironments(
-          { environmentId, projectId: reference.projectId },
-          projects,
-          environments.map((environment) => ({
-            environmentId: environment.environmentId,
-            label: environment.label,
-            machine: resolveEnvironmentMachineKind(environment.serverConfig),
-          })),
-        )
-      : [];
-  const [actingScope, setActingScope] = useState<{
-    readonly pullRequestKey: string;
-    readonly environmentId: EnvironmentId;
-  } | null>(null);
-  const chosenEnvironmentId =
-    actingScope?.pullRequestKey === pullRequestKey ? actingScope.environmentId : environmentId;
-  const acting =
-    pickableEnvironments.find((entry) => entry.environmentId === chosenEnvironmentId) ?? null;
-  const actingEnvironmentId = acting?.environmentId ?? environmentId;
-  const checkoutRoot =
-    acting?.workspaceRoot ?? detail?.workspaceRoot ?? project?.workspaceRoot ?? null;
-  const canOperateThread = useEnvironmentScope(actingEnvironmentId, AuthOrchestrationOperateScope);
-  const prepareThread = usePreparePullRequestThreadAction({
-    environmentId: actingEnvironmentId,
-    cwd: checkoutRoot,
-  });
+  const checkoutRoot = detail?.workspaceRoot ?? project?.workspaceRoot ?? null;
+  const prepareThread = usePreparePullRequestThreadAction({ environmentId, cwd: checkoutRoot });
 
   const finishAction = async (
     action: PullRequestAction,
@@ -845,19 +790,8 @@ export function PullRequestDetailPanel({
   };
 
   const attachTarget = composerDraftTarget ?? null;
-  const canPrepareWorktree = prepareThread.isAllowed && canOperateThread;
-  const canFixFindings = attachTarget !== null || canPrepareWorktree;
+  const canFixFindings = attachTarget !== null || prepareThread.isAllowed;
   const handoffLabels = pullRequestHandoffLabels(attachTarget !== null);
-  const guideWriter = useReviewGuideWriter({
-    environmentId,
-    reference,
-    title: detail?.title ?? null,
-  });
-  const writeGuide = () => {
-    void guideWriter.write();
-    if (guideWriter.data?.guide == null) selectTab("guide");
-  };
-
   const openThreadWithTask = async (
     projectRef: ReturnType<typeof scopeProjectRef>,
     task: ThreadTask | null,
@@ -875,11 +809,7 @@ export function PullRequestDetailPanel({
     return session;
   };
 
-  const startAsk = async (
-    kind: string,
-    task: ThreadTask,
-    options?: { readonly keepGuide?: boolean },
-  ) => {
+  const startAsk = async (kind: string, task: ThreadTask) => {
     if (!detail || handoff !== null) return;
     if (attachTarget !== null) {
       writeHandoffToComposer(attachTarget, task);
@@ -894,25 +824,9 @@ export function PullRequestDetailPanel({
       return;
     }
     setHandoff(kind);
-    const projectRef = scopeProjectRef(actingEnvironmentId, acting?.projectId ?? detail.projectId);
+    const projectRef = scopeProjectRef(environmentId, detail.projectId);
     const opened = await openThreadWithTask(projectRef, task);
     setHandoff(null);
-    if (opened !== null && options?.keepGuide === true) {
-      const draft = useComposerDraftStore.getState().getDraftSession(opened.draftId);
-      if (draft !== null) {
-        useRightPanelStore
-          .getState()
-          .openPullRequest(scopeThreadRef(draft.environmentId, draft.threadId), {
-            environmentId,
-            projectId: reference.projectId,
-            ...(reference.host === undefined ? {} : { host: reference.host }),
-            repository: reference.repository,
-            number: reference.number,
-            url: detail.url,
-            detailTab: "guide",
-          });
-      }
-    }
     if (opened === null) {
       toastManager.add({
         type: "error",
@@ -934,7 +848,6 @@ export function PullRequestDetailPanel({
   const startHandoff = async (
     kind: string,
     task: { prompt: string; reviewComments?: ReadonlyArray<ReviewCommentContext> } | null,
-    mode: "worktree" | "local" = "worktree",
   ) => {
     if (!handoffSummary || handoff !== null) return;
     if (attachTarget !== null && task !== null) {
@@ -949,13 +862,7 @@ export function PullRequestDetailPanel({
     if (checkoutRoot === null) return;
     if (
       !prepareThread.isAllowed ||
-      !readEnvironmentScope(actingEnvironmentId, AuthSourceControlWriteScope)
-    ) {
-      return;
-    }
-    if (
-      mode === "worktree" &&
-      !readEnvironmentScope(actingEnvironmentId, AuthOrchestrationOperateScope)
+      !readEnvironmentScope(environmentId, AuthSourceControlWriteScope)
     ) {
       return;
     }
@@ -964,29 +871,9 @@ export function PullRequestDetailPanel({
       type: "loading",
       title: `Preparing the ${terminology.singular} checkout...`,
     });
-    const projectRef = scopeProjectRef(
-      actingEnvironmentId,
-      acting?.projectId ?? handoffSummary.projectId,
-    );
-    // Checkout setup requires the thread to exist first.
-    const opened = await newThread(projectRef).then(
-      (session) => session,
-      () => null,
-    );
-    if (opened === null) {
-      setHandoff(null);
-      toastManager.update(toastId, {
-        type: "error",
-        title: "Could not open a thread for the checkout",
-        description: "Try again from the project, or open a thread first.",
-      });
-      return;
-    }
-    const prepared = await prepareThread.run({
-      reference: handoffSummary.url,
-      mode,
-      threadId: opened.threadId,
-    });
+    const projectRef = scopeProjectRef(environmentId, handoffSummary.projectId);
+    // kuru code keeps one checkout per project: the pull request's branch is checked out in it.
+    const prepared = await prepareThread.run({ reference: handoffSummary.url });
     if (prepared._tag === "Failure") {
       setHandoff(null);
       toastManager.update(toastId, {
@@ -998,36 +885,27 @@ export function PullRequestDetailPanel({
       });
       return;
     }
-    const pointed = await newThread(projectRef, {
-      branch: prepared.value.branch,
-      worktreePath: prepared.value.worktreePath,
-      envMode: prepared.value.worktreePath === null ? "local" : "worktree",
-    }).then(
-      (session) => session !== null,
-      () => false,
+    const opened = await newThread(projectRef, { branch: prepared.value.branch }).then(
+      (session) => session,
+      () => null,
     );
-    if (!pointed) {
-      setHandoff(null);
-      // Sending after failed rebinding would use the previous checkout.
+    setHandoff(null);
+    if (opened === null) {
       toastManager.update(toastId, {
         type: "error",
-        title: "Checked out, but the thread stayed where it was",
-        description: `The checkout is ready on \`${prepared.value.branch}\`. Point a thread at it from the branch picker, then ask again.`,
+        title: "Checked out, but no thread opened on it",
+        description: `The checkout is ready on \`${prepared.value.branch}\`. Open a thread in the project, then ask again.`,
       });
       return;
     }
-    setHandoff(null);
     if (task === null) {
       toastManager.update(
         toastId,
         prepared.value.isOnPullRequestHead
           ? {
               type: "success",
-              title: mode === "local" ? "Checked out here" : "Checked out",
-              description:
-                mode === "local"
-                  ? `This repository is on the ${terminology.singular}'s branch, with a thread open on it.`
-                  : `The ${terminology.singular} is in its own worktree, with a thread open on it.`,
+              title: "Checked out here",
+              description: `This repository is on the ${terminology.singular}'s branch, with a thread open on it.`,
             }
           : offHeadPullRequestCheckoutToast(terminology),
       );
@@ -1076,35 +954,7 @@ export function PullRequestDetailPanel({
     });
   };
 
-  const askAboutGuideStop = (stop: PullRequestReviewGuideStop, index: number, question: string) => {
-    if (!detail) return;
-    void startAsk(
-      `guide-stop:${index}`,
-      buildAskAboutGuideStopHandoff({
-        number: detail.number,
-        title: detail.title,
-        url: detail.url,
-        headBranch: detail.headBranch,
-        baseBranch: detail.baseBranch,
-        state: detail.state,
-        isDraft: detail.isDraft,
-        stop: {
-          index,
-          title: stop.title,
-          summary: stop.summary,
-          attention: stop.attention?.note ?? null,
-          excerpts: stop.excerpts,
-        },
-        question,
-      }),
-      { keepGuide: true },
-    );
-  };
-
-  const addSelectionToAgent = (
-    selection: PullRequestAgentSelectionInput,
-    options?: { readonly keepGuide?: boolean },
-  ) => {
+  const addSelectionToAgent = (selection: PullRequestAgentSelectionInput) => {
     if (!detail) return;
     void startAsk(
       `selection:${selection.comment.id}`,
@@ -1119,7 +969,6 @@ export function PullRequestDetailPanel({
         comment: selection.comment,
         request: selection.request,
       }),
-      options,
     );
   };
 
@@ -1160,9 +1009,9 @@ export function PullRequestDetailPanel({
     toastManager.add({ type: "success", title: "Added to the composer" });
   };
 
-  const startCheckout = (mode: "worktree" | "local") => {
+  const startCheckout = () => {
     if (!handoffSummary) return;
-    void startHandoff(`checkout:${mode}`, null, mode);
+    void startHandoff("checkout", null);
   };
 
   const startFixFinding = (finding: PullRequestFinding) => {
@@ -1218,8 +1067,6 @@ export function PullRequestDetailPanel({
     setMergeMethod(method);
     setLastSelectedMergeMethod(method);
   };
-  const selectActingEnvironment = (next: EnvironmentId) =>
-    setActingScope({ pullRequestKey, environmentId: next });
   const allowedMergeMethods = allowedPullRequestMergeMethods(detail);
   const currentMergeMethod =
     mergeMethodSelection?.pullRequestKey === pullRequestKey ? mergeMethodSelection.method : null;
@@ -1299,10 +1146,6 @@ export function PullRequestDetailPanel({
     ? resolvePullRequestState({ state: detail.state, isDraft: detail.isDraft })
     : null;
   const showsDeleteBranch = detail !== null && canDeletePullRequestBranch(detail);
-  const environmentConnected = environments.some(
-    (environment) =>
-      environment.environmentId === environmentId && environment.connection.phase === "connected",
-  );
   const confirmDeleteBranch = async () => {
     if (detail === null) return;
     const confirmed = await readLocalApi()?.dialogs.confirm(
@@ -1332,23 +1175,19 @@ export function PullRequestDetailPanel({
 
   const checkoutControl =
     context === "page" ? (
-      <PullRequestCheckoutMenu
+      <PullRequestCheckoutButton
         term={terminology.singular}
         handoff={handoff}
         checkoutRoot={checkoutRoot}
-        canPrepareWorktree={canPrepareWorktree}
-        canCheckoutHere={prepareThread.isAllowed}
+        canCheckout={prepareThread.isAllowed}
         onCheckout={startCheckout}
-        pickableEnvironments={pickableEnvironments}
-        actingEnvironmentId={actingEnvironmentId}
-        onActingEnvironmentChange={selectActingEnvironment}
       />
     ) : null;
 
   const resolveConflictsControl = (
     <PullRequestResolveConflictsButton
       handoff={handoff}
-      unavailable={attachTarget === null && (checkoutRoot === null || !canPrepareWorktree)}
+      unavailable={attachTarget === null && (checkoutRoot === null || !prepareThread.isAllowed)}
       onResolve={startResolveConflicts}
     />
   );
@@ -1479,13 +1318,6 @@ export function PullRequestDetailPanel({
                 canFixFindings={canFixFindings}
                 startFixFindings={startFixFindings}
                 handoffLabels={handoffLabels}
-                canWriteGuide={reviewGuidesEnabled && guideWriter.canWrite}
-                guideRunning={guideWriter.running}
-                guideWritten={guideWriter.data?.guide != null}
-                writeGuide={writeGuide}
-                pickableEnvironments={pickableEnvironments}
-                actingEnvironmentId={actingEnvironmentId}
-                onActingEnvironmentChange={selectActingEnvironment}
                 can={can}
                 autoMergeArmed={autoMergeArmed}
                 showsDraftToggle={showsDraftToggle}
@@ -1496,7 +1328,6 @@ export function PullRequestDetailPanel({
                 selectedMergeMethod={selectedMergeMethod}
                 onSelectMergeMethod={selectMergeMethod}
                 showsDeleteBranch={showsDeleteBranch}
-                environmentConnected={environmentConnected}
                 canWriteSourceControl={canWriteSourceControl}
                 onMaintainerEditsSaved={refreshDetail}
                 confirmDeleteBranch={confirmDeleteBranch}
@@ -1862,39 +1693,6 @@ export function PullRequestDetailPanel({
                   {...(attachTarget === null ? {} : { onAddToChat: addCommentToChat })}
                   onRefresh={refreshDetail}
                   onRefreshChecks={refreshFromHost}
-                />
-              </div>
-            ) : null}
-            {mountedTabs.has("guide") ? (
-              <div
-                className={cn("absolute inset-0", tab !== "guide" && "invisible")}
-                // Read by the guide run notifier, which stays quiet for a guide on screen.
-                data-guide-shown={tab === "guide" ? guideKey : undefined}
-              >
-                <PullRequestGuideTab
-                  environmentId={environmentId}
-                  reference={reference}
-                  active={tab === "guide"}
-                  title={detail.title}
-                  workspaceRoot={detail.workspaceRoot}
-                  canComment={
-                    detail.capabilities.review.inlineComment && detail.viewerPermissions.comment
-                  }
-                  rangeComments={detail.capabilities.review.rangeComment === true}
-                  completionScope={pullRequestCompletionScope(detail, environmentId, reference)}
-                  onAskAboutLines={(comment, request) =>
-                    addSelectionToAgent({ comment, request }, { keepGuide: true })
-                  }
-                  onAskAboutStop={askAboutGuideStop}
-                  onFinishReview={
-                    detail.capabilities.review.verdicts.some((verdict) =>
-                      detail.viewerPermissions.verdicts.includes(verdict),
-                    )
-                      ? () => setOpenReviewRequest((count) => count + 1)
-                      : null
-                  }
-                  onOpenFile={openFileInCode}
-                  onTourShown={onGuideShown}
                 />
               </div>
             ) : null}

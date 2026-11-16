@@ -3,7 +3,6 @@ import {
   PullRequestActivity,
   PullRequestDetail as PullRequestDetailSchema,
   PullRequestPreview,
-  PullRequestReviewGuideResult,
   PullRequestListResult,
   PullRequestChecks,
   PullRequestDiffResult,
@@ -377,7 +376,6 @@ export interface PullRequestAnswerHandlers {
   readonly listStats?: QueryAnswerHandler<PullRequestListStatsInput, PullRequestListStatsResult>;
   readonly detail?: QueryAnswerHandler<PullRequestRef, PullRequestDetail>;
   readonly checks?: QueryAnswerHandler<PullRequestRef, PullRequestChecks | null>;
-  readonly reviewGuide?: QueryAnswerHandler<PullRequestRef, PullRequestReviewGuideResult>;
   /** Once per action reply, after the loaded readers show it; unscoped references only. */
   readonly actionReply?: QueryAnswerHandler<PullRequestRef, PullRequestSummary>;
 }
@@ -577,17 +575,6 @@ export function createPullRequestEnvironmentAtoms<R, E>(
       tag: WS_METHODS.pullRequestsLabelCandidates,
       execute: (input) => routedRequest(WS_METHODS.pullRequestsLabelCandidates, input),
       staleTimeMs: 60_000,
-    }),
-  );
-  const reviewGuide = writableQueryFamily(
-    createEnvironmentRpcQueryAtomFamily(runtime, {
-      label: "environment-data:pull-requests:review-guide",
-      persistence: persistQuery(PullRequestReviewGuideResult),
-      tag: WS_METHODS.pullRequestsReviewGuide,
-      execute: (input) => routedRequest(WS_METHODS.pullRequestsReviewGuide, input),
-      staleTimeMs: 60_000,
-      refreshTrigger: ({ environmentId }) => refreshes({ environmentId, input: {} }),
-      ...(onAnswer.reviewGuide === undefined ? {} : { onAnswer: onAnswer.reviewGuide }),
     }),
   );
   const reviewerCandidates = writableQueryFamily(
@@ -982,16 +969,6 @@ export function createPullRequestEnvironmentAtoms<R, E>(
             }),
             missingIdentities,
           );
-        }),
-    }),
-    reviewGuide,
-    generateReviewGuide: createEnvironmentRpcCommand(runtime, {
-      label: "environment-data:pull-requests:generate-review-guide",
-      tag: WS_METHODS.pullRequestsGenerateReviewGuide,
-      execute: (input) => routedRequest(WS_METHODS.pullRequestsGenerateReviewGuide, input),
-      onSuccess: (target, registry, result) =>
-        Effect.sync(() => {
-          updateCached(registry, reviewGuide(target), () => result, true);
         }),
     }),
     labelCandidates,

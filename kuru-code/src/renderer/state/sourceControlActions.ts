@@ -1,16 +1,11 @@
 import { useAtomValue } from "@effect/atom-react";
-import type {
-  AtomCommandFailure,
-  AtomCommandResult,
-  AtomCommandSuccess,
-} from "~/rt/state/runtime";
+import type { AtomCommandFailure, AtomCommandResult, AtomCommandSuccess } from "~/rt/state/runtime";
 import {
   VcsActionUnavailableError,
   type VcsActionOperation,
   type RunVcsStackedActionInput,
 } from "~/rt/state/vcs";
 import {
-  AuthOrchestrationOperateScope,
   AuthSourceControlWriteScope,
   EnvironmentAuthorizationError,
   type EnvironmentId,
@@ -18,7 +13,6 @@ import {
   type SourceControlCloneProtocol,
   type SourceControlProviderKind,
   type SourceControlRepositoryVisibility,
-  type ThreadId,
 } from "~/contracts";
 import * as Cause from "effect/Cause";
 import { AsyncResult } from "effect/reactivity";
@@ -311,11 +305,8 @@ export function usePreparePullRequestThreadAction(scope: SourceControlActionScop
   const preparePullRequestThread = useAtomCommand(gitEnvironment.preparePullRequestThread, {
     reportFailure: false,
   });
-  const action = async (input: {
-    reference: string;
-    mode: "local" | "worktree";
-    threadId?: ThreadId;
-  }) => {
+  // kuru code keeps one checkout per project: the pull request is checked out in it.
+  const action = async (input: { reference: string }) => {
     const target = resolveScope(scope);
     if (target === null) {
       return AsyncResult.failure<never, VcsActionUnavailableError>(
@@ -328,28 +319,9 @@ export function usePreparePullRequestThreadAction(scope: SourceControlActionScop
         ),
       );
     }
-    if (
-      input.mode === "worktree" &&
-      input.threadId !== undefined &&
-      !readEnvironmentScope(target.environmentId, AuthOrchestrationOperateScope)
-    ) {
-      return AsyncResult.failure<never, EnvironmentAuthorizationError>(
-        Cause.fail(
-          new EnvironmentAuthorizationError({
-            requiredScope: AuthOrchestrationOperateScope,
-            message: "This connection cannot change threads.",
-          }),
-        ),
-      );
-    }
     return preparePullRequestThread({
       environmentId: target.environmentId,
-      input: {
-        cwd: target.cwd,
-        reference: input.reference,
-        mode: input.mode,
-        ...(input.threadId ? { threadId: input.threadId } : {}),
-      },
+      input: { cwd: target.cwd, reference: input.reference, mode: "local" },
     });
   };
   return useAction({

@@ -1,4 +1,4 @@
-import type { EnvironmentId, MessageId, ThreadId } from "~/contracts";
+import type { EnvironmentId, MessageId } from "~/contracts";
 import { useAtomValue } from "@effect/atom-react";
 import { Atom } from "effect/reactivity";
 
@@ -60,12 +60,8 @@ export function openPullRequestThreadDialog(threadKey: string, reference?: strin
 export function PullRequestThreadDialogHost(props: {
   readonly threadKey: string | null;
   readonly environmentId: EnvironmentId;
-  readonly threadId: ThreadId;
   readonly cwd: string | null;
-  readonly onPrepared: (input: {
-    branch: string;
-    worktreePath: string | null;
-  }) => Promise<void> | void;
+  readonly onPrepared: (input: { branch: string }) => Promise<void> | void;
 }) {
   const state = useThreadOverlay(pullRequestThreadDialogAtom, props.threadKey);
   if (state === null) return null;
@@ -74,7 +70,6 @@ export function PullRequestThreadDialogHost(props: {
       key={state.key}
       open
       environmentId={props.environmentId}
-      threadId={props.threadId}
       cwd={props.cwd}
       initialReference={state.initialReference}
       onOpenChange={(open) => {

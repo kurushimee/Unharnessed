@@ -1,31 +1,15 @@
-import type {
-  EnvironmentId,
-  PullRequestAction,
-  PullRequestMergeMethod,
-  PullRequestUpdateMethod,
-} from "~/contracts";
-import { CheckIcon, ChevronDownIcon, FolderGit2Icon, GitBranchIcon, PlayIcon } from "lucide-react";
+import type { PullRequestAction, PullRequestMergeMethod, PullRequestUpdateMethod } from "~/contracts";
+import { CheckIcon, GitBranchIcon, PlayIcon } from "lucide-react";
 import type { ReactNode } from "react";
 
 import { AnimatedWidth } from "~/components/AnimatedWidth";
 import { cn } from "~/lib/utils";
-import { EnvironmentMachineIcon } from "../EnvironmentMachineIcon";
 import { Badge } from "../ui/badge";
 import { Button } from "../ui/button";
-import {
-  Menu,
-  MenuItem,
-  MenuPopup,
-  MenuRadioGroup,
-  MenuRadioItem,
-  MenuSeparator,
-  MenuTrigger,
-} from "../ui/menu";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
 import type { resolvePullRequestPrimaryControl } from "./pullRequestDetail.logic";
 import { PullRequestGlyph } from "./pullRequestIcons";
 import type { resolvePullRequestState } from "./pullRequestPresentation";
-import type { PickableEnvironment } from "./pullRequestProjectAssignment.logic";
 import { useInlineActionConfirm } from "./useInlineActionConfirm";
 
 export type PerformPullRequestAction = (
@@ -34,120 +18,43 @@ export type PerformPullRequestAction = (
   updateMethod?: PullRequestUpdateMethod,
 ) => Promise<boolean>;
 
-export function ActOnEnvironmentPicker({
-  environments,
-  value,
-  onChange,
-  disabled,
-}: {
-  environments: ReadonlyArray<PickableEnvironment>;
-  value: EnvironmentId;
-  onChange: (environmentId: EnvironmentId) => void;
-  disabled: boolean;
-}) {
-  return (
-    <>
-      <MenuSeparator />
-      <MenuRadioGroup
-        value={value}
-        onValueChange={(environmentId) => onChange(environmentId as EnvironmentId)}
-      >
-        {environments.map((environment) => (
-          <MenuRadioItem
-            key={environment.environmentId}
-            value={environment.environmentId}
-            disabled={disabled}
-          >
-            <span className="flex min-w-0 items-center gap-2">
-              <EnvironmentMachineIcon
-                kind={environment.machine ?? "server"}
-                className="size-3.5 shrink-0"
-              />
-              <span className="truncate">{environment.label}</span>
-            </span>
-          </MenuRadioItem>
-        ))}
-      </MenuRadioGroup>
-    </>
-  );
-}
-
-export function PullRequestCheckoutMenu({
+export function PullRequestCheckoutButton({
   handoff,
   checkoutRoot,
-  canPrepareWorktree,
-  canCheckoutHere,
+  canCheckout,
   onCheckout,
-  pickableEnvironments,
-  actingEnvironmentId,
-  onActingEnvironmentChange,
   term,
 }: {
   handoff: string | null;
   checkoutRoot: string | null;
-  canPrepareWorktree: boolean;
-  canCheckoutHere: boolean;
-  onCheckout: (mode: "worktree" | "local") => void;
-  pickableEnvironments: ReadonlyArray<PickableEnvironment>;
-  actingEnvironmentId: EnvironmentId;
-  onActingEnvironmentChange: (environmentId: EnvironmentId) => void;
+  canCheckout: boolean;
+  onCheckout: () => void;
   /** The host's word for a change request, as in "pull request". */
   term: string;
 }) {
+  const checkingOut = handoff === "checkout";
   return (
-    <Menu>
-      <Tooltip>
-        <TooltipTrigger
-          render={
-            <MenuTrigger
-              disabled={handoff !== null || checkoutRoot === null}
-              render={
-                <Button
-                  size="xs"
-                  variant="outline"
-                  aria-label={handoff?.startsWith("checkout") ? "Checking out..." : "Check out"}
-                >
-                  <GitBranchIcon aria-hidden className="size-3.5" />
-                  <span className="@max-[35rem]/pr-header:hidden">
-                    {handoff?.startsWith("checkout") ? "Checking out..." : "Check out"}
-                  </span>
-                  <ChevronDownIcon aria-hidden className="size-3.5 text-muted-foreground" />
-                </Button>
-              }
-            />
-          }
-        />
-        <TooltipPopup>Check out this {term}</TooltipPopup>
-      </Tooltip>
-      <MenuPopup align="end" side="bottom">
-        <MenuItem disabled={!canPrepareWorktree} onClick={() => onCheckout("worktree")}>
-          <GitBranchIcon className="mt-1 size-3.5 shrink-0 self-start" />
-          <span className="flex min-w-0 flex-col">
-            <span>In a separate worktree</span>
-            <span className="text-xs text-muted-foreground">
-              Its own folder and thread. Nothing you have open moves.
-            </span>
+    <Tooltip>
+      <TooltipTrigger
+        render={
+          <span className="inline-flex shrink-0">
+            <Button
+              size="xs"
+              variant="outline"
+              disabled={handoff !== null || checkoutRoot === null || !canCheckout}
+              onClick={onCheckout}
+              aria-label={checkingOut ? "Checking out..." : "Check out"}
+            >
+              <GitBranchIcon aria-hidden className="size-3.5" />
+              <span className="@max-[35rem]/pr-header:hidden">
+                {checkingOut ? "Checking out..." : "Check out"}
+              </span>
+            </Button>
           </span>
-        </MenuItem>
-        <MenuItem disabled={!canCheckoutHere} onClick={() => onCheckout("local")}>
-          <FolderGit2Icon className="mt-1 size-3.5 shrink-0 self-start" />
-          <span className="flex min-w-0 flex-col">
-            <span>In this repository</span>
-            <span className="text-xs text-muted-foreground">
-              Switches the branch you are working in.
-            </span>
-          </span>
-        </MenuItem>
-        {pickableEnvironments.length > 0 ? (
-          <ActOnEnvironmentPicker
-            environments={pickableEnvironments}
-            value={actingEnvironmentId}
-            onChange={onActingEnvironmentChange}
-            disabled={handoff !== null}
-          />
-        ) : null}
-      </MenuPopup>
-    </Menu>
+        }
+      />
+      <TooltipPopup>Check out this {term} in its project: switches the branch you are working in</TooltipPopup>
+    </Tooltip>
   );
 }
 

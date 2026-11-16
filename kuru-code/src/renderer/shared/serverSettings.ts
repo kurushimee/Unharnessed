@@ -6,29 +6,17 @@ import {
   defaultInstanceIdForDriver,
   globalIdleCompaction,
   type IdleCompactionMode,
-  isProviderAvailable,
-  isUnconfiguredDefaultInstanceEnabled,
-  resolveProjectProviderInstanceEnabled,
-  resolveProviderInstanceEnabled,
-  resolveTextGenerationSelectionEnabled,
-  textGeneratorForSelection,
-  isProviderTextGenerationCapable,
   type ModelSelection,
-  type ProjectId,
   type ProjectScopedServerSettingKey,
   ProjectSettingsOverrides,
   ProviderDriverKind,
   ProviderInstanceId,
-  type ServerProvider,
   ServerSettings,
   type ServerSettingsPatch,
   withIdleCompaction,
 } from "~/contracts";
-import * as Option from "effect/Option";
 import * as Predicate from "effect/Predicate";
-import * as Schema from "effect/Schema";
 import { deepMerge } from "./Struct";
-import { fromLenientJson } from "./schemaJson";
 import { createModelSelection, readCustomModelEntries } from "./model";
 import {
   getBackgroundActivityBaseProfile,
@@ -36,28 +24,6 @@ import {
   normalizeServerBackgroundActivitySettings,
   resolveBackgroundActivitySettings,
 } from "./backgroundActivitySettings";
-
-// Only observability: a value the server migrates on load elsewhere in the file must not drop it.
-const ServerObservabilitySettingsJson = fromLenientJson(
-  Schema.Struct({ observability: ServerSettings.fields.observability }),
-);
-const decodeServerObservabilitySettingsJson = Schema.decodeUnknownOption(
-  ServerObservabilitySettingsJson,
-);
-
-export function isModelSelectionProviderEnabled(
-  settings: ServerSettings,
-  selection: ModelSelection,
-): boolean {
-  const generator = textGeneratorForSelection(settings, selection.instanceId);
-  if (generator !== undefined) return generator.enabled;
-  const instanceConfig = settings.providerInstances[selection.instanceId];
-  if (instanceConfig !== undefined) {
-    return resolveProviderInstanceEnabled(instanceConfig);
-  }
-
-  return isUnconfiguredDefaultInstanceEnabled(selection.instanceId);
-}
 
 const TEXT_GENERATION_FALLBACK_DRIVERS = [
   "codex",
@@ -111,101 +77,6 @@ export function defaultTextGenerationModel(driver: ProviderDriverKind): string {
     DEFAULT_MODEL_BY_PROVIDER[driver] ??
     DEFAULT_TEXT_GENERATION_MODEL
   );
-}
-
-/** A text generator, or a provider whose snapshot can generate text; no snapshots trusts settings. */
-function isTextGenerationTargetUsable(
-  settings: ServerSettings,
-  providers: ReadonlyArray<ServerProvider> | undefined,
-  instanceId: ProviderInstanceId,
-): boolean {
-  if (providers === undefined || textGeneratorForSelection(settings, instanceId) !== undefined) {
-    return true;
-  }
-  const provider = providers.find((candidate) => candidate.instanceId === instanceId);
-  return (
-    provider?.enabled === true &&
-    isProviderAvailable(provider) &&
-    isProviderTextGenerationCapable(provider)
-  );
-}
-
-export function resolveSourceControlWriterModelSelection(
-  settings: ServerSettings,
-  providers: ReadonlyArray<ServerProvider> | undefined,
-  projectId: ProjectId | null,
-): ModelSelection {
-  const selection = settings.sourceControlWriterModelSelection;
-  return selection &&
-    resolveTextGenerationSelectionEnabled(settings, projectId, selection.instanceId) &&
-    isTextGenerationTargetUsable(settings, providers, selection.instanceId)
-    ? selection
-    : settings.textGenerationModelSelection;
-}
-
-export function resolveReviewGuideModelSelection(
-  settings: ServerSettings,
-  providers: ReadonlyArray<ServerProvider> | undefined,
-  projectId: ProjectId | null,
-): ModelSelection {
-  const selection = settings.reviewGuideModelSelection;
-  // Text generators cannot investigate a checkout, so they never write review guides.
-  return selection &&
-    textGeneratorForSelection(settings, selection.instanceId) === undefined &&
-    resolveProjectProviderInstanceEnabled(settings, projectId, selection.instanceId) &&
-    isTextGenerationTargetUsable(settings, providers, selection.instanceId)
-    ? selection
-    : resolveSourceControlWriterModelSelection(settings, providers, projectId);
-}
-
-/** Transcript cleanup follows the text generation model unless its own usable model is set. */
-export function resolveSpeechPostProcessingModelSelection(
-  settings: ServerSettings,
-  providers?: ReadonlyArray<ServerProvider>,
-): ModelSelection {
-  const selection = settings.speechPostProcessingModelSelection;
-  return selection &&
-    isModelSelectionProviderEnabled(settings, selection) &&
-    isTextGenerationTargetUsable(settings, providers, selection.instanceId)
-    ? selection
-    : settings.textGenerationModelSelection;
-}
-
-export interface PersistedServerObservabilitySettings {
-  readonly otlpTracesUrl: string | undefined;
-  readonly otlpMetricsUrl: string | undefined;
-  readonly otlpLogsUrl: string | undefined;
-}
-
-function normalizePersistedServerSettingString(
-  value: string | null | undefined,
-): string | undefined {
-  const trimmed = value?.trim();
-  return trimmed && trimmed.length > 0 ? trimmed : undefined;
-}
-
-function extractPersistedServerObservabilitySettings(input: {
-  readonly observability?: {
-    readonly otlpTracesUrl?: string;
-    readonly otlpMetricsUrl?: string;
-    readonly otlpLogsUrl?: string;
-  };
-}): PersistedServerObservabilitySettings {
-  return {
-    otlpTracesUrl: normalizePersistedServerSettingString(input.observability?.otlpTracesUrl),
-    otlpMetricsUrl: normalizePersistedServerSettingString(input.observability?.otlpMetricsUrl),
-    otlpLogsUrl: normalizePersistedServerSettingString(input.observability?.otlpLogsUrl),
-  };
-}
-
-export function parsePersistedServerObservabilitySettings(
-  raw: string,
-): PersistedServerObservabilitySettings {
-  const decoded = decodeServerObservabilitySettingsJson(raw);
-  if (Option.isSome(decoded)) {
-    return extractPersistedServerObservabilitySettings(decoded.value);
-  }
-  return { otlpTracesUrl: undefined, otlpMetricsUrl: undefined, otlpLogsUrl: undefined };
 }
 
 function shouldReplaceTextGenerationModelSelection(

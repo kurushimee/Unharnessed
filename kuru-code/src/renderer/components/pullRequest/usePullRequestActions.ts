@@ -325,11 +325,7 @@ export function usePullRequestHandoffs({
     });
   };
 
-  const startHandoff = async (
-    kind: string,
-    task: PullRequestThreadTask | null,
-    mode: "worktree" | "local" = "worktree",
-  ) => {
+  const startHandoff = async (kind: string, task: PullRequestThreadTask | null) => {
     if (!detail || handoff !== null) return;
     setHandoff(kind);
     // Explicit timeouts survive toast updates and would pin the result after loading.
@@ -338,25 +334,8 @@ export function usePullRequestHandoffs({
       title: `Preparing the ${terminology.singular} checkout...`,
     });
     const projectRef = scopeProjectRef(environmentId, detail.projectId);
-    // Checkout setup requires the thread to exist first.
-    const opened = await newThread(projectRef).then(
-      (session) => session,
-      () => null,
-    );
-    if (opened === null) {
-      setHandoff(null);
-      toastManager.update(toastId, {
-        type: "error",
-        title: "Could not open a thread for the checkout",
-        description: "Try again from the project, or open a thread first.",
-      });
-      return;
-    }
-    const prepared = await prepareThread.run({
-      reference: detail.url,
-      mode,
-      threadId: opened.threadId,
-    });
+    // kuru code keeps one checkout per project: the pull request's branch is checked out in it.
+    const prepared = await prepareThread.run({ reference: detail.url });
     if (prepared._tag === "Failure") {
       setHandoff(null);
       toastManager.update(toastId, {
@@ -368,35 +347,27 @@ export function usePullRequestHandoffs({
       });
       return;
     }
-    const pointed = await newThread(projectRef, {
-      branch: prepared.value.branch,
-      worktreePath: prepared.value.worktreePath,
-      envMode: prepared.value.worktreePath === null ? "local" : "worktree",
-    }).then(
-      (session) => session !== null,
-      () => false,
+    const opened = await newThread(projectRef, { branch: prepared.value.branch }).then(
+      (session) => session,
+      () => null,
     );
-    if (!pointed) {
-      setHandoff(null);
+    setHandoff(null);
+    if (opened === null) {
       toastManager.update(toastId, {
         type: "error",
-        title: "Checked out, but the thread stayed where it was",
-        description: `The checkout is ready on \`${prepared.value.branch}\`. Point a thread at it from the branch picker, then ask again.`,
+        title: "Checked out, but no thread opened on it",
+        description: `The checkout is ready on \`${prepared.value.branch}\`. Open a thread in the project, then ask again.`,
       });
       return;
     }
-    setHandoff(null);
     if (task === null) {
       toastManager.update(
         toastId,
         prepared.value.isOnPullRequestHead
           ? {
               type: "success",
-              title: mode === "local" ? "Checked out here" : "Checked out",
-              description:
-                mode === "local"
-                  ? `This repository is on the ${terminology.singular}'s branch, with a thread open on it.`
-                  : `The ${terminology.singular} is in its own worktree, with a thread open on it.`,
+              title: "Checked out here",
+              description: `This repository is on the ${terminology.singular}'s branch, with a thread open on it.`,
             }
           : offHeadPullRequestCheckoutToast(terminology),
       );

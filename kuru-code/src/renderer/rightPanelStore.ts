@@ -8,7 +8,7 @@ import { create } from "zustand";
 
 export type RightPanelKind = "pull-request";
 
-export type PullRequestDetailTab = "summary" | "guide" | "timeline" | "code";
+export type PullRequestDetailTab = "summary" | "timeline" | "code";
 
 export type RightPanelSurface = {
   id: `pull-request:${string}`;

@@ -22,7 +22,6 @@ import {
   MessageCircleQuestionIcon,
   MoreHorizontalIcon,
   RotateCcwIcon,
-  ScrollTextIcon,
   Trash2Icon,
 } from "lucide-react";
 import { useId, useState } from "react";
@@ -30,7 +29,7 @@ import { useId, useState } from "react";
 import { shortcutLabelForCommand } from "~/keybindings";
 import { readLocalApi } from "~/localApi";
 import { pullRequestEnvironment } from "~/state/pullRequests";
-import { readPrimaryServerKeybindings, usePrimaryServerKeybindings } from "~/state/server";
+import { usePrimaryServerKeybindings } from "~/state/server";
 import { useAtomCommand } from "~/state/use-atom-command";
 import { Button } from "../ui/button";
 import {
@@ -47,14 +46,13 @@ import {
 import { RefreshIcon } from "../ui/refresh-icon";
 import { toastManager } from "../ui/toast";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
-import { ActOnEnvironmentPicker, type PerformPullRequestAction } from "./PullRequestDetailActions";
+import type { PerformPullRequestAction } from "./PullRequestDetailActions";
 import {
   PULL_REQUEST_MERGE_METHOD_LABELS,
   pullRequestActionMenuHasGroup,
   readableFailure,
 } from "./pullRequestDetail.logic";
 import { PullRequestGlyph } from "./pullRequestIcons";
-import type { PickableEnvironment } from "./pullRequestProjectAssignment.logic";
 import { PullRequestThreadLinks } from "./PullRequestThreadLinks";
 import { useInlineActionConfirm } from "./useInlineActionConfirm";
 
@@ -76,13 +74,6 @@ export function PullRequestActionsMenu({
   canFixFindings,
   startFixFindings,
   handoffLabels,
-  canWriteGuide,
-  guideRunning,
-  guideWritten,
-  writeGuide,
-  pickableEnvironments,
-  actingEnvironmentId,
-  onActingEnvironmentChange,
   can,
   autoMergeArmed,
   showsDraftToggle,
@@ -93,7 +84,6 @@ export function PullRequestActionsMenu({
   selectedMergeMethod,
   onSelectMergeMethod,
   showsDeleteBranch,
-  environmentConnected,
   canWriteSourceControl,
   onMaintainerEditsSaved,
   confirmDeleteBranch,
@@ -128,13 +118,6 @@ export function PullRequestActionsMenu({
   canFixFindings: boolean;
   startFixFindings: () => void;
   handoffLabels: { readonly fixFindings: string };
-  canWriteGuide: boolean;
-  guideRunning: boolean;
-  guideWritten: boolean;
-  writeGuide: () => void;
-  pickableEnvironments: ReadonlyArray<PickableEnvironment>;
-  actingEnvironmentId: EnvironmentId;
-  onActingEnvironmentChange: (environmentId: EnvironmentId) => void;
   can: (action: PullRequestAction) => boolean;
   autoMergeArmed: boolean;
   showsDraftToggle: boolean;
@@ -145,7 +128,6 @@ export function PullRequestActionsMenu({
   selectedMergeMethod: PullRequestMergeMethod;
   onSelectMergeMethod: (method: PullRequestMergeMethod) => void;
   showsDeleteBranch: boolean;
-  environmentConnected: boolean;
   canWriteSourceControl: boolean;
   onMaintainerEditsSaved: () => void;
   confirmDeleteBranch: () => Promise<void>;
@@ -176,7 +158,7 @@ export function PullRequestActionsMenu({
   }
   const maintainerCanModify = maintainerEditsChoiceKept?.value ?? detail.maintainerCanModify;
   const canSaveMaintainerEdits =
-    canWriteSourceControl && environmentConnected && !maintainerEditsSaving;
+    canWriteSourceControl && !maintainerEditsSaving;
   const saveMaintainerEdits = async (value: boolean) => {
     if (!canSaveMaintainerEdits) return;
     const previousChoice = maintainerEditsChoice;
@@ -269,20 +251,6 @@ export function PullRequestActionsMenu({
           <HammerIcon className="size-3.5" />
           {handoff === "findings" ? "Preparing..." : handoffLabels.fixFindings}
         </MenuItem>
-        {canWriteGuide ? (
-          <MenuItem disabled={guideRunning} onClick={writeGuide}>
-            <ScrollTextIcon className="size-3.5" />
-            {guideRunning ? "Writing guide..." : !guideWritten ? "Write guide" : "Rewrite guide"}
-          </MenuItem>
-        ) : null}
-        {pickableEnvironments.length > 0 ? (
-          <ActOnEnvironmentPicker
-            environments={pickableEnvironments}
-            value={actingEnvironmentId}
-            onChange={onActingEnvironmentChange}
-            disabled={handoff !== null}
-          />
-        ) : null}
         <MenuSeparator />
         {canEditPullRequestMaintainerEdits(detail) ? (
           <>
@@ -458,7 +426,7 @@ export function PullRequestActionsMenu({
             <MenuSeparator />
             <MenuItem
               variant="destructive"
-              disabled={actionPending || !environmentConnected}
+              disabled={actionPending}
               onClick={() => void confirmDeleteBranch()}
             >
               <Trash2Icon className="mt-1 size-3.5 shrink-0 self-start" />
@@ -467,7 +435,7 @@ export function PullRequestActionsMenu({
                   {pendingAction === "delete-branch" ? "Deleting branch..." : "Delete branch"}
                 </span>
                 <span className="truncate text-xs text-muted-foreground">
-                  {environmentConnected ? detail.headBranch : "Reconnect to delete this branch"}
+                  {detail.headBranch}
                 </span>
               </span>
             </MenuItem>

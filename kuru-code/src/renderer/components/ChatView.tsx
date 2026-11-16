@@ -2496,7 +2496,6 @@ export default function ChatView(props: ChatViewProps) {
                 <PullRequestThreadDialogHost
                   threadKey={activeThreadKey}
                   environmentId={activeThread.environmentId}
-                  threadId={activeThread.id}
                   cwd={activeProject?.workspaceRoot ?? null}
                   onPrepared={handlePreparedPullRequestThreadStable}
                 />
