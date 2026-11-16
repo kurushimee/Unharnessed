@@ -7,6 +7,7 @@ next to this file. Cells execute with top-level await in one persistent
 
 from __future__ import annotations
 
+import _thread
 import ast
 import asyncio
 import codecs
@@ -405,6 +406,22 @@ def _sigint_handler(signum: int, frame: types.FrameType | None) -> None:
         raise KeyboardInterrupt
 
 
+def _wake_windows_sleep() -> None:
+    """Set CPython's SIGINT event, which a main-thread time.sleep() waits on.
+
+    _PyOS_SigintEvent is private: when it is missing, the interrupt still
+    lands, only after the sleep returns.
+    """
+    try:
+        sigint_event = ctypes.pythonapi._PyOS_SigintEvent
+        sigint_event.restype = ctypes.c_void_p
+        event = sigint_event()
+        if event:
+            ctypes.windll.kernel32.SetEvent(ctypes.c_void_p(event))
+    except (AttributeError, OSError):
+        pass
+
+
 def _request_interrupt(target: str | None) -> None:
     """Deliver an interrupt now, or park it for the request it targets.
 
@@ -416,7 +433,6 @@ def _request_interrupt(target: str | None) -> None:
     """
     global _sigint_target
     with _interrupt_lock:
-        task = _active["task"]
         rid = _active["rid"]
         if rid is not None and (target is None or target == rid):
             # Active, or in the done-task handoff before _run_guarded's finally:
@@ -435,24 +451,17 @@ def _request_interrupt(target: str | None) -> None:
         else:
             return
     # SIGINT must land on the main thread, where cells execute. Windows has no
-    # signal.pthread_kill: fall back to cancelling the active task on the loop
-    # (sync-blocked cells and the finishing repr/drain cannot be broken there;
-    # best-effort parity).
+    # signal.pthread_kill; interrupt_main runs the same handler at the main
+    # thread's next bytecode (a blocking syscall gets it when it returns).
     if hasattr(signal, "pthread_kill"):
         signal.pthread_kill(threading.main_thread().ident, signal.SIGINT)
-        if _loop is not None:
-            # Wake the selector so a cancel scheduled by the handler runs promptly.
-            _loop.call_soon_threadsafe(lambda: None)
-        return
+    else:
+        _thread.interrupt_main(signal.SIGINT)
+        _wake_windows_sleep()
+
     if _loop is not None:
-
-        def cancel_active() -> None:
-            current = _active["task"]
-            if current is task and current is not None and not current.done():
-                _active["interrupted"] = True
-                current.cancel()
-
-        _loop.call_soon_threadsafe(cancel_active)
+        # Wake the selector so a cancel scheduled by the handler runs promptly.
+        _loop.call_soon_threadsafe(lambda: None)
 
 
 def _consume_pending_interrupt(rid: str) -> bool:

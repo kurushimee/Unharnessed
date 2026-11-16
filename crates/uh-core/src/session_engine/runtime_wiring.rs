@@ -15,6 +15,7 @@ use crate::kernel::provisioner::{
     IpythonKernelProvisioner as KernelProvisioner, IpythonKernelProvisionerOptions,
 };
 use crate::kernel::shared::HostRequestHandlers;
+use crate::platform::resolve_kernel_bash_shell;
 use crate::session::manager::SessionManager;
 use crate::skills::{get_python_skill_runtime_info, Skill};
 use crate::tools::ipython::{
@@ -108,7 +109,7 @@ pub fn kernel_provisioner(
             python: None,
             env,
             command_prefix: None,
-            shell_path: None,
+            shell_path: kernel_bash_shell(),
             session_id: Some(session_id),
             host_handlers: handlers,
             python_skills,
@@ -122,6 +123,16 @@ pub fn kernel_provisioner(
             on_unavailable_skills,
         },
     ))
+}
+
+/// The kernel never searches PATH for a shell on Windows, so the host must
+/// inject Git Bash there. POSIX keeps the kernel's own PATH lookup.
+fn kernel_bash_shell() -> Option<std::path::PathBuf> {
+    if cfg!(windows) {
+        resolve_kernel_bash_shell(None).map(std::path::PathBuf::from)
+    } else {
+        None
+    }
 }
 
 impl IpythonKernelProvisioner for KernelProvisioner {
