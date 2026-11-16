@@ -1148,6 +1148,13 @@ export function createLocalRpcQueryAtomFamily<TTag extends EnvironmentUnaryRpcTa
   readonly tag: TTag;
   readonly idleTtlMs?: number;
   readonly staleTimeMs?: number;
+  /** Answers it in the window instead, when it can; the main process otherwise. */
+  readonly execute?: (
+    input: EnvironmentRpcInput<TTag>,
+  ) => Effect.Effect<
+    EnvironmentRpcSuccess<TTag>,
+    EnvironmentRpcFailure<TTag> | EnvironmentRpcUnavailableError
+  >;
 }): (
   target: LocalRpcTarget<EnvironmentRpcInput<TTag>>,
 ) => Atom.Atom<
@@ -1158,7 +1165,9 @@ export function createLocalRpcQueryAtomFamily<TTag extends EnvironmentUnaryRpcTa
 > {
   const family = Atom.family((key: string) => {
     const target = JSON.parse(key) as LocalRpcTarget<EnvironmentRpcInput<TTag>>;
-    const atom = Atom.make(request(options.tag, target.input)).pipe(
+    const atom = Atom.make(
+      options.execute ? options.execute(target.input) : request(options.tag, target.input),
+    ).pipe(
       Atom.withLabel(`${options.label}:${key}`),
     );
     return options.idleTtlMs === undefined ? atom : atom.pipe(Atom.setIdleTTL(options.idleTtlMs));

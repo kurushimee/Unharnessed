@@ -160,6 +160,18 @@ export class Threads {
     return conversation.chat.rewindTo(turn);
   }
 
+  /** The thread `id`'s waiting message `message` changed; false when it no longer waits. */
+  changeWaiting(id: string, message: number, text: string, keep: number[], images: Attachment[]): boolean {
+    return this.openByWindowId(id)?.chat.changeWaiting(message, text, keep, images) ?? false;
+  }
+
+  /** Its waiting message `message` held while it is changed elsewhere, or let go. */
+  holdWaiting(id: string, message: number, hold: boolean): void {
+    const chat = this.openByWindowId(id)?.chat;
+    if (hold) chat?.edit(message);
+    else chat?.release(message);
+  }
+
   /** Stops the running turn of the thread `id`, open on screen or not. */
   cancel(id: string): void {
     this.openByWindowId(id)?.chat.cancel();

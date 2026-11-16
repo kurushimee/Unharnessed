@@ -209,6 +209,11 @@ interface TurnProjection {
   readonly items: ReadonlyArray<Item>;
 }
 
+/** A waiting message's image, by its position in the message. */
+export function queuedAttachmentId(threadId: string, queuedId: number, position: number): string {
+  return `${threadId}:queued:${queuedId}:${position}`;
+}
+
 /**
  * Projects conversations. Kept per thread: an Unharnessed item that is the
  * same object as before (the chat's patches keep what did not change) keeps
@@ -284,6 +289,58 @@ export class ThreadProjector {
         }
       }
     }
+
+    // Messages waiting for the running turn to end (or held while changed): T3 Code's queued runs.
+    const queuedAt = utc(clock);
+    // Those already sent into the running turn show as T3 Code's steer rows instead.
+    chat.queue.filter((queued) => queued.state !== "steering").forEach((queued, index) => {
+      const runId = RunId.make(`${threadId}:queued-${queued.id}`);
+      // The id the window sent it under, which its turn keeps once it starts.
+      if (!this.promptIds.has(queued.id)) {
+        const sent = takeSentPrompt(threadId, queued.text);
+        if (sent !== null) this.promptIds.set(queued.id, sent);
+      }
+      const messageId = this.promptIds.get(queued.id) ?? MessageId.make(`${threadId}:queued:${queued.id}`);
+      runs.push({
+        id: runId,
+        threadId,
+        ordinal: queued.id,
+        providerInstanceId: instanceId,
+        modelSelection,
+        providerThreadId: null,
+        userMessageId: messageId,
+        rootNodeId: null,
+        activeAttemptId: null,
+        status: "queued",
+        queuePosition: index + 1,
+        queueHeld: chat.paused,
+        requestedAt: queuedAt,
+        startedAt: null,
+        completedAt: null,
+        checkpointId: null,
+        contextHandoffId: null,
+      });
+      messages.push({
+        id: messageId,
+        threadId,
+        runId,
+        nodeId: null,
+        role: "user",
+        text: queued.text,
+        attachments: queued.images.map((image, position) => ({
+          type: "image" as const,
+          id: ChatAttachmentId.make(queuedAttachmentId(threadId, queued.id, position)),
+          name: image.name || "image",
+          mimeType: mimeOf(image.thumb),
+          sizeBytes: 0,
+        })),
+        streaming: false,
+        createdBy: "user",
+        creationSource: "web",
+        createdAt: queuedAt,
+        updatedAt: queuedAt,
+      });
+    });
 
     const visibleTurnItems = turnItems.map((item, position) => this.row(item, position, threadId));
     const createdAt = utc(source.createdAt);
@@ -574,14 +631,17 @@ function mimeOf(dataUrl: string): string {
   return /^data:(image\/[\w.+-]+);/.exec(dataUrl)?.[1] ?? "image/jpeg";
 }
 
-/** The prompts' images, by the attachment id their user message gives them: their thumbnails. */
-export function promptImageUrls(chat: ChatState, threadId: ThreadId): ReadonlyMap<string, string> {
-  const urls = new Map<string, string>();
+/** A prompt's or waiting message's image, by the attachment id its message gives it: its thumbnail. */
+export function attachmentImageUrl(chat: ChatState, threadId: string, attachmentId: string): string | null {
   for (const entry of chat.entries) {
     if (entry.kind !== "turn" || !entry.prompt) continue;
-    entry.prompt.images.forEach((image, index) => {
-      urls.set(`${threadId}:prompt:${entry.id}:${index}`, image.thumb);
-    });
+    const prefix = `${threadId}:prompt:${entry.id}:`;
+    if (attachmentId.startsWith(prefix)) return entry.prompt.images[Number(attachmentId.slice(prefix.length))]?.thumb ?? null;
   }
-  return urls;
+  for (const queued of chat.queue) {
+    if (queued.state === "steering") continue;
+    const prefix = queuedAttachmentId(threadId, queued.id, 0).slice(0, -1);
+    if (attachmentId.startsWith(prefix)) return queued.images[Number(attachmentId.slice(prefix.length))]?.thumb ?? null;
+  }
+  return null;
 }

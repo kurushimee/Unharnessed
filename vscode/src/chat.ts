@@ -364,6 +364,19 @@ export class Chat {
     this.post({ type: "chatEdit", id, text, images, queued: false });
   }
 
+  /**
+   * The waiting message `id` changed in place, as sending it edited does: its
+   * text, the images of it kept (by position), then new ones. The desktop
+   * app's (kuru code) queued edit, whose composer never had the images whole.
+   */
+  changeWaiting(id: number, text: string, keep: number[], images: Attachment[]): boolean {
+    const waiting = this.queue.find((message) => message.id === id && !message.quiet);
+    if (!waiting) return false;
+    const kept = keep.flatMap((index) => (waiting.images[index] ? [waiting.images[index]] : []));
+    this.send(text, [...kept, ...images], id);
+    return true;
+  }
+
   /** The waiting message being changed (`id`, else any) stays as it was: the queue goes on. */
   release(id?: number): void {
     const held = this.queue.filter((message) => message.held && (id === undefined || message.id === id));

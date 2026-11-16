@@ -464,6 +464,19 @@ async function start(): Promise<void> {
     },
     // T3 Code's rewind: back to before a prompt, which goes back to the message box.
     "threads.rewind": async ({ id, turn }) => (await threads.rewind(String(id), Number(turn))) ?? null,
+    // T3 Code's queued edit: the waiting message held while it is in the composer, then changed.
+    "threads.holdQueued": ({ id, message, hold }) => {
+      threads.holdWaiting(String(id), Number(message), hold === true);
+      return null;
+    },
+    "threads.editQueued": ({ id, message, text, keep, images }) =>
+      threads.changeWaiting(
+        String(id),
+        Number(message),
+        String(text ?? ""),
+        Array.isArray(keep) ? keep.map(Number) : [],
+        Array.isArray(images) ? images : [],
+      ),
     "threads.cancel": ({ id }) => {
       threads.cancel(String(id));
       return null;

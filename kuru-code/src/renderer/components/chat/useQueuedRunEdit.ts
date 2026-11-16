@@ -32,7 +32,12 @@ import { buildMessageContext } from "../../lib/composerContextRecords";
 import { readFileAsDataUrl } from "../../lib/imageCompression";
 import type { ReviewCommentContext } from "../../reviewCommentContext";
 import { appAtomRegistry } from "../../rpc/atomRegistry";
-import { environmentThreadDetails, environmentThreadShells, threadEnvironment } from "../../state/threads";
+import {
+  environmentThreadDetails,
+  environmentThreadShells,
+  holdQueuedRun,
+  threadEnvironment,
+} from "../../state/threads";
 import { useAtomCommand } from "../../state/use-atom-command";
 import { stackedThreadToast, toastManager } from "../ui/toast";
 import type { ChatComposerHandle } from "./ChatComposer";
@@ -189,7 +194,12 @@ export function useQueuedRunEdit(input: {
 
   const beginEdit = useStableCallback((request: EditQueuedRunRequest) => {
     if (activeThreadId === null) return;
-    if (editing !== null && editing.runId !== request.runId) clearEditDraft(editing.runId);
+    if (editing !== null && editing.runId !== request.runId) {
+      clearEditDraft(editing.runId);
+      holdQueuedRun(editing.threadId, editing.runId, false);
+    }
+    // Unharnessed keeps a message being changed from starting meanwhile.
+    holdQueuedRun(activeThreadId, request.runId, true);
     const target = queuedEditDraftTarget(routeThreadRef, request.runId);
     const text = stripAttachmentOnlyBootstrapPrompt(request.text);
     const store = useComposerDraftStore.getState();
@@ -251,6 +261,7 @@ export function useQueuedRunEdit(input: {
   const cancelEdit = useStableCallback(() => {
     if (editing === null) return;
     clearEditDraft(editing.runId);
+    holdQueuedRun(editing.threadId, editing.runId, false);
     queuedRunEdits.end(editKey);
     focusComposerSoon();
   });

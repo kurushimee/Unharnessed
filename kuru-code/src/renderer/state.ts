@@ -53,9 +53,6 @@ export type Store = {
   prefs: AppPrefs;
   /** The `@` menu's files of the thread's folder; `null` until asked. */
   paths: Paths | null;
-  draft: Draft;
-  /** A sent prompt being changed in the composer, or a waiting message, and the draft it pushed out. */
-  editing: { id: number; saved: Draft; queued: boolean } | null;
   providerResult: ProviderResult | null;
   settingResult: SettingResult | null;
   localScan: LocalScan | null;
@@ -81,8 +78,6 @@ export const useStore = create<Store>(() => ({
   app: null,
   prefs: DEFAULT_PREFS,
   paths: null,
-  draft: { text: "", images: [] },
-  editing: null,
   providerResult: null,
   settingResult: null,
   localScan: null,
@@ -156,8 +151,6 @@ export function connect(): void {
           session: message.session,
           chat: message.chat,
           kernel: message.kernel,
-          editing: null,
-          draft: message.draft,
           paths: null,
           kernelTails: {},
           kernelPreviews: {},
@@ -173,13 +166,9 @@ export function connect(): void {
       case "chatPatch":
         set((state) => ({ chat: applyPatch(state.chat, message.patch) }));
         break;
-      case "chatEdit": {
-        const { id, text, images, queued } = message;
-        const was = get().editing;
-        if (was?.queued && was.id !== id) post({ type: "release", id: was.id });
-        set({ editing: { id, saved: was?.saved ?? get().draft, queued }, draft: { text, images } });
+      // A waiting message held for T3 Code's queued edit, which has its text already.
+      case "chatEdit":
         break;
-      }
       case "agent":
         set({ agent: message.agent });
         break;
@@ -241,13 +230,3 @@ export function applyTheme(theme: AppPrefs["theme"]): void {
   document.documentElement.classList.toggle("dark", dark);
 }
 
-/** The composer's draft, and the end of an edit: the draft it pushed out comes back. */
-export function setDraft(draft: Draft): void {
-  set({ draft });
-}
-
-export function endEdit(): void {
-  const { editing } = get();
-  if (editing?.queued) post({ type: "release", id: editing.id });
-  set({ editing: null, ...(editing ? { draft: editing.saved } : {}) });
-}

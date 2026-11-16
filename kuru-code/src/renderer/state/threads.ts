@@ -37,7 +37,7 @@ import type {
   WatchThreadPullRequestInput,
 } from "~/rt/operations/commands";
 import { appProjectIdOf, readThreadShell, shellSnapshotAtom } from "~/kuru/shells";
-import { forgetPromptSent, notePromptSent } from "~/kuru/projection";
+import { forgetPromptSent, notePromptSent, queuedAttachmentId } from "~/kuru/projection";
 import { LOCAL_ENVIRONMENT_ID } from "~/contracts";
 
 export interface ThreadMetadataUpdate {
@@ -180,6 +180,37 @@ const promoteQueuedRun = command<PromoteQueuedRunInput, void>("promote-queued", 
   if (id !== null) post({ type: "sendNow", id });
 });
 
+/** A waiting message changed in place: its images kept by position, new ones after them. */
+const editQueuedRun = command<EditQueuedRunInput, void>("edit-queued", async (input) => {
+  const id = queuedId(input.runId);
+  if (id === null) throw new Error("This message is not waiting.");
+  const prefix = queuedAttachmentId(input.threadId, id, 0).slice(0, -1);
+  const attachments = input.edit?.attachments;
+  const keep =
+    attachments === undefined
+      ? null
+      : attachments.flatMap((attachment) =>
+          !("dataUrl" in attachment) && attachment.id.startsWith(prefix)
+            ? [Number(attachment.id.slice(prefix.length))]
+            : [],
+        );
+  const changed = await invoke<boolean>("threads.editQueued", {
+    id: input.threadId,
+    message: id,
+    text: input.text,
+    // Omitted attachments leave the message's images as they were.
+    keep: keep ?? (useStore.getState().chat.queue.find((queued) => queued.id === id)?.images.map((_, index) => index) ?? []),
+    images: attachments === undefined ? [] : toAttachments(attachments),
+  });
+  if (!changed) throw new Error("The message is no longer waiting: it was sent or removed.");
+});
+
+/** A waiting message held while it is changed in the composer, or let go. */
+export function holdQueuedRun(threadId: ThreadId, runId: string, hold: boolean): void {
+  const id = queuedId(runId);
+  if (id !== null) void invoke("threads.holdQueued", { id: threadId, message: id, hold });
+}
+
 const visit = command<VisitThreadInput, void>("visit", (input) => post({ type: "seen", id: input.threadId }));
 
 /** kuru code has a thread's whole conversation: there is never earlier history to load. */
@@ -234,7 +265,7 @@ export const threadEnvironment = {
   archive: metaCommand<{ readonly threadId: ThreadId }>("archive", () => ({ archivedAt: Date.now() })),
   unarchive: metaCommand<{ readonly threadId: ThreadId }>("unarchive", () => ({ archivedAt: null })),
   markUnread: metaCommand<{ readonly threadId: ThreadId }>("mark-unread", () => ({ unread: true })),
-  editQueuedRun: unsupported<EditQueuedRunInput>("edit-queued", "Unharnessed edits a waiting message in the composer."),
+  editQueuedRun,
   respondToApproval: unsupported<RespondToThreadApprovalInput>("approval", "Unharnessed asks for no approvals."),
   respondToUserInput: unsupported<RespondToThreadUserInputInput>("user-input", "Unharnessed asks no questions."),
   dismissUserInput: unsupported<DismissThreadUserInputInput>("dismiss-user-input", "Unharnessed asks no questions."),

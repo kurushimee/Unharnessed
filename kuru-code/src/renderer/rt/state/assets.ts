@@ -1,4 +1,9 @@
 // T3 Code's client-runtime state/assets.ts; its URLs come from kuru code's main process.
+import { AssetAttachmentNotFoundError } from "~/contracts";
+import { useStore } from "~/state";
+import { attachmentImageUrl } from "~/kuru/projection";
+import { request } from "../rpc/client";
+import * as Effect from "effect/Effect";
 import {
   type AssetCreateUrlResult,
   type AssetImageDimensions,
@@ -232,6 +237,17 @@ export function createAssetEnvironmentAtoms() {
     tag: WS_METHODS.assetsCreateUrl,
     staleTimeMs: ASSET_URL_STALE_TIME_MS,
     idleTtlMs: ASSET_URL_IDLE_TTL_MS,
+    // A prompt's images live in the window, with the conversation: their thumbnails answer.
+    execute: (input) => {
+      const { resource } = input;
+      if (resource._tag !== "attachment") return request(WS_METHODS.assetsCreateUrl, input);
+      const state = useStore.getState();
+      const threadId = state.app?.shown.id;
+      const url = threadId ? attachmentImageUrl(state.chat, threadId, resource.attachmentId) : null;
+      return url === null
+        ? Effect.fail(new AssetAttachmentNotFoundError({ resource }))
+        : Effect.succeed({ relativeUrl: url, expiresAt: Number.MAX_SAFE_INTEGER, fileRevision: resource.attachmentId });
+    },
   });
   const createUrlsFamily = Atom.family((key: string) => {
     const [environmentId, resources] = parseAssetCollectionKey(key);
