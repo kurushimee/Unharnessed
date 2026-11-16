@@ -1,0 +1,19 @@
+{
+  "compilerOptions": {
+    "target": "ES2023",
+    "lib": ["ES2023", "DOM"],
+    "module": "ESNext",
+    "moduleResolution": "Bundler",
+    "strict": true,
+    "noEmit": true,
+    "skipLibCheck": true,
+    "types": ["node"],
+    "baseUrl": ".",
+    "paths": {
+      "vscode": ["src/main/vscode-shim.d.ts"],
+      "@shared/*": ["src/shared/*"],
+      "@agentclientprotocol/sdk": ["node_modules/@agentclientprotocol/sdk"]
+    }
+  },
+  "include": ["src/main", "src/shared"]
+}
