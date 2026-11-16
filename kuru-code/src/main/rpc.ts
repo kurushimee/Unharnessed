@@ -6,7 +6,10 @@
 // `gh`. Any other answers `unsupported`, which the window shows as such.
 import type { WebContents } from "electron";
 import type { LogOutputChannel } from "vscode";
-import { hostname } from "node:os";
+import type { Dirent } from "node:fs";
+import { readdir, stat } from "node:fs/promises";
+import { homedir, hostname } from "node:os";
+import { basename, dirname, extname, join, resolve } from "node:path";
 import { type Git, run } from "./git";
 import { usagePricing, usageSummary } from "./usage";
 
@@ -352,6 +355,88 @@ function toastOf(result: { commit: { status: string; subject?: string }; push: {
   return { title: "No changes to commit", cta: { kind: "none" } };
 }
 
+// ---- Folders: T3 Code's filesystem.browse (server workspace/WorkspaceEntries.ts) and
+// filesystem.getMetadata, for this machine.
+
+function browseTarget(partialPath: string, cwd: string | undefined): string {
+  const expand = (value: string) => (value === "~" || /^~[\\/]/.test(value) ? join(homedir(), value.slice(1)) : value);
+  if (!/^\.{1,2}([\\/]|$)/.test(partialPath)) return resolve(expand(partialPath));
+  if (!cwd) {
+    throw new RpcFailure({
+      _tag: "FilesystemBrowseError",
+      partialPath,
+      failure: "current_project_required",
+      message: "Relative paths require an active project.",
+    });
+  }
+  return resolve(expand(cwd), partialPath);
+}
+
+async function browse(input: { partialPath: string; cwd?: string }) {
+  const target = browseTarget(input.partialPath, input.cwd);
+  const endsWithSeparator = /[\\/]$/.test(input.partialPath) || input.partialPath === "~";
+  const parentPath = endsWithSeparator ? target : dirname(target);
+  const prefix = endsWithSeparator ? "" : basename(target);
+  let dirents: Dirent[];
+  try {
+    dirents = await readdir(parentPath, { withFileTypes: true });
+  } catch (cause) {
+    const code = (cause as NodeJS.ErrnoException).code;
+    if (code === "EACCES" || code === "EPERM") dirents = [];
+    else
+      throw new RpcFailure({
+        _tag: "FilesystemBrowseError",
+        partialPath: input.partialPath,
+        failure: "read_directory_failed",
+        parentPath,
+        ...(code === "ENOENT" ? { pathMissing: true } : {}),
+        message: `Cannot read ${parentPath}.`,
+      });
+  }
+  const showHidden = endsWithSeparator || prefix.startsWith(".");
+  const lowerPrefix = prefix.toLowerCase();
+  const entries = dirents
+    .filter(
+      (dirent) =>
+        dirent.isDirectory() &&
+        dirent.name.toLowerCase().startsWith(lowerPrefix) &&
+        (showHidden || !dirent.name.startsWith(".")),
+    )
+    .map((dirent) => ({ name: dirent.name, fullPath: join(parentPath, dirent.name) }))
+    .sort((left, right) => left.name.localeCompare(right.name));
+  return { parentPath, entries };
+}
+
+const MIME_BY_EXTENSION: Record<string, string> = {
+  ".png": "image/png",
+  ".jpg": "image/jpeg",
+  ".jpeg": "image/jpeg",
+  ".gif": "image/gif",
+  ".webp": "image/webp",
+  ".svg": "image/svg+xml",
+  ".bmp": "image/bmp",
+  ".ico": "image/x-icon",
+  ".pdf": "application/pdf",
+};
+
+async function metadata(input: { paths: string[] }) {
+  const entries = await Promise.all(
+    input.paths.map(async (path) => {
+      try {
+        const full = browseTarget(path, undefined);
+        const stats = await stat(full);
+        if (stats.isDirectory()) return { kind: "directory" as const };
+        if (!stats.isFile()) return { kind: "other" as const };
+        const mimeType = MIME_BY_EXTENSION[extname(full).toLowerCase()];
+        return { kind: "file" as const, byteLength: stats.size, ...(mimeType ? { mimeType } : {}) };
+      } catch {
+        return null;
+      }
+    }),
+  );
+  return { entries };
+}
+
 // ---- The service.
 
 export function createRpc(options: {
@@ -383,6 +468,8 @@ export function createRpc(options: {
   const unary: Record<string, Unary> = {
     "server.getUsageSummary": (input) => usageSummary(input, hostname()),
     "server.refreshUsageRates": async () => usagePricing(),
+    "filesystem.browse": browse,
+    "filesystem.getMetadata": metadata,
     "vcs.listRefs": (input) => listRefs(input.cwd, input),
     "vcs.refreshStatus": async ({ cwd }) => {
       touch(cwd);

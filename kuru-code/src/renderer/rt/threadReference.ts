@@ -18,7 +18,6 @@ export interface ThreadReferenceCopyTarget {
 export function threadChipCopyTarget(
   threadRef: ScopedThreadRef,
   title: string,
-  _hostedAppUrl?: string,
 ): ThreadReferenceCopyTarget {
   const shown = title.trim() || "Untitled thread";
   return {
@@ -37,7 +36,6 @@ export function resolveThreadReferenceCopyTarget(input: {
   readonly openPanelPullRequestUrl?: string | null | undefined;
   readonly pullRequests?: ReadonlyArray<ThreadPullRequestLink> | undefined;
   readonly linkedPullRequestUrl?: string | null;
-  readonly hostedAppUrl?: string;
 }): ThreadReferenceCopyTarget | null {
   if (input.openPanelPullRequestUrl === null) return null;
   const pullRequestUrl =
@@ -53,5 +51,5 @@ export function resolveThreadReferenceCopyTarget(input: {
         successTitle: "PR link copied",
         failureTitle: "Failed to copy PR link",
       }
-    : threadChipCopyTarget(input.threadRef, input.title, input.hostedAppUrl);
+    : threadChipCopyTarget(input.threadRef, input.title);
 }

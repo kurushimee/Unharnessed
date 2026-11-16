@@ -77,29 +77,23 @@ export type ThreadSearchShell = Pick<
 > &
   Partial<Pick<EnvironmentThreadShell, "linkedPullRequest" | "branchPullRequest" | "opens">>;
 
-/**
- * What the web and mobile palettes rank a thread shell by. Pass the
- * environment label only when there are two or more environments.
- */
+/** What the palettes rank a thread shell by; kuru code has one environment, so no label. */
 export function threadSearchSubject(
   thread: ThreadSearchShell,
   projectTitle: string | null | undefined,
-  environmentLabel?: string | null,
 ): ThreadSearchSubject {
   // A keystroke ranks the same shells again, so a subject is built once per shell.
   const cached = subjectCache.get(thread);
   if (
     cached !== undefined &&
     cached.projectTitle === projectTitle &&
-    cached.environmentLabel === environmentLabel &&
     cached.opensVersion === localThreadOpensVersion
   ) {
     return cached.subject;
   }
-  const subject = buildThreadSearchSubject(thread, projectTitle, environmentLabel);
+  const subject = buildThreadSearchSubject(thread, projectTitle);
   subjectCache.set(thread, {
     projectTitle,
-    environmentLabel,
     opensVersion: localThreadOpensVersion,
     subject,
   });
@@ -110,7 +104,6 @@ const subjectCache = new WeakMap<
   ThreadSearchShell,
   {
     readonly projectTitle: string | null | undefined;
-    readonly environmentLabel: string | null | undefined;
     readonly opensVersion: number;
     readonly subject: ThreadSearchSubject;
   }
@@ -119,7 +112,6 @@ const subjectCache = new WeakMap<
 function buildThreadSearchSubject(
   thread: ThreadSearchShell,
   projectTitle: string | null | undefined,
-  environmentLabel: string | null | undefined,
 ): ThreadSearchSubject {
   // What the user wrote, not agent wakes or task notices in the user role. A
   // thread the user never wrote in counts from its creation; an older server
@@ -135,7 +127,7 @@ function buildThreadSearchSubject(
     title: thread.title,
     branch: thread.branch,
     projectTitle: projectTitle ?? null,
-    environmentLabel: environmentLabel ?? null,
+    environmentLabel: null,
     pullRequests: threadSearchPullRequests(thread),
     activityAt: Number.isFinite(activityAt) ? activityAt : null,
     // This client's own latest open counts too: the server merged it, or has

@@ -140,7 +140,6 @@ export type WebviewMessage =
   | { type: "settle"; id: string; settled: boolean }
   | { type: "pin"; id: string; pinned: boolean }
   | { type: "rename"; id: string; title: string | null }
-  | { type: "addProject" }
   | { type: "removeProject"; id: string }
   | { type: "setPrefs"; prefs: Partial<AppPrefs> }
   | { type: "seen"; id: string };

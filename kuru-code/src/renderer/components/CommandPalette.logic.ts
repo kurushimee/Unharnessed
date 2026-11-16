@@ -11,25 +11,16 @@ import {
 } from "~/shared/paletteSearch";
 import { threadSearchSubject } from "~/rt/state/threadSearch";
 import type { CommandPaletteLinkedThreads } from "../commandPaletteBus";
-import {
-  addProjectRemoteSourceLabel,
-  addProjectRemoteSourcePathHint,
-  buildAddProjectRemoteSourceReadiness,
-  type AddProjectRemoteSource,
-  type AddProjectRemoteSourceReadiness,
-} from "~/rt/operations/projects";
+import { type AddProjectRemoteSource } from "~/rt/operations/projects";
 import {
   type ScopedThreadRef,
   type EnvironmentId,
   type ProjectId,
-  type EnvironmentMachineKind,
   type FilesystemBrowseEntry,
   type KeybindingCommand,
-  type SourceControlDiscoveryResult,
   type SourceControlRepositoryInfo,
   THREAD_JUMP_KEYBINDING_COMMANDS,
 } from "~/contracts";
-import { filterFilesystemBrowseEntries } from "~/rt/state/filesystem";
 import { type ReactNode } from "react";
 import { formatRelativeTimeLabel } from "../timestampFormat";
 import { type Project, type SidebarThreadSummary, type Thread } from "../types";
@@ -71,8 +62,6 @@ export function browseInputEndPaddingClass(input: {
   return "*:data-[slot=autocomplete-input]:pe-24!";
 }
 
-export type SearchOverlayMode = "command" | "files" | "content";
-
 export type CommandPaletteOpenIntent =
   | { readonly kind: "add-project" | "new-thread-in" | "change-theme" }
   | {
@@ -83,18 +72,15 @@ export type CommandPaletteOpenIntent =
 
 export interface CommandPaletteUiState {
   readonly open: boolean;
-  readonly mode: SearchOverlayMode;
   /** What the current palette session opened to; read once when the palette view mounts. */
   readonly openIntent: CommandPaletteOpenIntent | null;
   /** Bumped by every intent so an open palette starts over from the new one. */
   readonly session: number;
-  readonly parentSearch?: CommandPaletteReturnContext;
-  readonly restoredSearch?: CommandPaletteReturnContext;
 }
 
 export type CommandPaletteUiAction =
   | { readonly _tag: "SetOpen"; readonly open: boolean }
-  | { readonly _tag: "ToggleMode"; readonly mode: SearchOverlayMode }
+  | { readonly _tag: "Toggle" }
   | {
       readonly _tag: "OpenSearch";
       readonly query: string;
@@ -102,13 +88,7 @@ export type CommandPaletteUiAction =
     }
   | { readonly _tag: "OpenAddProject" }
   | { readonly _tag: "OpenNewThreadIn" }
-  | { readonly _tag: "OpenChangeTheme" }
-  | {
-      readonly _tag: "OpenChildSearch";
-      readonly mode: "files" | "content";
-      readonly context: CommandPaletteReturnContext;
-    }
-  | { readonly _tag: "BackToCommand" };
+  | { readonly _tag: "OpenChangeTheme" };
 
 export function reduceCommandPaletteUiState(
   state: CommandPaletteUiState,
@@ -117,37 +97,16 @@ export function reduceCommandPaletteUiState(
   const { session } = state;
   const openWithIntent = (openIntent: CommandPaletteOpenIntent): CommandPaletteUiState => ({
     open: true,
-    mode: "command",
     openIntent,
     session: session + 1,
   });
   switch (action._tag) {
     case "SetOpen":
       return action.open
-        ? { open: true, mode: "command", openIntent: state.openIntent, session }
-        : { open: false, mode: state.mode, openIntent: null, session };
-    case "ToggleMode":
-      return state.open && state.mode === action.mode
-        ? { open: false, mode: state.mode, openIntent: null, session }
-        : { open: true, mode: action.mode, openIntent: null, session };
-    case "OpenChildSearch":
-      return {
-        open: true,
-        mode: action.mode,
-        openIntent: null,
-        session,
-        parentSearch: action.context,
-      };
-    case "BackToCommand":
-      return state.open && state.mode !== "command"
-        ? {
-            open: true,
-            mode: "command",
-            openIntent: null,
-            session,
-            ...(state.parentSearch ? { restoredSearch: state.parentSearch } : {}),
-          }
-        : state;
+        ? { open: true, openIntent: state.openIntent, session }
+        : { open: false, openIntent: null, session };
+    case "Toggle":
+      return { open: !state.open, openIntent: null, session };
     case "OpenSearch":
       return openWithIntent({
         kind: "search",
@@ -161,21 +120,6 @@ export function reduceCommandPaletteUiState(
     case "OpenChangeTheme":
       return openWithIntent({ kind: "change-theme" });
   }
-}
-
-/** Where "Add project" starts, given the environments that can take a new project. */
-export type AddProjectEntry =
-  | { readonly kind: "connect-environment" }
-  | { readonly kind: "choose-environment" }
-  | { readonly kind: "choose-source"; readonly environmentId: EnvironmentId };
-
-export function resolveAddProjectEntry(
-  options: ReadonlyArray<Pick<AddProjectEnvironmentOption, "environmentId">>,
-  defaultEnvironmentId: EnvironmentId | null,
-): AddProjectEntry {
-  if (options.length === 0) return { kind: "connect-environment" };
-  if (options.length > 1 || defaultEnvironmentId === null) return { kind: "choose-environment" };
-  return { kind: "choose-source", environmentId: defaultEnvironmentId };
 }
 
 export interface CommandPaletteThreadContentMatch {
@@ -238,12 +182,6 @@ export interface CommandPaletteView {
   readonly addonIcon: ReactNode;
   readonly groups: ReadonlyArray<CommandPaletteGroup>;
   readonly initialQuery?: string;
-}
-
-// Child search unmounts the palette; retain search data without its view closures.
-export interface CommandPaletteReturnContext {
-  readonly query: string;
-  readonly linkedThreadSearch: Extract<CommandPaletteOpenIntent, { kind: "search" }> | null;
 }
 
 export interface CommandPaletteSearchState {
@@ -351,22 +289,6 @@ export type CommandPaletteMode = "root" | "root-browse" | "submenu" | "submenu-b
 
 export type CommandPaletteProject = Project & { readonly displayName: string };
 
-export function buildCommandPaletteProjectMetadata(input: {
-  readonly projects: ReadonlyArray<Pick<Project, "environmentId" | "title" | "workspaceRoot">>;
-  readonly locationByEnvironmentId: ReadonlyMap<EnvironmentId, { readonly label: string }>;
-}) {
-  const searchTerms: string[] = [];
-  const environmentLabels = new Set<string>();
-
-  for (const project of input.projects) {
-    const label = input.locationByEnvironmentId.get(project.environmentId)?.label ?? "Remote";
-    searchTerms.push(project.title, project.workspaceRoot, label);
-    environmentLabels.add(label);
-  }
-
-  return { searchTerms, environmentLabels: [...environmentLabels] };
-}
-
 export function buildProjectActionItems(input: {
   projects: ReadonlyArray<CommandPaletteProject>;
   valuePrefix: string;
@@ -432,8 +354,6 @@ export function buildThreadActionItems<TThread extends BuildThreadActionItemsThr
   renderTrailingContent?: (thread: TThread) => ReactNode;
   renderDescription?: (thread: TThread, meta: { projectTitle: string | undefined }) => ReactNode;
   runThread: (thread: TThread) => Promise<void>;
-  /** Makes the environment searchable; pass it only with two or more environments. */
-  environmentLabelOf?: (thread: TThread) => string | null;
 }): CommandPaletteActionItem[] {
   // Callers order these: recents by last use, search results by rank.
   const visibleThreads = input.threads.filter(
@@ -478,7 +398,6 @@ export function buildThreadActionItems<TThread extends BuildThreadActionItemsThr
             opens: thread.opens ?? null,
           },
           projectTitle,
-          input.environmentLabelOf?.(thread),
         ),
         title: thread.title,
         description,
@@ -735,25 +654,6 @@ export function buildBrowseGroups(input: {
   return [{ value: "directories", label: "Directories", items }];
 }
 
-export function filterPinnedBrowseEntries(input: {
-  browseEntries: ReadonlyArray<FilesystemBrowseEntry>;
-  filterQuery: string;
-  pinnedDirectoryName: string;
-  caseSensitive: boolean;
-}): ReturnType<typeof filterFilesystemBrowseEntries> {
-  const namesMatch = (left: string, right: string) =>
-    input.caseSensitive ? left === right : left.toLowerCase() === right.toLowerCase();
-  const visibleFilterQuery = namesMatch(input.filterQuery, input.pinnedDirectoryName)
-    ? ""
-    : input.filterQuery;
-  const { visibleEntries } = filterFilesystemBrowseEntries(input.browseEntries, visibleFilterQuery);
-  const exactEntry =
-    input.filterQuery.length > 0
-      ? (input.browseEntries.find((entry) => namesMatch(entry.name, input.filterQuery)) ?? null)
-      : null;
-  return { visibleEntries, exactEntry };
-}
-
 export function getCommandPaletteMode(input: {
   currentView: CommandPaletteView | null;
   isBrowsing: boolean;
@@ -808,15 +708,6 @@ export function getEnvironmentBrowsePlatform(os: string | null | undefined): str
   return typeof navigator === "undefined" ? "" : navigator.platform;
 }
 
-export interface AddProjectEnvironmentOption {
-  readonly environmentId: EnvironmentId;
-  readonly label: string;
-  readonly machine: EnvironmentMachineKind;
-  readonly isPrimary: boolean;
-  readonly isConnected: boolean;
-  readonly status: string;
-}
-
 export type AddProjectCloneFlow =
   | {
       readonly step: "repository";
@@ -832,51 +723,11 @@ export type AddProjectCloneFlow =
       readonly remoteUrl: string;
     };
 
-export function remoteProjectInputPlaceholder(flow: AddProjectCloneFlow | null): string | null {
-  if (!flow) return null;
-  if (flow.step === "confirm") return null;
-  if (flow.source === "url") {
-    return "Enter Git clone URL";
-  }
-  return `Enter ${addProjectRemoteSourceLabel(flow.source)} repository (${addProjectRemoteSourcePathHint(flow.source)})`;
-}
-
-export function buildPaletteRemoteSourceReadiness(
-  discovery: SourceControlDiscoveryResult | null,
-): AddProjectRemoteSourceReadiness {
-  const readiness = buildAddProjectRemoteSourceReadiness(discovery);
-  return (source) => {
-    const entry = readiness(source);
-    return entry.hint === null
-      ? entry
-      : {
-          ...entry,
-          hint: entry.hint.replace(
-            "Open source control settings",
-            "Open Settings -> Source control",
-          ),
-        };
-  };
-}
-
 export function errorMessage(error: unknown): string {
   if (error instanceof Error && error.message.trim().length > 0) {
     return error.message;
   }
   return "An error occurred.";
-}
-
-const OVERLAY_MODE_BY_COMMAND = {
-  "commandPalette.toggle": "command",
-  "filePicker.toggle": "files",
-  "projectSearch.toggle": "content",
-} as const satisfies Partial<Record<string, SearchOverlayMode>>;
-
-export function overlayModeForCommand(command: string | null): SearchOverlayMode | null {
-  if (command === null) return null;
-  return command in OVERLAY_MODE_BY_COMMAND
-    ? OVERLAY_MODE_BY_COMMAND[command as keyof typeof OVERLAY_MODE_BY_COMMAND]
-    : null;
 }
 
 export function resolveCommandPaletteProject<TProject>(

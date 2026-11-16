@@ -1,6 +1,6 @@
 import { app, BrowserWindow, clipboard, dialog, ipcMain, nativeTheme, Notification, screen, shell } from "electron";
 import { spawn } from "node:child_process";
-import { existsSync } from "node:fs";
+import { existsSync, mkdirSync } from "node:fs";
 import { readFile, rename, writeFile } from "node:fs/promises";
 import { homedir } from "node:os";
 import { join, resolve } from "node:path";
@@ -328,9 +328,6 @@ async function start(): Promise<void> {
       case "rename":
         threads.setMeta(message.id, { title: message.title?.trim() || undefined });
         break;
-      case "addProject":
-        void addProject();
-        break;
       case "removeProject":
         store.removeProject(message.id);
         threads.emit();
@@ -350,18 +347,6 @@ async function start(): Promise<void> {
     void providers.startLogin(`mcp:${id}`, label).then((done) => {
       if (done) settings.signedIn(id);
     });
-  };
-
-  const addProject = async () => {
-    const owner = live();
-    if (!owner) return;
-    const picked = await dialog.showOpenDialog(owner, { title: "Add project", properties: ["openDirectory", "createDirectory"] });
-    const path = picked.filePaths[0];
-    if (picked.canceled || !path) return;
-    const id = store.addProject(path);
-    log.info(`projects: added ${path}`);
-    threads.emit();
-    receive({ type: "newChat", draft: { text: "", images: [] }, projectId: id });
   };
 
   const applyTheme = (prefs: AppPrefs) => {
@@ -460,14 +445,29 @@ async function start(): Promise<void> {
     "shell.showItemInFolder": ({ path }) => shell.showItemInFolder(path),
     "open.in": ({ path, target }) => openIn(String(path), String(target)),
     "app.info": () => ({ version, electron: process.versions.electron, binary, log: log.file, userData: app.getPath("userData") }),
+    // T3 Code's add project: the folder is made when it is missing.
     "projects.add": ({ path }) => {
-      const folder = String(path);
-      if (!existsSync(folder)) return null;
+      const folder = resolve(String(path));
+      try {
+        mkdirSync(folder, { recursive: true });
+      } catch (error) {
+        log.warn(`projects: cannot make ${folder}: ${error}`);
+        return null;
+      }
       const id = store.addProject(folder);
       log.info(`projects: added ${folder}`);
       threads.emit();
-      receive({ type: "newChat", draft: { text: "", images: [] }, projectId: id });
       return id;
+    },
+    "dialog.pickFolder": async ({ initialPath }) => {
+      const owner = live();
+      const options = {
+        title: "Add project",
+        properties: ["openDirectory", "createDirectory"] as ("openDirectory" | "createDirectory")[],
+        ...(typeof initialPath === "string" && initialPath ? { defaultPath: initialPath } : {}),
+      };
+      const picked = owner ? await dialog.showOpenDialog(owner, options) : await dialog.showOpenDialog(options);
+      return picked.canceled ? null : (picked.filePaths[0] ?? null);
     },
     "app.projectId": ({ path }) => projectId(path),
     "projects.update": ({ id, change }) => {

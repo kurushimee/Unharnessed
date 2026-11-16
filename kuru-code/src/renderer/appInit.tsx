@@ -1,6 +1,6 @@
 // Adapted from T3 Code's appInit.tsx: the services that run for the window's whole
 // life, started once before the first render. kuru code keeps the appearance,
-// theme, overlay retention and workspace focus services; T3 Code's remote,
+// theme, palette shortcuts, overlay retention and workspace focus services; T3 Code's remote,
 // browser, preview, update and device services are not part of it.
 import { scopedThreadKey, scopeThreadRef } from "~/rt/environment";
 import type { ClientSettings } from "~/contracts/settings";
@@ -20,6 +20,7 @@ import {
   syncDocumentWindowControlsOverlayClass,
 } from "./lib/windowControlsOverlay";
 import { startWorkspaceFocus } from "./lib/workspaceFocus";
+import { installCommandPaletteCommands } from "./shortcuts/commandPaletteCommands";
 import { resolveThreadRouteTarget } from "./threadRoutes";
 
 /** Writes appearance settings onto the document, touching only the groups that changed. */
@@ -118,6 +119,7 @@ export function startAppServices(router: AnyRouter): void {
 
   startClientAppearance();
   startBrowserChromeThemeSync(router);
+  installCommandPaletteCommands(router);
   startThreadOverlayRetention(router);
   startMainAppLocationTracking(router);
   startWorkspaceFocus(router);

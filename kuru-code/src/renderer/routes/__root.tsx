@@ -14,6 +14,7 @@ import { CheckIcon, CopyIcon } from "lucide-react";
 
 import { APP_DISPLAY_NAME, APP_VERSION } from "../branding";
 import { AppSidebarLayout } from "../components/AppSidebarLayout";
+import { CommandPalette } from "../components/CommandPalette";
 import { ConfirmDialogHost } from "../components/ConfirmDialogHost";
 import { KuruHosts } from "../components/KuruHosts";
 import { useCopyToClipboard } from "../hooks/useCopyToClipboard";
@@ -54,9 +55,11 @@ function RootRouteView() {
       <AnchoredToastProvider>
         <ConfirmDialogHost />
         <KuruHosts />
-        <AppSidebarLayout>
-          <Outlet />
-        </AppSidebarLayout>
+        <CommandPalette>
+          <AppSidebarLayout>
+            <Outlet />
+          </AppSidebarLayout>
+        </CommandPalette>
       </AnchoredToastProvider>
     </ToastProvider>
   );

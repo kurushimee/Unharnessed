@@ -24,10 +24,7 @@ export type ProjectGroupUpdate = Partial<{
   archived: boolean;
 }>;
 
-type ProjectGroupMember = Pick<
-  SidebarProjectGroupMember,
-  "environmentId" | "id" | "environmentLabel"
->;
+type ProjectGroupMember = Pick<SidebarProjectGroupMember, "environmentId" | "id">;
 
 export function useProjectGroupUpdate() {
   const updateProjectGroup = async <TMember extends ProjectGroupMember>(

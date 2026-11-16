@@ -1,10 +1,10 @@
 // Adapted from T3 Code's ThreadStatusIndicators.tsx: the sidebar's pull request
-// badge, worktree and terminal marks. An Unharnessed thread has one pull
+// badge, worktree mark and palette row status. An Unharnessed thread has one pull
 // request at most, its branch's (read from GitHub by kuru code's main
 // process), so the shell's stored pull request is the status itself, and
 // T3 Code's stacked/linked pull request lists only ever hold none.
 import { pipe } from "effect/Function";
-import type { ScopedThreadRef } from "~/contracts";
+import { scopeThreadRef, scopedThreadKey } from "~/rt/environment";
 import { FolderGit2Icon, TerminalIcon } from "lucide-react";
 import {
   pullRequestListLines,
@@ -19,7 +19,13 @@ import type { ThreadPullRequestLink } from "~/contracts";
 import { useRender } from "@base-ui/react/use-render";
 import { type ReactNode, type AnimationEvent, type MouseEvent, type ReactElement } from "react";
 import { cn } from "../lib/utils";
-import { pullRequestMatchesSearchQuery } from "./Sidebar.logic";
+import {
+  pullRequestMatchesSearchQuery,
+  resolveThreadLastVisitedAt,
+  resolveThreadStatusPill,
+  type ThreadStatusPill,
+} from "./Sidebar.logic";
+import { useUiStateStore } from "../uiStateStore";
 import type { ThreadLinkedPullRequest } from "~/rt/state/models";
 import type { SidebarThreadSummary } from "../types";
 import { formatWorktreePathForDisplay } from "../worktreeCleanup";
@@ -97,12 +103,6 @@ export interface PrStatusIndicator {
   tooltipLead: string;
   tooltipTitle: string;
   url: string;
-}
-
-export interface TerminalStatusIndicator {
-  label: "Terminal process running";
-  colorClass: string;
-  pulse: boolean;
 }
 
 
@@ -407,78 +407,6 @@ function PrStatusTooltipContent({ status }: { status: PrStatusIndicator }) {
 }
 
 
-export function terminalStatusFromRunningIds(
-  runningTerminalIds: ReadonlyArray<string>,
-): TerminalStatusIndicator | null {
-  if (runningTerminalIds.length === 0) {
-    return null;
-  }
-  return {
-    label: "Terminal process running",
-    colorClass: "text-teal-600 dark:text-teal-300/90",
-    pulse: true,
-  };
-}
-
-function synchronizeTerminalPulse(event: AnimationEvent<SVGSVGElement>) {
-  if (event.animationName !== "status-pulse") return;
-
-  for (const animation of event.currentTarget.getAnimations()) {
-    if ("animationName" in animation && animation.animationName === "status-pulse") {
-      animation.startTime = 0;
-    }
-  }
-}
-
-export function ThreadTerminalStatusButton({
-  threadRef,
-  terminalIds,
-  onThreadActivate,
-}: {
-  threadRef: ScopedThreadRef;
-  terminalIds: readonly string[];
-  onThreadActivate: (threadRef: ScopedThreadRef) => void;
-}) {
-  const terminalId = terminalIds[0];
-  if (terminalId === undefined) return null;
-  const status = terminalStatusFromRunningIds(terminalIds);
-  const label =
-    terminalIds.length === 1
-      ? "1 terminal process running. Open terminal"
-      : `${terminalIds.length} terminal processes running. Open terminal`;
-  return (
-    <Tooltip>
-      <TooltipTrigger
-        render={
-          <button
-            type="button"
-            aria-label={label}
-            data-testid={`sidebar-terminal-status-${threadRef.threadId}`}
-            className={cn(
-              "inline-flex shrink-0 cursor-pointer items-center justify-center rounded-sm outline-none hover:opacity-80 focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring",
-              status?.colorClass,
-            )}
-            onPointerDown={(event) => event.stopPropagation()}
-            onKeyDown={(event) => event.stopPropagation()}
-            onClick={(event) => {
-              event.preventDefault();
-              event.stopPropagation();
-              void terminalId;
-              onThreadActivate(threadRef);
-            }}
-          />
-        }
-      >
-        <TerminalIcon
-          className="size-3.5 motion-safe:animate-status-pulse"
-          onAnimationStart={synchronizeTerminalPulse}
-        />
-      </TooltipTrigger>
-      <TooltipPopup side="top">{label}</TooltipPopup>
-    </Tooltip>
-  );
-}
-
 export function ThreadWorktreeIndicator({
   thread,
 }: {
@@ -525,6 +453,86 @@ function settledPrHoverColorClass(state: ThreadPullRequestBadge["state"]): strin
     case "closed":
       return "group-hover/sidebar-row:text-red-600 dark:group-hover/sidebar-row:text-red-300/90";
   }
+}
+
+function ThreadStatusLabel({ status }: { status: ThreadStatusPill }) {
+  return (
+    <Tooltip>
+      <TooltipTrigger
+        render={
+          <span
+            role="img"
+            aria-label={status.label}
+            className={`inline-flex items-center gap-1 text-3xs ${status.colorClass}`}
+          />
+        }
+      >
+        <span
+          className={`h-1.5 w-1.5 rounded-full ${status.dotClass} ${
+            status.pulse ? "motion-safe:animate-status-pulse" : ""
+          }`}
+        />
+        <span className="hidden md:inline">{status.label}</span>
+      </TooltipTrigger>
+      <TooltipPopup side="top">{status.label}</TooltipPopup>
+    </Tooltip>
+  );
+}
+
+/** A palette thread row's pull request and run status; the pull request is the thread's link's snapshot. */
+export function ThreadRowLeadingStatus({ thread }: { thread: SidebarThreadSummary }) {
+  const localLastVisitedAt = useUiStateStore(
+    (state) => state.threadLastVisitedAtById[scopedThreadKey(scopeThreadRef(thread.environmentId, thread.id))],
+  );
+  const lastVisitedAt = resolveThreadLastVisitedAt(thread.lastVisitedAt, localLastVisitedAt);
+  const linkedPullRequest = useLinkedThreadPullRequest(
+    thread.environmentId,
+    thread.linkedPullRequest,
+    true,
+    thread.pullRequests,
+  );
+  const pr = linkedPullRequest?.pr ?? null;
+  const prStatus = prStatusIndicator(pr, linkedPullRequest?.sourceControlProvider);
+  const threadStatus = resolveThreadStatusPill({
+    thread: {
+      ...thread,
+      lastVisitedAt,
+    },
+  });
+  const pendingLink = pr === null ? resolveThreadCurrentPullRequestLink(thread.pullRequests) : null;
+
+  return (
+    <span
+      className={
+        prStatus || threadStatus ? "inline-flex shrink-0 items-center gap-1.5" : "contents"
+      }
+    >
+      {prStatus && pr ? (
+        <Tooltip>
+          <TooltipTrigger
+            render={
+              <span
+                aria-label={prStatus.tooltip}
+                className={`inline-flex items-center justify-center ${prStatus.colorClass}`}
+              />
+            }
+          >
+            <ChangeRequestStatusIcon state={pr.state} isDraft={pr.isDraft} className="size-3" />
+          </TooltipTrigger>
+          <TooltipPopup side="top">
+            <PrStatusTooltipContent status={prStatus} />
+          </TooltipPopup>
+        </Tooltip>
+      ) : null}
+      {pendingLink ? (
+        <PullRequestGlyph.pullRequest
+          className="size-3 text-muted-foreground"
+          aria-label={`PR #${pendingLink.number}, status pending`}
+        />
+      ) : null}
+      {threadStatus ? <ThreadStatusLabel status={threadStatus} /> : null}
+    </span>
+  );
 }
 
 // Search rows are already buttons, so this renders the sidebar badge's look without its controls.
