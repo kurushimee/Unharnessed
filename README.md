@@ -74,7 +74,7 @@ Frontier models already reach for Python when they can. A tool list makes them p
 | A 40,000-line log | 40,000 lines in the context | **a variable; the 10 lines it needed in the context** |
 | A check across 200 files | 200 calls, 200 results | **1 loop, 1 result** |
 | Helpers it writes | none | **functions, kept in the session** |
-| After compaction | a summary | **a summary, plus every variable, function and running process** |
+| After compaction | a summary | **a summary, your prompts word for word, plus every variable, function and running process** |
 
 ---
 
@@ -241,6 +241,7 @@ A long task outgrows the context, and the conversation has to be summarised. Wha
 - **Threshold**: compaction runs at a turn boundary when the context nears the model's window, minus a 16,384-token reserve. The last 20,000 tokens are kept verbatim. Both are settings (`compaction.reserveTokens`, `compaction.keepRecentTokens`).
 - **Overflow recovery**: if a provider rejects a request for its size, the harness compacts and retries the turn.
 - **Manual**: `/compact [instructions]`, where the instructions focus the summary.
+- **Your prompts are kept word for word.** A summary paraphrases, and what you asked for is the first thing it blurs. Each compaction also records every prompt you wrote that it summarised away, in order, and the model gets them verbatim beside the summary, compaction after compaction, resume included.
 - **The model is told what survived.** After a compaction, it gets a `[python-state]` notice listing the names still defined in the kernel:
 
 ```text
@@ -457,6 +458,7 @@ Credentials come from `~/.unharnessed/auth.json` (written by the sign-ins) or th
 - `scripts/unharnessed-smoke.sh <dir>`: drives the real binary end to end against a real model.
 - `scripts/unharnessed-wakes-e2e.py <dir>`: provider retry and wake-ups, in `-p` and ACP, with the faux provider.
 - `scripts/unharnessed-skill-loading.sh <dir>`: skill loading, no model needed.
+- `scripts/unharnessed-compaction-user-prompts-e2e.py <dir>`: the user's prompts survive compaction verbatim, across resumes, against a local fake provider.
 - `cd vscode && npm run typecheck`: the extension's types. F5 opens an Extension Development Host with `UNHARNESSED_BIN` pointing at the debug binary.
 - `cd vscode && npm run test:e2e`: drives a real VS Code through each scenario of `test/e2e/run.mjs` with the faux provider (`UNHARNESSED_E2E_ONLY=<name>` runs one).
 - `UNHARNESSED_E2E_VSIX=<the .vsix> node test/e2e/run.mjs` (from `vscode/`): the same scenarios on a packaged `.vsix`, installed by VS Code.
