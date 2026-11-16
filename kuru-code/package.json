@@ -42,5 +42,56 @@
   "allowScripts": {
     "esbuild@0.28.2": true,
     "electron-winstaller@5.4.0": true
+  },
+  "build": {
+    "appId": "dev.kuru.code",
+    "productName": "kuru code",
+    "executableName": "kuru-code",
+    "copyright": "kurushimee",
+    "directories": {
+      "output": "release",
+      "buildResources": "resources"
+    },
+    "files": [
+      "dist/**/*",
+      "!dist/**/*.map",
+      "package.json"
+    ],
+    "extraResources": [
+      {
+        "from": "build/bin",
+        "to": "bin"
+      },
+      {
+        "from": "resources/icon.ico",
+        "to": "icon.ico"
+      }
+    ],
+    "asar": true,
+    "win": {
+      "target": [
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        }
+      ],
+      "icon": "resources/icon.ico"
+    },
+    "nsis": {
+      "oneClick": false,
+      "perMachine": false,
+      "allowElevation": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "kuru code",
+      "uninstallDisplayName": "kuru code",
+      "artifactName": "kuru-code-setup-${version}.exe",
+      "installerIcon": "resources/icon.ico",
+      "uninstallerIcon": "resources/icon.ico",
+      "deleteAppDataOnUninstall": false
+    }
   }
 }

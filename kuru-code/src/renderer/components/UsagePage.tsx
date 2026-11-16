@@ -31,6 +31,8 @@ export function UsagePage() {
       invoke<ProviderLimits[]>("limits.get").catch(() => []),
     ]);
     setReport(nextReport);
+    // Free models cost nothing: their tokens say more.
+    if (nextReport && nextReport.totals.cost === 0 && nextReport.totals.replies > 0) setMetric("tokens");
     setLimits(nextLimits);
     setLoading(false);
   }, [days]);

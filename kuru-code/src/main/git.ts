@@ -63,6 +63,19 @@ export class Git {
     return repo;
   }
 
+  /** Every GitHub repository the folder's remotes point to: a fork's pull requests live on its upstream. */
+  async githubAll(cwd: string): Promise<string[]> {
+    const { code, stdout } = await git(cwd, "remote", "-v");
+    if (code !== 0) return [];
+    const found = new Map<string, string>();
+    for (const line of stdout.split("\n")) {
+      const url = line.split(/\s+/)[1];
+      const repo = url ? githubRepo(url) : null;
+      if (repo && !found.has(repo.toLowerCase())) found.set(repo.toLowerCase(), repo);
+    }
+    return [...found.values()];
+  }
+
   async status(cwd: string): Promise<GitStatus> {
     const inside = await git(cwd, "rev-parse", "--is-inside-work-tree");
     if (inside.code !== 0 || inside.stdout.trim() !== "true") return { repo: false };
@@ -283,8 +296,7 @@ export class Git {
   async pullRequests(cwds: string[], state: "open" | "closed" | "merged" | "all"): Promise<{ items: PullRequestListItem[]; me: string | null; errors: string[] }> {
     const repos = new Map<string, string>();
     for (const cwd of cwds) {
-      const repo = await this.github(cwd);
-      if (repo && !repos.has(repo.toLowerCase())) repos.set(repo.toLowerCase(), repo);
+      for (const repo of await this.githubAll(cwd)) if (!repos.has(repo.toLowerCase())) repos.set(repo.toLowerCase(), repo);
     }
     const me = await this.me();
     const errors: string[] = [];
@@ -337,8 +349,8 @@ export class Git {
     return stdout;
   }
 
-  async checkoutPullRequest(cwd: string, number: number): Promise<string | undefined> {
-    const result = await gh(cwd, "pr", "checkout", String(number));
+  async checkoutPullRequest(cwd: string, number: number, repo?: string): Promise<string | undefined> {
+    const result = await gh(cwd, "pr", "checkout", String(number), ...(repo ? ["--repo", repo] : []));
     return result.code === 0 ? undefined : result.stderr.trim() || "gh pr checkout failed";
   }
 

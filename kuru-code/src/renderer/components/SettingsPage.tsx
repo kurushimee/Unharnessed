@@ -157,7 +157,7 @@ function GeneralSection() {
   return (
     <div className="rounded-xl border bg-card px-4">
       <Row title="Theme" description="Follow Windows, or always light or dark.">
-        <Select value={prefs.theme} onValueChange={(value) => setPrefs({ theme: value as AppPrefs["theme"] })}>
+        <Select items={{ system: "System", light: "Light", dark: "Dark" }} value={prefs.theme} onValueChange={(value) => setPrefs({ theme: value as AppPrefs["theme"] })}>
           <SelectTrigger className="w-32" size="sm">
             <SelectValue />
           </SelectTrigger>
@@ -169,7 +169,7 @@ function GeneralSection() {
         </Select>
       </Row>
       <Row title="Timestamps" description="How the sidebar shows when a thread last changed.">
-        <Select value={prefs.timestampFormat} onValueChange={(value) => setPrefs({ timestampFormat: value as AppPrefs["timestampFormat"] })}>
+        <Select items={{ relative: "Relative", "24h": "24-hour", "12h": "12-hour" }} value={prefs.timestampFormat} onValueChange={(value) => setPrefs({ timestampFormat: value as AppPrefs["timestampFormat"] })}>
           <SelectTrigger className="w-32" size="sm">
             <SelectValue />
           </SelectTrigger>

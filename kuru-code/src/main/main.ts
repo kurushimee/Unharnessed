@@ -386,8 +386,8 @@ async function start(): Promise<void> {
     "prs.comment": ({ repo, number, body }) => git.comment(repo, number, body).then((error) => error ?? null),
     "prs.checkout": async ({ repo, number }) => {
       for (const project of threads.app.projects) {
-        if ((await git.github(project.path))?.toLowerCase() === String(repo).toLowerCase()) {
-          const error = await git.checkoutPullRequest(project.path, number);
+        if ((await git.githubAll(project.path)).some((found) => found.toLowerCase() === String(repo).toLowerCase())) {
+          const error = await git.checkoutPullRequest(project.path, number, String(repo));
           return error ? { error } : { cwd: project.path, projectId: project.id };
         }
       }
@@ -395,7 +395,7 @@ async function start(): Promise<void> {
     },
     "prs.repoProject": async ({ repo }) => {
       for (const project of threads.app.projects) {
-        if ((await git.github(project.path))?.toLowerCase() === String(repo).toLowerCase()) return project.id;
+        if ((await git.githubAll(project.path)).some((found) => found.toLowerCase() === String(repo).toLowerCase())) return project.id;
       }
       return null;
     },
