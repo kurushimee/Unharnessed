@@ -1,15 +1,3 @@
-// T3 Code's state/shell.ts, the part the thread view reads: opening a path in
-// an editor, which kuru code's main process does (src/main/rpc.ts).
-import { WS_METHODS } from "~/contracts";
-import { createLocalRpcCommand } from "~/rt/state/runtime";
-
-export const shellEnvironment = {
-  openInEditor: createLocalRpcCommand({
-    label: "environment-data:shell:open-in-editor",
-    tag: WS_METHODS.shellOpenInEditor,
-  }),
-};
-
 // T3 Code's shell status: its environment's shell is "live" once its server's
 // first snapshot is in; kuru code's once the main process's first read of the
 // sessions folder is.
@@ -34,6 +22,3 @@ export function useEnvironmentShellStatus(environmentId: EnvironmentId | null): 
   return useAtomValue(environmentId === null ? NO_SHELL_STATUS_ATOM : environmentShell.statusAtom(environmentId));
 }
 
-export function useEnvironmentShellHasSnapshot(environmentId: EnvironmentId | null): boolean {
-  return useEnvironmentShellStatus(environmentId) === "live";
-}

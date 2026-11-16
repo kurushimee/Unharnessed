@@ -33,11 +33,6 @@ export function useProjectFaviconUrl(cwd: string, path: string | null): string |
   return useSyncExternalStore(subscribe, () => urls.get(`${cwd}\n${path ?? ""}`) ?? null);
 }
 
-/** Forgets the folders' icons, so the next render asks again. */
-export function invalidateProjectFavicons(): void {
-  asked.clear();
-}
-
 import { createAssetEnvironmentAtoms } from "~/rt/state/assets";
 
 /** T3 Code's asset URLs, answered by kuru code's main process. */

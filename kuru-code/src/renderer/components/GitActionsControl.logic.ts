@@ -31,7 +31,7 @@ export interface GitActionMenuItem {
 export interface GitQuickAction {
   label: string;
   disabled: boolean;
-  kind: "run_action" | "run_pull" | "open_publish" | "show_hint";
+  kind: "run_action" | "run_pull" | "show_hint";
   action?: GitStackedAction;
   hint?: string;
 }
@@ -177,11 +177,9 @@ export function buildMenuItems(
 export function hasUsableGitMenuContent(input: {
   readonly menuItems: readonly GitActionMenuItem[];
   readonly canWriteSourceControl: boolean;
-  readonly canPublishRepository: boolean;
   readonly hasNotice: boolean;
 }): boolean {
   return (
-    input.canPublishRepository ||
     input.hasNotice ||
     (input.canWriteSourceControl && input.menuItems.some((item) => !item.disabled))
   );
@@ -242,9 +240,10 @@ export function resolveQuickAction(
   if (!gitStatus.hasUpstream) {
     if (!hasPrimaryRemote) {
       return {
-        label: "Publish repository",
-        disabled: false,
-        kind: "open_publish",
+        label: "Push",
+        disabled: true,
+        kind: "show_hint",
+        hint: "Add a remote to push this repository.",
       };
     }
     if (!isAhead) {

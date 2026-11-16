@@ -10,9 +10,6 @@ import {
   EnvironmentAuthorizationError,
   type EnvironmentId,
   type GitResolvePullRequestResult,
-  type SourceControlCloneProtocol,
-  type SourceControlProviderKind,
-  type SourceControlRepositoryVisibility,
 } from "~/contracts";
 import * as Cause from "effect/Cause";
 import { AsyncResult } from "effect/reactivity";
@@ -21,15 +18,12 @@ import { appAtomRegistry } from "../rpc/atomRegistry";
 import { gitEnvironment } from "./git";
 import { useEnvironmentQuery } from "./query";
 import { readEnvironmentScope, useEnvironmentScope } from "./session";
-import { sourceControlEnvironment } from "./sourceControl";
 import { useAtomCommand } from "./use-atom-command";
 import { vcsActionManager, vcsEnvironment } from "./vcs";
-import { suggestAppAccessForRemote } from "../components/sourceControlAppAccessToast";
 
 export type SourceControlActionKind =
   | "init"
   | "pull"
-  | "publishRepository"
   | "runStackedAction"
   | "preparePullRequestThread";
 
@@ -59,7 +53,6 @@ interface SourceControlActionState<
 const ACTION_OPERATION = {
   init: "init",
   pull: "pull",
-  publishRepository: "publish_repository",
   runStackedAction: "run_change_request",
   preparePullRequestThread: "prepare_pull_request_thread",
 } as const satisfies Record<SourceControlActionKind, VcsActionOperation>;
@@ -246,58 +239,6 @@ export function useGitStackedAction(scope: SourceControlActionScope) {
     action,
     onSuccess: status.refresh,
     managedExternally: true,
-  });
-}
-
-export function useSourceControlPublishRepositoryAction(scope: SourceControlActionScope) {
-  const publishRepository = useAtomCommand(sourceControlEnvironment.publishRepository, {
-    reportFailure: false,
-  });
-  const status = useEnvironmentQuery(
-    scope.environmentId !== null && scope.cwd !== null
-      ? vcsEnvironment.status({
-          environmentId: scope.environmentId,
-          input: { cwd: scope.cwd },
-        })
-      : null,
-  );
-  const action = async (input: {
-    provider: SourceControlProviderKind;
-    repository: string;
-    visibility: SourceControlRepositoryVisibility;
-    remoteName: string;
-    protocol: SourceControlCloneProtocol;
-  }) => {
-    const target = resolveScope(scope);
-    if (target === null) {
-      return AsyncResult.failure<never, VcsActionUnavailableError>(
-        Cause.fail(
-          new VcsActionUnavailableError({
-            operation: "publish_repository",
-            environmentId: scope.environmentId,
-            cwd: scope.cwd,
-          }),
-        ),
-      );
-    }
-    const result = await publishRepository({
-      environmentId: target.environmentId,
-      input: {
-        cwd: target.cwd,
-        ...input,
-      },
-    });
-    if (result._tag === "Success") {
-      void suggestAppAccessForRemote(target.environmentId, result.value.remoteUrl);
-    }
-    return result;
-  };
-  return useAction({
-    kind: "publishRepository",
-    label: "Publishing repository",
-    scope,
-    action,
-    onSuccess: status.refresh,
   });
 }
 

@@ -6,7 +6,6 @@ import {
   DEFAULT_SERVER_SETTINGS,
   LOCAL_ENVIRONMENT_ID,
   WS_METHODS,
-  type EditorId,
   type EnvironmentId,
   type EnvironmentTheme,
   type ResolvedKeybindingsConfig,
@@ -20,7 +19,7 @@ import {
 } from "~/contracts";
 import { removeKeybinding, upsertKeybinding } from "~/kuru/keybindings";
 import { useAtomValue } from "@effect/atom-react";
-import { Atom, AsyncResult } from "effect/reactivity";
+import { Atom } from "effect/reactivity";
 import { DEFAULT_RESOLVED_KEYBINDINGS } from "~/shared/keybindings";
 import { serverConfigAtom, updateServerSettings } from "~/kuru/serverConfig";
 import { refreshUsageLimits } from "~/kuru/limits";
@@ -36,7 +35,6 @@ import { appAtomRegistry } from "~/rpc/atomRegistry";
 
 export const EMPTY_SERVER_PROVIDERS: ReadonlyArray<ServerProvider> = [];
 const EMPTY_ENVIRONMENT_THEMES: ReadonlyArray<EnvironmentTheme> = [];
-const EMPTY_AVAILABLE_EDITORS: ReadonlyArray<EditorId> = [];
 
 const providersValueFamily = Atom.family((environmentId: EnvironmentId | null) =>
   Atom.make((get) => get(serverConfigAtom(environmentId))?.providers ?? null),
@@ -63,10 +61,6 @@ const usageModelFilterFamily = Atom.family((environmentId: EnvironmentId) =>
     Atom.withEquality((a, b) => JSON.stringify(a) === JSON.stringify(b)),
   ),
 );
-/** kuru code runs no scheduled tasks. */
-const NO_SCHEDULED_TASKS = Atom.make(AsyncResult.success<ReadonlyArray<never>, never>([]));
-/** kuru code updates with its installer, not from inside a server. */
-const NO_UPDATE_STATE = Atom.make(null);
 
 const updateSettings = createLocalCommand({
   label: "environment-data:server:update-settings",
@@ -94,8 +88,6 @@ export const serverEnvironment = {
   settingsValueAtom: settingsValueFamily,
   hiddenThreadTagsAtom: hiddenThreadTagsFamily,
   usageModelFilterAtom: usageModelFilterFamily,
-  updateStateAtom: (_environmentId: EnvironmentId | null) => NO_UPDATE_STATE,
-  scheduledTasksLive: (_target: { environmentId: EnvironmentId; input: object }) => NO_SCHEDULED_TASKS,
   updateSettings,
   mutateProviderInstance: updateSettings,
   // A cold scan of the session files takes a while, so a window's summary is kept for a minute.
@@ -124,21 +116,7 @@ export const serverEnvironment = {
       removeKeybinding(target.input),
   }),
   consumeResetCredit: rpcCommand("environment-data:server:consume-reset-credit", WS_METHODS.providerConsumeResetCredit),
-  prepareTriage: rpcCommand("environment-data:server:prepare-triage", WS_METHODS.serverPrepareTriage),
-  runScheduledTaskNow: rpcCommand("environment-data:server:scheduled-task:run-now", WS_METHODS.scheduledTasksRunNow),
-  setScheduledTaskEnabled: rpcCommand("environment-data:server:scheduled-task:set-enabled", WS_METHODS.scheduledTasksSetEnabled),
-  createGuestShare: rpcCommand("environment-data:server:guest-share:create", WS_METHODS.guestShareCreate),
 };
-
-/** T3 Code's environment update states: kuru code's one environment is never outdated. */
-export const environmentUpdateStatesAtom = Atom.make((): ReadonlyArray<null> => []);
-/** T3 Code's outdated-server update; kuru code updates with its installer. */
-export const updateOutdatedServer = createLocalCommand({
-  label: "environment-data:server:update-outdated",
-  execute: async (_target: unknown): Promise<never> => {
-    throw new Error("kuru code updates with its installer.");
-  },
-});
 
 export const environmentServerConfigsAtom = Atom.make((get): ReadonlyMap<EnvironmentId, ServerConfig> => {
   const config = get(serverConfigAtom(LOCAL_ENVIRONMENT_ID));
@@ -155,15 +133,9 @@ export const primaryServerProvidersAtom = Atom.make(
   (get): ReadonlyArray<ServerProvider> => get(primaryServerConfigAtom)?.providers ?? EMPTY_SERVER_PROVIDERS,
 );
 
-export const primaryServerAvailableEditorsAtom = Atom.make(
-  (get): ReadonlyArray<EditorId> => get(primaryServerConfigAtom)?.availableEditors ?? EMPTY_AVAILABLE_EDITORS,
-);
-
 export const themeServerEnvironmentThemesAtom = Atom.make(
   (get): ReadonlyArray<EnvironmentTheme> => get(primaryServerConfigAtom)?.environmentThemes ?? EMPTY_ENVIRONMENT_THEMES,
 );
-
-export const themeServerSettingsAtom = primaryServerSettingsAtom;
 
 export const primaryServerKeybindingsAtom = Atom.make((get): ResolvedKeybindingsConfig => {
   return get(primaryServerConfigAtom)?.keybindings ?? DEFAULT_RESOLVED_KEYBINDINGS;

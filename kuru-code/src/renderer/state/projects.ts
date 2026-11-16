@@ -1,8 +1,12 @@
 // T3 Code's state/projects.ts, the part the thread view reads: a project's
 // files, answered by kuru code's main process, and their metadata, as T3
 // Code's file chips ask it (one path at a time, kept a while).
-import { LOCAL_ENVIRONMENT_ID, WS_METHODS, type EnvironmentId, type ScopedThreadRef, type ThreadId } from "~/contracts";
-import { createLocalCommand, createLocalRpcCommand, createLocalRpcQueryAtomFamily } from "~/rt/state/runtime";
+import { WS_METHODS, type EnvironmentId, type ScopedThreadRef, type ThreadId } from "~/contracts";
+import {
+  createLocalCommand,
+  createLocalRpcCommand,
+  createLocalRpcQueryAtomFamily,
+} from "~/rt/state/runtime";
 import { request } from "~/rt/rpc/client";
 import * as Effect from "effect/Effect";
 import { Atom, type AtomRegistry } from "effect/reactivity";
@@ -53,22 +57,9 @@ export const projectEnvironment = {
     tag: WS_METHODS.projectsSearchEntries,
     staleTimeMs: 15_000,
   }),
-  listEntries: createLocalRpcQueryAtomFamily({
-    label: "environment-data:projects:list-entries",
-    tag: WS_METHODS.projectsListEntries,
-    staleTimeMs: 30_000,
-    idleTtlMs: 5 * 60_000,
-  }),
-  readFile: createLocalRpcQueryAtomFamily({
-    label: "environment-data:projects:read-file",
-    tag: WS_METHODS.projectsReadFile,
-    staleTimeMs: 30_000,
-    idleTtlMs: 5 * 60_000,
-  }),
   writeFile: createLocalRpcCommand({
     label: "environment-data:projects:write-file",
     tag: WS_METHODS.projectsWriteFile,
   }),
 };
 
-export const LOCAL_PROJECT_ENVIRONMENT_ID = LOCAL_ENVIRONMENT_ID;

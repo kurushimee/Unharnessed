@@ -15,11 +15,7 @@ import * as Stream from "effect/Stream";
 import * as SubscriptionRef from "effect/SubscriptionRef";
 import { Atom, AtomRegistry } from "effect/reactivity";
 
-import {
-  createEnvironmentRpcCommand,
-  createEnvironmentRpcSubscriptionAtomFamily,
-  createEnvironmentSubscriptionAtomFamily,
-} from "./runtime";
+import { createEnvironmentRpcCommand, createEnvironmentSubscriptionAtomFamily } from "./runtime";
 import type { EnvironmentRegistry } from "../connection/registry";
 import * as EnvironmentSupervisor from "../connection/supervisor";
 import { safeErrorLogAttributes } from "../errors/safeLog";
@@ -337,29 +333,6 @@ export function createVcsEnvironmentAtoms<R, E>(
     refreshStatus: createEnvironmentRpcCommand(runtime, {
       label: "environment-data:vcs:refresh-status",
       tag: WS_METHODS.vcsRefreshStatus,
-      scheduler: vcsCommandScheduler,
-      concurrency: vcsCommandConcurrency,
-      onSettled: invalidateRefs,
-    }),
-    createWorktree: createEnvironmentRpcCommand(runtime, {
-      label: "environment-data:vcs:create-worktree",
-      tag: WS_METHODS.vcsCreateWorktree,
-      scheduler: vcsCommandScheduler,
-      concurrency: vcsCommandConcurrency,
-      onSettled: invalidateRefs,
-    }),
-    worktreeSetup: createEnvironmentRpcSubscriptionAtomFamily(runtime, {
-      label: "environment-data:vcs:worktree-setup",
-      tag: WS_METHODS.subscribeWorktreeSetup,
-      idleTtlMs: VCS_STATUS_IDLE_TTL_MS,
-    }),
-    cancelWorktreeSetup: createEnvironmentRpcCommand(runtime, {
-      label: "environment-data:vcs:cancel-worktree-setup",
-      tag: WS_METHODS.worktreeSetupCancel,
-    }),
-    removeWorktree: createEnvironmentRpcCommand(runtime, {
-      label: "environment-data:vcs:remove-worktree",
-      tag: WS_METHODS.vcsRemoveWorktree,
       scheduler: vcsCommandScheduler,
       concurrency: vcsCommandConcurrency,
       onSettled: invalidateRefs,

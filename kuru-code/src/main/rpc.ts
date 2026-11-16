@@ -8,9 +8,11 @@
 import type { WebContents } from "electron";
 import type { LogOutputChannel } from "vscode";
 import type { Dirent } from "node:fs";
-import { readdir, stat } from "node:fs/promises";
+import { mkdir, readdir, stat, writeFile } from "node:fs/promises";
 import { homedir, hostname } from "node:os";
-import { basename, dirname, extname, join, resolve } from "node:path";
+import { basename, dirname, extname, isAbsolute, join, relative, resolve, sep } from "node:path";
+import { AssetFailure, type createAssets } from "./assets";
+import { Files } from "./files";
 import { type Git, run } from "./git";
 import { createPullRequests } from "./pullRequests";
 import { usagePricing, usageSummary } from "./usage";
@@ -439,6 +441,73 @@ async function metadata(input: { paths: string[] }) {
   return { entries };
 }
 
+// ---- Project files: T3 Code's projects.searchEntries and projects.writeFile.
+
+/** A folder's files and folders matching a query, best first: the name itself, then its start, then anywhere in the path. */
+async function searchEntries(
+  log: LogOutputChannel,
+  input: { cwd: string; query: string; limit: number; kind?: "file" | "directory"; imageOnly?: boolean },
+) {
+  const { files } = await new Files(input.cwd, log).list();
+  const paths: { path: string; kind: "file" | "directory" }[] = [];
+  if (input.kind !== "directory") {
+    for (const path of files) {
+      if (input.imageOnly && !MIME_BY_EXTENSION[extname(path).toLowerCase()]?.startsWith("image/")) continue;
+      paths.push({ path, kind: "file" });
+    }
+  }
+  if (input.kind !== "file" && !input.imageOnly) {
+    const folders = new Set<string>();
+    for (const path of files) {
+      for (let end = path.indexOf("/"); end !== -1; end = path.indexOf("/", end + 1)) folders.add(path.slice(0, end));
+    }
+    for (const path of folders) paths.push({ path, kind: "directory" });
+  }
+  const query = input.query.toLowerCase();
+  const rank = (path: string) => {
+    if (query === "") return 3;
+    const lower = path.toLowerCase();
+    const name = lower.slice(lower.lastIndexOf("/") + 1);
+    if (name === query) return 0;
+    if (name.startsWith(query)) return 1;
+    return lower.includes(query) ? 2 : -1;
+  };
+  const ranked = paths
+    .map((entry) => ({ entry, rank: rank(entry.path) }))
+    .filter((candidate) => candidate.rank >= 0)
+    .sort((left, right) => left.rank - right.rank || left.entry.path.length - right.entry.path.length || left.entry.path.localeCompare(right.entry.path));
+  return { entries: ranked.slice(0, input.limit).map((candidate) => candidate.entry), truncated: ranked.length > input.limit };
+}
+
+/** Writes a file inside a project folder, its folders made as needed; a path leading out of it is refused. */
+async function writeProjectFile(input: { cwd: string; relativePath: string; contents: string }) {
+  const root = resolve(input.cwd);
+  const target = resolve(root, input.relativePath);
+  const inside = relative(root, target);
+  if (inside === "" || inside.startsWith("..") || isAbsolute(inside)) {
+    throw new RpcFailure({
+      _tag: "ProjectWriteFileError",
+      cwd: input.cwd,
+      relativePath: input.relativePath,
+      failure: "workspace_path_outside_root",
+      message: `${input.relativePath} is outside the project folder.`,
+    });
+  }
+  try {
+    await mkdir(dirname(target), { recursive: true });
+    await writeFile(target, input.contents, "utf8");
+  } catch (error) {
+    throw new RpcFailure({
+      _tag: "ProjectWriteFileError",
+      cwd: input.cwd,
+      relativePath: input.relativePath,
+      failure: "operation_failed",
+      message: `Could not write ${input.relativePath}: ${error instanceof Error ? error.message : String(error)}`,
+    });
+  }
+  return { relativePath: inside.split(sep).join("/") };
+}
+
 // ---- The service.
 
 export function createRpc(options: {
@@ -449,6 +518,8 @@ export function createRpc(options: {
   changed: () => void;
   /** T3 Code's pull request service, which answers `pullRequests.*`. */
   pullRequests: ReturnType<typeof createPullRequests>;
+  /** The local files a thread shows, served under minted URLs. */
+  assets: ReturnType<typeof createAssets>;
 }) {
   const { pullRequests } = options;
   const { git: gitService, log, writeMessage } = options;
@@ -474,6 +545,9 @@ export function createRpc(options: {
     "server.getUsageSummary": (input) => usageSummary(input, hostname()),
     "server.refreshUsageRates": async () => usagePricing(),
     "filesystem.browse": browse,
+    "projects.searchEntries": (input) => searchEntries(log, input),
+    "projects.writeFile": writeProjectFile,
+    "assets.createUrl": (input) => options.assets.createUrl(input),
     "filesystem.getMetadata": metadata,
     "vcs.listRefs": (input) => listRefs(input.cwd, input),
     "vcs.refreshStatus": async ({ cwd }) => {
@@ -639,7 +713,7 @@ export function createRpc(options: {
       try {
         return { ok: true, value: (await handler(payload)) ?? null };
       } catch (error) {
-        if (error instanceof RpcFailure) return { ok: false, error: error.encoded };
+        if (error instanceof RpcFailure || error instanceof AssetFailure) return { ok: false, error: error.encoded };
         log.warn(`rpc ${tag} failed: ${String(error)}`);
         return { ok: false, error: String(error), unsupported: true };
       }

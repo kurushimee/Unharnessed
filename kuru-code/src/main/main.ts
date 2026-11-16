@@ -14,6 +14,7 @@ import { Git } from "./git";
 import { createPullRequests } from "./pullRequests";
 import { createRpc } from "./rpc";
 import { FAVICON_EXTENSIONS, projectFavicon } from "./favicons";
+import { createAssets, registerAssetScheme } from "./assets";
 import { Files } from "./files";
 import { searchThreads } from "./search";
 import { createLog } from "./log";
@@ -34,6 +35,8 @@ if (process.env.KURU_USER_DATA) app.setPath("userData", process.env.KURU_USER_DA
 
 const TITLEBAR_HEIGHT = 40;
 const TITLEBAR_COLOR = "#01000000";
+
+registerAssetScheme();
 
 if (!app.requestSingleInstanceLock()) {
   app.quit();
@@ -526,7 +529,16 @@ async function start(): Promise<void> {
       return picked.canceled ? null : (picked.filePaths[0] ?? null);
     },
   };
-  const rpc = createRpc({ git, log, writeMessage: (cwd) => writeCommitMessage(binary, cwd, log), changed: () => void threads.refresh(), pullRequests });
+  const assets = createAssets(() => threads.app);
+  assets.serve();
+  const rpc = createRpc({
+    git,
+    log,
+    writeMessage: (cwd) => writeCommitMessage(binary, cwd, log),
+    changed: () => void threads.refresh(),
+    pullRequests,
+    assets,
+  });
   ipcMain.handle("rpc", (_event, tag: string, payload: unknown) => rpc.call(tag, payload));
   ipcMain.handle("rpc-subscribe", (event, id: string, tag: string, payload: unknown) => rpc.subscribe(event.sender, id, tag, payload));
   ipcMain.on("rpc-unsubscribe", (_event, id: string) => rpc.unsubscribe(id));
