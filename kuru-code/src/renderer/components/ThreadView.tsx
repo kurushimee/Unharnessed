@@ -131,7 +131,7 @@ export function ThreadView() {
               </TooltipTrigger>
               <TooltipPopup side="bottom">Thread details</TooltipPopup>
             </Tooltip>
-            <PopoverPopup align="end" variant="panel" padding="none" className="w-[var(--thread-details-panel-width)]">
+            <PopoverPopup align="end" padding="none" sideOffset={6} className="w-[var(--thread-details-panel-width)]">
               {cwd ? <ThreadDetails cwd={cwd} git={git} row={row} usage={chat.usage} project={project ?? null} /> : null}
             </PopoverPopup>
           </Popover>

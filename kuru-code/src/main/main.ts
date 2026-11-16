@@ -406,6 +406,15 @@ async function start(): Promise<void> {
     "shell.showItemInFolder": ({ path }) => shell.showItemInFolder(path),
     "open.in": ({ path, target }) => openIn(String(path), String(target)),
     "app.info": () => ({ version, electron: process.versions.electron, binary, log: log.file, userData: app.getPath("userData") }),
+    "projects.add": ({ path }) => {
+      const folder = String(path);
+      if (!existsSync(folder)) return null;
+      const id = store.addProject(folder);
+      log.info(`projects: added ${folder}`);
+      threads.emit();
+      receive({ type: "newChat", draft: { text: "", images: [] }, projectId: id });
+      return id;
+    },
     "app.projectId": ({ path }) => projectId(path),
   };
   ipcMain.handle("invoke", async (_event, method: string, params: unknown) => {

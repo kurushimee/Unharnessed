@@ -172,7 +172,27 @@ export function AppSidebar() {
   ];
 
   return (
-    <Sidebar side="left" collapsible="offcanvas" data-app-sidebar="" role="navigation" aria-label="Threads" resizable={{ minWidth: 220, maxWidth: 480, storageKey: "kuru:sidebarWidth" }}>
+    <Sidebar
+      side="left"
+      collapsible="offcanvas"
+      data-app-sidebar=""
+      role="navigation"
+      aria-label="Threads"
+      resizable={{ minWidth: 220, maxWidth: 480, storageKey: "kuru:sidebarWidth" }}
+      onDragOver={(event) => {
+        if (event.dataTransfer.types.includes("Files")) event.preventDefault();
+      }}
+      onDrop={(event) => {
+        // A folder dropped on the sidebar becomes a project.
+        const files = [...event.dataTransfer.files];
+        if (files.length === 0) return;
+        event.preventDefault();
+        for (const file of files) {
+          const path = window.kuru.pathForFile(file);
+          if (path && !file.type) void invoke("projects.add", { path });
+        }
+      }}
+    >
       <div className="drag-region relative flex h-[var(--workspace-topbar-height)] shrink-0 items-center gap-2 pr-3 pl-[calc(var(--workspace-controls-left)+2.25rem)]">
         <span className="inline-flex items-baseline gap-1 text-sm font-medium tracking-tight select-none">
           <span className="font-semibold text-foreground">kuru</span>

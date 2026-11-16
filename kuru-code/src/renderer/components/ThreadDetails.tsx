@@ -77,7 +77,15 @@ export function ThreadDetails({
         <div className="mt-1 grid grid-cols-4 gap-1 px-1">
           {OPENERS.map(({ target, label, icon: Icon }) => (
             <Tooltip key={target}>
-              <TooltipTrigger render={<Button size="sm" variant="ghost" className="flex h-12 flex-col gap-1 px-1 text-2xs font-normal" onClick={() => void openIn(cwd, target)} />}>
+              <TooltipTrigger
+                render={
+                  <button
+                    type="button"
+                    className="flex h-12 flex-col items-center justify-center gap-1 rounded-md px-1 text-2xs text-muted-foreground hover:bg-accent hover:text-foreground"
+                    onClick={() => void openIn(cwd, target)}
+                  />
+                }
+              >
                 <Icon className="size-4" />
                 {label}
               </TooltipTrigger>
@@ -107,7 +115,7 @@ export function ThreadDetails({
               <span className="min-w-0 flex-1 truncate">
                 {repo.changedFiles > 0 ? `${repo.changedFiles} uncommitted file${repo.changedFiles === 1 ? "" : "s"}` : "No uncommitted changes"}
               </span>
-              {repo.diff ? (
+              {repo.diff && (repo.diff.added > 0 || repo.diff.removed > 0) ? (
                 <span className="shrink-0 font-mono" title={`Against ${repo.diff.against}`}>
                   <span className="text-diff-addition-foreground">+{compact(repo.diff.added)}</span>{" "}
                   <span className="text-diff-deletion-foreground">−{compact(repo.diff.removed)}</span>
