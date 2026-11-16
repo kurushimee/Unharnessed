@@ -107,9 +107,16 @@ function unifiedDiff(path: string, lines: ReadonlyArray<DiffLine>): string {
 }
 
 /** The turn item T3 Code has for what an Unharnessed tool call did. */
-function toolItem(tool: Tool, base: ItemBase): Item {
+/** A tool call; one still running when its turn ended was cut off with it (an agent that quit). */
+function toolItem(tool: Tool, base: ItemBase, turnRunning: boolean): Item {
   const status: Item["status"] =
-    tool.status === "running" ? "running" : tool.status === "failed" ? "failed" : "completed";
+    tool.status === "running"
+      ? turnRunning
+        ? "running"
+        : "interrupted"
+      : tool.status === "failed"
+        ? "failed"
+        : "completed";
   const common = { ...base, status, title: null };
   const cell = tool.cell;
   const output = tool.output;
@@ -460,7 +467,7 @@ export class ThreadProjector {
       // turn did, which is how T3 Code's timeline times a turn that is not the latest.
       const live = running && index === lastIndex;
       const closing = !running && index === lastIndex && ended !== null ? utc(ended) : null;
-      const key = closing === null ? `${live}` : `ended:${ended}`;
+      const key = closing === null ? `${live}:${running}` : `ended:${ended}`;
       const id = `turn:${turn.id}:${index}`;
       const project = (): Item => {
         switch (source.kind) {
@@ -488,7 +495,7 @@ export class ThreadProjector {
               streaming: live,
             };
           case "tool":
-            return toolItem(source, this.base(threadId, id, runId, ordinal, at, at));
+            return toolItem(source, this.base(threadId, id, runId, ordinal, at, at), running);
           case "compaction":
             return {
               ...this.base(threadId, id, runId, ordinal, at, at),
