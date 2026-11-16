@@ -27,7 +27,14 @@ export function post(message: WebviewMessage): void {
 }
 
 export function onHostMessage(listener: (message: HostMessage) => void): () => void {
-  return window.kuru.onMessage(listener);
+  // Thrown across the context bridge, an error loses its stack; say it here.
+  return window.kuru.onMessage((message) => {
+    try {
+      listener(message);
+    } catch (error) {
+      console.error(`kuru: the window could not take the main process's "${message.type}"`, error);
+    }
+  });
 }
 
 /** A request to the main process, answered. */

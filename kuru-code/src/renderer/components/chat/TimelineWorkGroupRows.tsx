@@ -35,13 +35,7 @@ import {
   type WorkEntryIconName,
   ToolActivityIconView,
 } from "./TimelineToolActivityIcon";
-import {
-  useThreadReadTarget,
-  threadReadLabel,
-  ThreadReadLabel,
-  ReasoningTraceContent,
-  SimpleWorkEntryRow,
-} from "./TimelineWorkEntryRow";
+import { ReasoningTraceContent, SimpleWorkEntryRow } from "./TimelineWorkEntryRow";
 import {
   THINKING_PREVIEW_PLUGINS,
   THOUGHT_PREVIEW_PLUGINS,
@@ -451,9 +445,7 @@ export function LiveWorkEntryTimelineRow({
   row: Extract<TimelineRow, { kind: "work-live" }>;
 }) {
   const ctx = use(TimelineRowCtx);
-  const threadTarget = useThreadReadTarget(row.entry, ctx.activeThreadEnvironmentId);
   const label = liveWorkEntryLabel(row.entry, ctx.workspaceRoot, row.active);
-  const threadLabel = threadReadLabel(label, threadTarget);
 
   const item = row.entry.projectedItem?.item;
   const pendingApproval =
@@ -473,7 +465,7 @@ export function LiveWorkEntryTimelineRow({
       )}
       aria-label={
         failed
-          ? `${thoughtLine ? `${thoughtLine} ` : ""}${threadLabel?.text ?? label}, tool call failed`
+          ? `${thoughtLine ? `${thoughtLine} ` : ""}${label}, tool call failed`
           : undefined
       }
       aria-expanded={row.expanded}
@@ -520,12 +512,6 @@ export function LiveWorkEntryTimelineRow({
               cwd={ctx.markdownCwd}
               parseRawHtml={false}
               extraRemarkPlugins={row.active ? THINKING_PREVIEW_PLUGINS : THOUGHT_PREVIEW_PLUGINS}
-            />
-          ) : threadLabel ? (
-            <ThreadReadLabel
-              label={threadLabel}
-              environmentId={ctx.activeThreadEnvironmentId}
-              linked={false}
             />
           ) : (
             label

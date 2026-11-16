@@ -10,30 +10,16 @@ import {
   isProviderNativeSubagentThread,
   latestProviderTurnForAttempt,
   type ModelSelection,
-  type OrchestrationV2NotificationSource,
   type OrchestrationV2PendingBackgroundTask,
   type OrchestrationV2ProviderGoal,
   type OrchestrationV2ProviderSession,
-  type ServerProvider,
-  type ServerProviderModel,
   type OrchestrationV2ExecutionNode,
-  type OrchestrationV2LimitRecovery,
   type OrchestrationV2ThreadProjection,
   orchestrationV2RunWorkStartedAt,
   type RunId,
   type ThreadId,
 } from "~/contracts";
-import {
-  backgroundWorkHoldsCompletion,
-  derivePendingBackgroundWork,
-} from "~/shared/orchestrationV2PendingBackgroundWork";
-import {
-  getModelSelectionStringOptionValue,
-  getProviderOptionCurrentLabel,
-  getProviderOptionStatedValue,
-  resolveSelectableModel,
-  withLegacyUltracodeEffort,
-} from "~/shared/model";
+import { backgroundWorkHoldsCompletion, derivePendingBackgroundWork } from "~/shared/orchestrationV2PendingBackgroundWork";
 import { formatDuration } from "~/shared/orchestrationTiming";
 import * as DateTime from "effect/DateTime";
 
@@ -205,54 +191,6 @@ export const REASONING_EFFORT_OPTION_IDS: ReadonlyArray<string> = [
   "reasoning_effort",
   "thinking_level",
 ];
-
-export function formatModelSelectionEffort(
-  selection: ModelSelection,
-  models: ReadonlyArray<ServerProviderModel> = [],
-  reportedSelection?: ModelSelection | null,
-): string | null {
-  const caps = models.find((model) => model.slug === selection.model)?.capabilities;
-  if (!caps) return null;
-  const options = withLegacyUltracodeEffort(caps.optionDescriptors, selection.options);
-  const current = options ? { ...selection, options } : selection;
-  for (const id of REASONING_EFFORT_OPTION_IDS) {
-    const descriptor = caps.optionDescriptors?.find((candidate) => candidate.id === id);
-    if (descriptor?.type !== "select") continue;
-    const value = getProviderOptionStatedValue(id, current, reportedSelection);
-    if (value === undefined && id !== "variant") continue;
-    if (typeof value === "boolean") continue;
-    // Bypass picker normalization so an obsolete choice cannot become a catalog default.
-    const label = getProviderOptionCurrentLabel(
-      { ...descriptor, currentValue: value },
-      current,
-      reportedSelection,
-    );
-    if (label) return label;
-  }
-  return null;
-}
-
-/** A reported model the picker catalog does not know, such as `claude-opus-5[1m]`, keeps its raw effort. */
-export function formatSubagentEffort(input: {
-  readonly modelSlug: string | null;
-  readonly modelSelection: ModelSelection | undefined;
-  readonly provider: Pick<ServerProvider, "driver" | "models"> | undefined;
-}): string | null {
-  const { modelSlug, modelSelection: selection, provider } = input;
-  if (!provider || !selection || !modelSlug) return null;
-  const selectionSlug =
-    resolveSelectableModel(provider.driver, selection.model, provider.models) ??
-    selection.model.trim();
-  if (selectionSlug !== modelSlug) return null;
-  if (provider.models.some((model) => model.slug === modelSlug)) {
-    return formatModelSelectionEffort({ ...selection, model: modelSlug }, provider.models);
-  }
-  return (
-    REASONING_EFFORT_OPTION_IDS.map((id) => getModelSelectionStringOptionValue(selection, id)).find(
-      Boolean,
-    ) ?? null
-  );
-}
 
 const SUBAGENT_STATUS_LABELS: Record<OrchestrationV2ExecutionNode["status"], string> = {
   idle: "Idle",
@@ -434,25 +372,6 @@ export function withoutUsageLimitNoticeRows<
       item.type === "assistant_message" &&
       PROVIDER_LIMIT_NOTICE.test(item.text.trim()));
   return rows.some(hidden) ? rows.filter((row) => !hidden(row)) : rows;
-}
-
-/** Whether a usage-limit recovery holds the thread's snooze, so its notice offers Wake now. */
-export function limitRecoveryOwnsSnooze(input: {
-  readonly runId: RunId | null | undefined;
-  readonly resetAt: string | null | undefined;
-  readonly recovery: OrchestrationV2LimitRecovery | null | undefined;
-  readonly snoozedUntil: string | null | undefined;
-}): boolean {
-  const { runId, resetAt, recovery, snoozedUntil } = input;
-  return (
-    recovery?.snooze === true &&
-    runId != null &&
-    recovery.runId === runId &&
-    resetAt != null &&
-    recovery.resetAt === resetAt &&
-    snoozedUntil != null &&
-    Date.parse(snoozedUntil) === Date.parse(resetAt)
-  );
 }
 
 export function threadRuntimeHasInterruptibleRun(
@@ -664,20 +583,3 @@ export function presentProviderGoal(
   };
 }
 
-export function notificationChildThreadId(
-  source: OrchestrationV2NotificationSource,
-): ThreadId | undefined {
-  switch (source.kind) {
-    case "subagent":
-    case "delegated_task":
-      return source.childThreadId;
-    case "command":
-    case "monitor":
-    case "background_task":
-    case "system":
-      return undefined;
-    default:
-      source satisfies never;
-      return undefined;
-  }
-}

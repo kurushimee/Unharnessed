@@ -2,7 +2,6 @@ import type { ProviderApprovalDecision, RuntimeRequestId } from "~/contracts";
 import {
   type EnvironmentId,
   type MessageId,
-  type OrchestrationV2TurnItem,
   type RunAttemptId,
   type ScopedThreadRef,
   type ServerProviderSkill,
@@ -12,17 +11,14 @@ import {
 } from "~/contracts";
 import type { AsyncResult, Atom } from "effect/reactivity";
 import type { CommandOutputView } from "~/rt/state/commandOutput";
-import type { WorkflowOpening } from "~/rt/state/subagentRuntime";
 import { createContext, type MouseEvent } from "react";
 import { type LegendListRef } from "@legendapp/list/react";
 import type { PendingApproval } from "../../session-logic";
-import { type ChatFileAttachment } from "../../types";
 import { ExpandedImagePreview } from "./ExpandedImagePreview";
 import { type AssistantCitationTarget } from "./AssistantCitationSource";
 import { type MessagesTimelineRow, type WorkGroupScrollAnchor } from "./MessagesTimeline.logic";
 import { type TimestampFormat } from "~/contracts";
 import type { TurnItemDetailSource } from "../../state/queries";
-import { type HandoffTimelineRun } from "./V2LifecycleRow";
 
 /**
  * Where an expanded row reads an item's detail and a command's output. The owner's rows read them
@@ -52,10 +48,8 @@ export interface TimelineRowSharedState {
   resolvedTheme: "light" | "dark";
   workspaceRoot: string | undefined;
   skills: ReadonlyArray<ServerProviderSkill>;
-  runs: ReadonlyArray<HandoffTimelineRun>;
   activeThreadEnvironmentId: EnvironmentId;
   onRewindToMessage: (messageId: MessageId) => void;
-  onAppFullscreenChange: (rowId: string, fullscreen: boolean) => void;
   findActive: boolean;
   onImageExpand: (preview: ExpandedImagePreview) => void;
   displayThreadKey?: string;
@@ -65,12 +59,8 @@ export interface TimelineRowSharedState {
    */
   /** Unset, expanded rows read detail and command output from the environment. */
   turnItemSource: TurnItemSource | undefined;
-  onOpenThread: (threadId: OrchestrationV2TurnItem["threadId"]) => void;
-  workflowOpening: WorkflowOpening | null;
   onToggleTurnFold: (runId: RunId) => void;
   onToggleAttemptFold: (attemptId: RunAttemptId) => void;
-  onFileOpen: (attachment: ChatFileAttachment) => void;
-  onFileDownload: (attachment: ChatFileAttachment) => void;
   openPullRequest: (event: MouseEvent<HTMLElement>, url: string) => void;
   onToggleWorkGroup: (groupId: string, anchorKey: string) => void;
   onToggleWorkEntry: (anchorKey: string, collapsed: boolean) => void;

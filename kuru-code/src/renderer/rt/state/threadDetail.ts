@@ -21,10 +21,6 @@ import {
   type RunStopPresentation,
   type UsageLimitNoticeRows,
 } from "./threadExecution";
-import {
-  deriveThreadCheckpointSummaries,
-  type ThreadCheckpointSummary,
-} from "./threadCheckpoints";
 import type {
   EnvironmentThread,
   EnvironmentThreadStructure,
@@ -47,16 +43,14 @@ const EMPTY_VISIBLE_TURN_ITEMS: OrchestrationV2ThreadProjection["visibleTurnItem
 );
 const EMPTY_THREAD_STRUCTURE_TURN_ITEMS: ReadonlyArray<ThreadStructureVisibleTurnItem> =
   Object.freeze([]);
-const EMPTY_CHECKPOINT_SUMMARIES: ReadonlyArray<ThreadCheckpointSummary> = Object.freeze([]);
 
 /**
  * Changes when the agent may have changed the workspace, so file views and host images refresh.
- * File tools are explicit; commands, MCP or dynamic tools and subagents are included because
+ * File tools are explicit; commands and dynamic tools are included because
  * they can mutate the workspace without reporting the paths they touched.
  */
 export function deriveWorkspaceMutationId(
   visibleTurnItems: ReadonlyArray<ThreadStructureVisibleTurnItem>,
-  latestCheckpointCompletedAt: string | null,
 ) {
   let itemId: string | null = null;
   for (let index = visibleTurnItems.length - 1; index >= 0; index -= 1) {
@@ -65,8 +59,7 @@ export function deriveWorkspaceMutationId(
     if (
       item.type !== "command_execution" &&
       item.type !== "file_change" &&
-      item.type !== "dynamic_tool" &&
-      item.type !== "subagent"
+      item.type !== "dynamic_tool"
     ) {
       continue;
     }
@@ -76,9 +69,7 @@ export function deriveWorkspaceMutationId(
     itemId = item.id;
     break;
   }
-  return itemId === null && latestCheckpointCompletedAt === null
-    ? null
-    : JSON.stringify([itemId, latestCheckpointCompletedAt]);
+  return itemId;
 }
 
 type TurnItem = OrchestrationV2ThreadProjection["turnItems"][number];
@@ -468,26 +459,6 @@ export function createEnvironmentThreadDetailAtoms<E>(
     }).pipe(Atom.setIdleTTL(0), Atom.withLabel(`environment-thread-turn-subagents:${key}`));
   });
 
-  const checkpointSummariesAtomFamily = Atom.family((key: string) => {
-    let previous: Pick<OrchestrationV2ThreadProjection, "checkpoints" | "messages"> | null = null;
-    let value = EMPTY_CHECKPOINT_SUMMARIES;
-    return Atom.make((get) => {
-      const projection = Option.getOrNull(get(threadStateValueAtomFamily(key)).data);
-      if (projection === null) {
-        previous = null;
-        value = EMPTY_CHECKPOINT_SUMMARIES;
-      } else if (
-        projection.checkpoints !== previous?.checkpoints ||
-        projection.messages !== previous?.messages
-      ) {
-        const { checkpoints, messages } = projection;
-        previous = { checkpoints, messages };
-        value = deriveThreadCheckpointSummaries(previous);
-      }
-      return value;
-    }).pipe(Atom.setIdleTTL(0), Atom.withLabel(`environment-thread-checkpoint-summaries:${key}`));
-  });
-
   const lastVisitedAtAtomFamily = Atom.family((key: string) =>
     Atom.make(
       (get) =>
@@ -567,10 +538,7 @@ export function createEnvironmentThreadDetailAtoms<E>(
 
   const workspaceMutationIdAtomFamily = Atom.family((key: string) =>
     Atom.make((get) =>
-      deriveWorkspaceMutationId(
-        get(quietVisibleTurnItemsAtomFamily(key)),
-        get(checkpointSummariesAtomFamily(key)).at(-1)?.completedAt ?? null,
-      ),
+      deriveWorkspaceMutationId(get(quietVisibleTurnItemsAtomFamily(key))),
     ).pipe(Atom.setIdleTTL(0), Atom.withLabel(`environment-thread-workspace-mutation-id:${key}`)),
   );
 
@@ -585,8 +553,6 @@ export function createEnvironmentThreadDetailAtoms<E>(
     queuedCountAtom: (ref: ScopedThreadRef) => queuedCountAtomFamily(threadKey(ref)),
     runStopAtom: (ref: ScopedThreadRef) => runStopAtomFamily(threadKey(ref)),
     turnSubagentsAtom: (ref: ScopedThreadRef) => turnSubagentsAtomFamily(threadKey(ref)),
-    checkpointSummariesAtom: (ref: ScopedThreadRef) =>
-      checkpointSummariesAtomFamily(threadKey(ref)),
     stateAtom: (ref: ScopedThreadRef) => threadStateValueAtomFamily(threadKey(ref)),
     threadAtom: (ref: ScopedThreadRef) => threadAtomFamily(threadKey(ref)),
     quietThreadAtom: (ref: ScopedThreadRef) => quietThreadAtomFamily(threadKey(ref)),

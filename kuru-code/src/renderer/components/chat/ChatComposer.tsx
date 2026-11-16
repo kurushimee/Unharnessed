@@ -8,7 +8,6 @@ import type {
   KeybindingCommand,
   AssistantCitation,
   ChatAttachment as ContractChatAttachment,
-  ChatFileAttachment,
   EnvironmentId,
   ModelSelection,
   ProjectId,
@@ -342,7 +341,6 @@ export interface ChatComposerProps {
   scheduleComposerFocus: () => void;
   setThreadError: (threadId: ThreadId | null, error: string | null) => void;
   onExpandImage: (preview: ExpandedImagePreview) => void;
-  onFileOpen: (attachment: ChatFileAttachment) => void;
 }
 
 const NO_PROVIDER_SKILLS: ServerProvider["skills"] = [];
@@ -420,7 +418,6 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
     scheduleComposerFocus,
     setThreadError,
     onExpandImage,
-    onFileOpen,
     editingQueuedAttachments,
     onRemoveEditingQueuedAttachment,
   } = props;

@@ -6,10 +6,6 @@ import {
   getQuestionTextPreview,
   hasQuestionAnswer,
 } from "~/rt/work-log/userInput";
-import { type EnvironmentId, ThreadId } from "~/contracts";
-import { scopeThreadRef } from "~/rt/environment/index";
-import { Link } from "@tanstack/react-router";
-import { notificationChildThreadId } from "~/rt/state/threadExecution";
 import { resolveViewedImageAsset, toolGroupAction, workEntryViewedImagePath } from "~/rt/work-log/presentation";
 import { turnItemHasDetail, turnItemNeedsDetailFetch } from "~/rt/work-log/itemDetail";
 import { claudeSkillInvocation } from "~/shared/toolActivity";
@@ -22,20 +18,11 @@ import {
 import ChatMarkdown from "../ChatMarkdown";
 import { ChatMarkdownAssetImage } from "./ChatMarkdownMedia";
 import { ChevronRightIcon, CircleAlertIcon, XIcon } from "lucide-react";
-import { InlineButton } from "../ui/button";
 import { useAssetUrls } from "../../assets/assetUrls";
-import { useThreadShell } from "../../state/entities";
-import {
-  threadReadLabelPrefix,
-  threadReadTargetId,
-  threadReadTargetTitle,
-  workEntryDisplayLabel,
-  workEntryReadOutput,
-} from "./MessagesTimeline.logic";
+import { workEntryDisplayLabel, workEntryReadOutput } from "./MessagesTimeline.logic";
 import { cn } from "~/lib/utils";
 import { formatUpcomingTimestamp } from "../../timestampFormat";
 import { FetchedToolOutput, V2ItemInspector } from "./V2ItemInspector";
-import { SubagentNotificationLink } from "./V2LifecycleRow";
 import {
   TimelineRowCtx,
   TimelineRowActivityCtx,
@@ -53,49 +40,6 @@ import {
   THINKING_PREVIEW_PLUGINS,
   THOUGHT_PREVIEW_PLUGINS,
 } from "./TimelineWorkEntryRow.logic";
-
-export function useThreadReadTarget(entry: TimelineWorkEntry, environmentId: EnvironmentId) {
-  const rawThreadId = threadReadTargetId(entry);
-  const threadId = rawThreadId === null ? null : ThreadId.make(rawThreadId);
-  const shell = useThreadShell(threadId ? scopeThreadRef(environmentId, threadId) : null);
-  const title = threadReadTargetTitle(shell);
-  return threadId && title ? { threadId, title } : null;
-}
-
-export function threadReadLabel(label: string, target: ReturnType<typeof useThreadReadTarget>) {
-  const prefix = target && threadReadLabelPrefix(label);
-  return prefix ? { ...target, prefix, text: `${prefix} “${target.title}”` } : null;
-}
-
-export function ThreadReadLabel({
-  label,
-  environmentId,
-  linked,
-}: {
-  label: NonNullable<ReturnType<typeof threadReadLabel>>;
-  environmentId: EnvironmentId;
-  linked: boolean;
-}) {
-  return (
-    <span className="flex min-w-0">
-      <span className="shrink-0">{label.prefix} “</span>
-      {linked ? (
-        <Link
-          to="/$environmentId/$threadId"
-          params={{ environmentId, threadId: label.threadId }}
-          className="min-w-0 truncate rounded-sm text-foreground underline-offset-2 hover:underline focus-visible:outline-2 focus-visible:outline-ring"
-          onClick={stopRowToggle}
-          onKeyDown={stopRowToggle}
-        >
-          {label.title}
-        </Link>
-      ) : (
-        <span className="min-w-0 truncate">{label.title}</span>
-      )}
-      <span className="shrink-0">”</span>
-    </span>
-  );
-}
 
 const toolCallExpandedBodyClassName =
   "max-h-64 cursor-text overflow-auto whitespace-pre-wrap break-words font-mono text-secondary-label text-(length:--font-size-code,var(--text-2xs)) leading-relaxed select-text";
@@ -135,25 +79,7 @@ type WorkEntryRowProps = {
 };
 
 export const SimpleWorkEntryRow = memo(function SimpleWorkEntryRow(props: WorkEntryRowProps) {
-  const ctx = use(TimelineRowCtx);
-  const item = props.workEntry.projectedItem?.item;
-  const childThreadId =
-    item?.type === "notification" ? notificationChildThreadId(item.source) : undefined;
-  if (item?.type !== "notification" || childThreadId === undefined) {
-    return <WorkEntryLogRow {...props} />;
-  }
-  return (
-    <SubagentNotificationLink
-      parentRef={scopeThreadRef(ctx.activeThreadEnvironmentId, item.threadId)}
-      childThreadId={childThreadId}
-      taskIds={item.source.kind === "delegated_task" ? item.source.taskIds : undefined}
-      outcome={item.outcome}
-      createdAt={props.workEntry.createdAt}
-      timestampFormat={ctx.timestampFormat}
-      onOpenThread={ctx.onOpenThread}
-      fallback={<WorkEntryLogRow {...props} />}
-    />
-  );
+  return <WorkEntryLogRow {...props} />;
 });
 
 export function ViewedImagesTimelineRow({
@@ -191,15 +117,6 @@ function WorkEntryLogRow(props: WorkEntryRowProps) {
   const { workEntry, workspaceRoot, displayLabel } = props;
   const ctx = use(TimelineRowCtx);
   const { threadRef, onImageExpand, timestampFormat } = ctx;
-  const threadTarget = useThreadReadTarget(workEntry, ctx.activeThreadEnvironmentId);
-  const createdThread =
-    workEntry.projectedItem?.item.type === "thread_created"
-      ? workEntry.projectedItem.item
-      : undefined;
-  const notifiedSubagentThreadId =
-    workEntry.projectedItem?.item.type === "notification"
-      ? notificationChildThreadId(workEntry.projectedItem.item.source)
-      : undefined;
   const groupView = use(WorkGroupViewCtx);
   const [expanded, setExpanded] = useState(
     () => groupView?.state.expandedEntries.has(workEntry.id) ?? false,
@@ -369,8 +286,7 @@ function WorkEntryLogRow(props: WorkEntryRowProps) {
       : workLogEntryIsToolLike(workEntry)
         ? "text-secondary-label"
         : "text-foreground/80";
-  const threadLabel = isReasoning ? null : threadReadLabel(previewText, threadTarget);
-  const accessiblePreview = [threadLabel?.text ?? previewText, answerPreview]
+  const accessiblePreview = [previewText, answerPreview]
     .filter(Boolean)
     .join(": ");
   const accessibleDisplayText = showFailedIndicator
@@ -429,12 +345,6 @@ function WorkEntryLogRow(props: WorkEntryRowProps) {
                       : THOUGHT_PREVIEW_PLUGINS
                   }
                 />
-              ) : threadLabel ? (
-                <ThreadReadLabel
-                  label={threadLabel}
-                  environmentId={ctx.activeThreadEnvironmentId}
-                  linked
-                />
               ) : (
                 previewText
               )}
@@ -458,32 +368,6 @@ function WorkEntryLogRow(props: WorkEntryRowProps) {
       }
       trailing={
         <>
-          {createdThread ? (
-            <button
-              type="button"
-              className="shrink-0 rounded-sm text-sm text-primary hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
-              aria-label={`Open ${createdThread.title ?? "created thread"}`}
-              onClick={(event) => {
-                event.stopPropagation();
-                ctx.onOpenThread(createdThread.targetThreadId);
-              }}
-              onKeyDown={stopRowToggle}
-            >
-              Open chat
-            </button>
-          ) : null}
-          {notifiedSubagentThreadId ? (
-            <InlineButton
-              aria-label="Open subagent thread"
-              onClick={(event) => {
-                event.stopPropagation();
-                ctx.onOpenThread(notifiedSubagentThreadId);
-              }}
-              onKeyDown={stopRowToggle}
-            >
-              Open subagent
-            </InlineButton>
-          ) : null}
           {showFailedIndicator &&
           !showDestructiveRowStyle &&
           !toolIconAcceptsTint(entryToolIcon) ? (

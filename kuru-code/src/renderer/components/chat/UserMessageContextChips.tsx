@@ -1,5 +1,4 @@
 import { documentChipKindForFileName } from "~/pierre-icons";
-import { isSvgAttachment } from "~/shared/image";
 import { useRenderedAppearance } from "../../hooks/useTheme";
 import { PullRequestGlyph } from "../pullRequest/pullRequestIcons";
 import { COMPOSER_CONTEXT_KINDS } from "~/contracts";
@@ -7,12 +6,7 @@ import { formatAttachmentSize } from "~/rt/state/attachments";
 import { use, type ReactNode } from "react";
 import { FileDiff } from "@pierre/diffs/react";
 import { DiffWorkerPoolProvider } from "../DiffWorkerPoolProvider";
-import {
-  type ChatFileAttachment,
-  type ChatImageAttachment,
-  isImageAttachment,
-  isVideoAttachment,
-} from "../../types";
+import { type ChatImageAttachment, isImageAttachment } from "../../types";
 import { getRenderablePatch, resolveDiffThemeName, resolveFileDiffPath } from "../../lib/diffRendering";
 import { PREFERRED_HIGHLIGHTER } from "../../lib/syntaxHighlighting";
 import ChatMarkdown from "../ChatMarkdown";
@@ -23,7 +17,6 @@ import { WorkspaceEntryIcon, WorkspaceEntryTooltip } from "./WorkspaceEntryIcon"
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
 import {
   ContextChipPopover as UserMessageContextPopover,
-  FileChip,
   ImageChipButton,
   PULL_REQUEST_CHIP_KINDS,
   PullRequestChip,
@@ -47,7 +40,6 @@ import {
   type ReviewCommentContext,
 } from "../../reviewCommentContext";
 import { TimelineRowCtx } from "./timelineRowContext";
-import { userMessageFileLabel } from "./TimelineUserMessageRow.logic";
 
 function UserMessageMentionChip(props: {
   record: Extract<KnownComposerContextRecord, { kind: "mention" }>;
@@ -124,12 +116,10 @@ function UserMessagePullRequestContextChip(props: {
 interface UserMessageContextRenderContext {
   environmentId: import("~/contracts").EnvironmentId;
   reference: ChatMarkdownContextReference;
-  attachment: ChatImageAttachment | ChatFileAttachment | null;
+  attachment: ChatImageAttachment | null;
   resolvedTheme: "light" | "dark";
   copyMarkdown: string;
   onExpandImage: (image: ChatImageAttachment) => void;
-  onExpandVideo: (file: ChatFileAttachment) => void;
-  onOpenFile: (file: ChatFileAttachment) => void;
 }
 
 function UnavailableUserMessageContextChip(props: UserMessageContextRenderContext) {
@@ -206,45 +196,10 @@ const userMessageContextPresentationRegistry = createContextPresentationRegistry
       },
     },
     {
+      // kuru code sends images only; a file record never names an attachment it has.
       kind: "file",
-      canRender: (record, context) =>
-        record.kind === "file" && context.attachment !== null && context.attachment.type === "file",
-      render: (record, context) => {
-        if (
-          record.kind !== "file" ||
-          context.attachment === null ||
-          context.attachment.type !== "file"
-        ) {
-          return <UnavailableUserMessageContextChip {...context} />;
-        }
-        const attachment = context.attachment;
-        const isVideo = isVideoAttachment(attachment);
-        const label = userMessageFileLabel(attachment);
-        const disabled =
-          attachment.downloadable === false && (!isVideo || attachment.previewUrl === undefined);
-        const size =
-          attachment.downloadable === false ? "Sending…" : formatAttachmentSize(record.sizeBytes);
-        return (
-          <FileChip
-            name={label}
-            svgPreview={
-              isSvgAttachment(attachment)
-                ? { environmentId: context.environmentId, attachmentId: attachment.id }
-                : undefined
-            }
-            size={size}
-            isVideo={isVideo}
-            theme={context.resolvedTheme}
-            disabled={disabled}
-            accessibleLabel={`${isVideo ? "Video" : "File"} attachment, ${label}, ${size}`}
-            copyMarkdown={context.copyMarkdown}
-            onOpen={() =>
-              isVideo ? context.onExpandVideo(attachment) : context.onOpenFile(attachment)
-            }
-            tooltip={`${label}\n${size}`}
-          />
-        );
-      },
+      canRender: () => false,
+      render: (_record, context) => <UnavailableUserMessageContextChip {...context} />,
     },
     {
       kind: "review-comment",
@@ -302,10 +257,8 @@ const userMessageContextPresentationRegistry = createContextPresentationRegistry
 export function UserMessageContextReferenceChip(props: {
   reference: ChatMarkdownContextReference;
   record: KnownComposerContextRecord | undefined;
-  attachment: ChatImageAttachment | ChatFileAttachment | null;
+  attachment: ChatImageAttachment | null;
   onExpandImage: (image: ChatImageAttachment) => void;
-  onExpandVideo: (file: ChatFileAttachment) => void;
-  onOpenFile: (file: ChatFileAttachment) => void;
 }) {
   const { resolvedTheme, activeThreadEnvironmentId } = use(TimelineRowCtx);
   const copyMarkdown = formatComposerContextReference({
@@ -320,8 +273,6 @@ export function UserMessageContextReferenceChip(props: {
     resolvedTheme,
     copyMarkdown,
     onExpandImage: props.onExpandImage,
-    onExpandVideo: props.onExpandVideo,
-    onOpenFile: props.onOpenFile,
   });
 }
 

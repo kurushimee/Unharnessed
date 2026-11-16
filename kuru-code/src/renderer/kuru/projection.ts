@@ -216,9 +216,16 @@ interface TurnProjection {
   readonly items: ReadonlyArray<Item>;
 }
 
+// T3 Code's attachment ids take letters, digits, "_" and "-" only.
+
+/** A prompt's image, by its position in the prompt. */
+function promptAttachmentId(threadId: string, turnId: number, index: number): string {
+  return `${threadId}_prompt_${turnId}_${index}`;
+}
+
 /** A waiting message's image, by its position in the message. */
 export function queuedAttachmentId(threadId: string, queuedId: number, position: number): string {
-  return `${threadId}:queued:${queuedId}:${position}`;
+  return `${threadId}_queued_${queuedId}_${position}`;
 }
 
 /**
@@ -439,7 +446,7 @@ export class ThreadProjector {
           text: prompt.text,
           attachments: prompt.images.map((image, index) => ({
             type: "image" as const,
-            id: ChatAttachmentId.make(`${threadId}:prompt:${turn.id}:${index}`),
+            id: ChatAttachmentId.make(promptAttachmentId(threadId, turn.id, index)),
             name: image.name || "image",
             mimeType: mimeOf(image.thumb),
             sizeBytes: 0,
@@ -647,7 +654,7 @@ function mimeOf(dataUrl: string): string {
 export function attachmentImageUrl(chat: ChatState, threadId: string, attachmentId: string): string | null {
   for (const entry of chat.entries) {
     if (entry.kind !== "turn" || !entry.prompt) continue;
-    const prefix = `${threadId}:prompt:${entry.id}:`;
+    const prefix = promptAttachmentId(threadId, entry.id, 0).slice(0, -1);
     if (attachmentId.startsWith(prefix)) return entry.prompt.images[Number(attachmentId.slice(prefix.length))]?.thumb ?? null;
   }
   for (const queued of chat.queue) {

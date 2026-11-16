@@ -6,7 +6,6 @@ import { assistantCitationLabel, collectAssistantCitations } from "~/shared/assi
 import { shallow } from "zustand/vanilla/shallow";
 import { claudeResumeCompactionAge } from "~/shared/claudeCompaction";
 import { IDLE_COMPACTING_LABELS, IDLE_COMPACTION_TITLES } from "~/rt/userMessage";
-import type { HandoffTimelineRun } from "~/rt/handoff";
 import { renderCodexDirectivesForCopy } from "~/shared/codexMarkdownDirectives";
 import { commandDisplayText, commandProgramName } from "~/rt/work-log/commandLabel";
 import {
@@ -34,12 +33,7 @@ import {
   type TimelineEntry,
   type WorkLogEntry,
 } from "../../session-logic";
-import {
-  type ChatMessage,
-  type ProposedPlan,
-  type ThreadShell,
-  type TurnDiffSummary,
-} from "../../types";
+import { type ChatMessage, type ProposedPlan } from "../../types";
 import {
   idleCompactionOf,
   isCompactionCommandMessage,
@@ -52,7 +46,6 @@ import {
 } from "~/contracts";
 import type { ThreadRunSummary } from "~/rt/state/models";
 import type { ToolCallVisibility } from "~/contracts";
-import { resolveT3McpToolDefinition } from "~/shared/t3McpToolPresentation";
 import { dynamicToolTitle } from "~/shared/toolActivity";
 import { formatWorkspaceRelativePath } from "../../filePathDisplay";
 import { collectToolFilePaths, formatReadToolLabel, formatSearchToolLabel } from "~/shared/toolActivity";
@@ -158,31 +151,6 @@ export function workEntryDisplayLabel(entry: WorkLogEntry, workspaceRoot: string
   }
   const heading = normalizeCompactToolLabel(entry.toolTitle || entry.label);
   return `${heading.charAt(0).toUpperCase()}${heading.slice(1)}`;
-}
-
-export function threadReadTargetId(entry: Pick<WorkLogEntry, "structuredPayload">) {
-  const item = entry.structuredPayload;
-  if (item?.type !== "dynamic_tool") return null;
-  if (resolveT3McpToolDefinition(item.toolName)?.summaryAction !== "thread-read") return null;
-  const input = item.input;
-  const threadId =
-    input !== null && typeof input === "object" && "threadId" in input ? input.threadId : null;
-  return typeof threadId === "string" && threadId.trim().length > 0 ? threadId.trim() : null;
-}
-
-const THREAD_READ_OBJECT = " a T3 thread";
-
-export function threadReadTargetTitle(
-  shell: Pick<ThreadShell, "title" | "archivedAt" | "deletedAt"> | null,
-) {
-  if (!shell || shell.archivedAt !== null || shell.deletedAt !== null) return null;
-  return shell.title.trim() || null;
-}
-
-export function threadReadLabelPrefix(label: string) {
-  return label.endsWith(THREAD_READ_OBJECT)
-    ? `${label.slice(0, -THREAD_READ_OBJECT.length)} thread`
-    : null;
 }
 
 export function workEntryReadOutput(
@@ -569,7 +537,6 @@ type MessagesTimelineRowContent =
       showAssistantMeta: boolean;
       showAssistantCopyButton: boolean;
       assistantCopyStreaming: boolean;
-      assistantTurnDiffSummary?: TurnDiffSummary | undefined;
       /** The agent can go back to before this prompt. */
       rewindable?: boolean | undefined;
       /** Another of your messages follows directly, so the two sit closer together. */
@@ -1450,7 +1417,6 @@ export function deriveMessagesTimelineRows(input: {
   /** Native subagent work has no app run; runless entries form the live response. */
   runlessWorkActive?: boolean;
   activeTurnStartedAt?: string | null;
-  turnDiffSummaries: ReadonlyArray<TurnDiffSummary>;
   supportsConversationRollback: boolean;
   /** The prompts the agent can go back to before. */
   rewindableMessageIds?: ReadonlySet<MessageId> | undefined;
@@ -1465,12 +1431,6 @@ export function deriveMessagesTimelineRows(input: {
       input.pendingApprovalRequestIds?.has(item.requestId) === true
     );
   };
-  const turnDiffSummaryByAssistantMessageId = new Map<MessageId, TurnDiffSummary>();
-  for (const summary of input.turnDiffSummaries) {
-    if (summary.assistantMessageId) {
-      turnDiffSummaryByAssistantMessageId.set(summary.assistantMessageId, summary);
-    }
-  }
   const unsettledRunId = deriveUnsettledRunId(input.latestRun ?? null, input.runningRunId ?? null);
   const nextRows: MessagesTimelineRow[] = [];
   const terminalAssistantMessageIds = deriveTerminalAssistantMessageIds(timelineEntries);
@@ -2087,10 +2047,6 @@ export function deriveMessagesTimelineRows(input: {
       showAssistantMeta,
       showAssistantCopyButton: showAssistantMeta,
       assistantCopyStreaming: timelineEntry.message.streaming || assistantResponseStillInProgress,
-      assistantTurnDiffSummary:
-        timelineEntry.message.role === "assistant"
-          ? turnDiffSummaryByAssistantMessageId.get(timelineEntry.message.id)
-          : undefined,
       rewindable:
         timelineEntry.message.role === "user" &&
         input.supportsConversationRollback &&
@@ -2256,18 +2212,6 @@ export function timelineTurnFoldRunIdsByEntryId(
   return byEntryId;
 }
 
-function sameCheckpointSummaries(
-  previous: MessagesTimelineRowsInput["turnDiffSummaries"],
-  next: MessagesTimelineRowsInput["turnDiffSummaries"],
-): boolean {
-  if (previous === next) return true;
-  if (previous.length !== next.length) return false;
-  for (const [index, summary] of previous.entries()) {
-    if (!shallow(summary, next[index])) return false;
-  }
-  return true;
-}
-
 function replaceStreamingMessageRows(
   input: MessagesTimelineRowsInput,
   previous: MessagesTimelineRowsProjection,
@@ -2275,7 +2219,6 @@ function replaceStreamingMessageRows(
   const {
     timelineEntries: previousEntries,
     latestRun: previousRun,
-    turnDiffSummaries: previousCheckpoints,
     expandedRunIds: previousExpandedRuns,
     expandedAttemptIds: previousExpandedAttempts,
     expandedWorkGroupIds: previousExpandedGroups,
@@ -2286,7 +2229,6 @@ function replaceStreamingMessageRows(
   const {
     timelineEntries,
     latestRun,
-    turnDiffSummaries,
     expandedRunIds,
     expandedAttemptIds,
     expandedWorkGroupIds,
@@ -2294,7 +2236,6 @@ function replaceStreamingMessageRows(
     rewindableMessageIds,
     ...context
   } = input;
-  // Shell/checkpoint selectors rebuild summaries per event; compare contents.
   if (
     timelineEntries.length !== previousEntries.length ||
     !shallow(previousContext, context) ||
@@ -2303,8 +2244,7 @@ function replaceStreamingMessageRows(
     !shallow(previousExpandedAttempts, expandedAttemptIds) ||
     !shallow(previousExpandedGroups, expandedWorkGroupIds) ||
     !shallow(previousPendingApprovalRequestIds, pendingApprovalRequestIds) ||
-    !shallow(previousRewindableMessageIds, rewindableMessageIds) ||
-    !sameCheckpointSummaries(previousCheckpoints, turnDiffSummaries)
+    !shallow(previousRewindableMessageIds, rewindableMessageIds)
   ) {
     return null;
   }
@@ -2497,7 +2437,6 @@ function isRowUnchanged(a: MessagesTimelineRow, b: MessagesTimelineRow): boolean
         a.showAssistantMeta === bm.showAssistantMeta &&
         a.showAssistantCopyButton === bm.showAssistantCopyButton &&
         a.assistantCopyStreaming === bm.assistantCopyStreaming &&
-        a.assistantTurnDiffSummary === bm.assistantTurnDiffSummary &&
         a.rewindable === bm.rewindable &&
         a.groupedWithNext === bm.groupedWithNext &&
         a.groupedWithPrevious === bm.groupedWithPrevious &&
@@ -2532,15 +2471,6 @@ export function shouldCollapseUserMessage(text: string): boolean {
     visible.length > MAX_COLLAPSED_USER_MESSAGE_LENGTH ||
     visible.split("\n").length > MAX_COLLAPSED_USER_MESSAGE_LINES
   );
-}
-
-export function handoffRunsSignature(runs: ReadonlyArray<HandoffTimelineRun>): string {
-  return runs
-    .map(
-      (run) =>
-        `${run.id}\0${run.providerInstanceId}\0${run.ordinal}\0${run.modelSelection.instanceId}\0${run.modelSelection.model}`,
-    )
-    .join("\n");
 }
 
 // Expanded-id sets can be rebuilt during render; comparing them by content keeps

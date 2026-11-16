@@ -11,21 +11,18 @@ import {
   type AssistantCitation,
   type EnvironmentId,
   type MessageId,
-  type OrchestrationV2TurnItem,
   type RunAttemptId,
   type ServerProviderSkill,
   type RunId,
 } from "~/contracts";
 import { parseScopedThreadKey } from "~/rt/environment/index";
 import { resolveWorkGroupScrollAnchor } from "~/rt/work-log/scrollAnchor";
-import type { WorkflowOpening } from "~/rt/state/subagentRuntime";
 import { observeResize } from "~/lib/observeResize";
 import { useStableCallback } from "~/hooks/useStableCallback";
 
 const EMPTY_PENDING_APPROVALS: ReadonlyArray<PendingApproval> = [];
 const EMPTY_RESPONDING_REQUEST_IDS: TimelineRowSharedState["respondingRequestIds"] = [];
 
-const NOOP_OPEN_ATTACHMENT = (_attachment: ChatFileAttachment) => {};
 
 import { resolveChatListAnchoredEndSpace } from "~/shared/chatList";
 import { observeVisibleAnimation } from "../../lib/visibleAnimation";
@@ -43,12 +40,9 @@ import {
 } from "react";
 import { LegendList, type LegendListRef, type MaintainScrollAtEndOptions } from "@legendapp/list/react";
 import { type PendingApproval, type TimelineEntry } from "../../session-logic";
-import { type ChatFileAttachment, type TurnDiffSummary } from "../../types";
 import {
   ArrowRightIcon,
-  BotIcon,
   CircleAlertIcon,
-  MessagesSquareIcon,
   Minimize2Icon,
   ChevronDownIcon,
   ChevronRightIcon,
@@ -85,8 +79,6 @@ import { useOpenPrLink } from "~/lib/openPullRequestLink";
 import { useMediaQuery } from "~/hooks/useMediaQuery";
 import { cn } from "~/lib/utils";
 import { type TimestampFormat } from "~/contracts";
-import { type HandoffTimelineRun } from "./V2LifecycleRow";
-import { TimelineSystemDivider } from "./TimelineSystemDivider";
 
 import { forwardWheelToTimeline } from "./timelineMinimapWheel";
 import { TimelineMinimap } from "./TimelineMinimap";
@@ -123,7 +115,7 @@ import {
 } from "./timelineViewport";
 import { useThreadFindPositionReader } from "./useThreadFindPositionReader";
 import { ThreadActivityAnnouncer } from "./ThreadActivityAnnouncer";
-import { useStableHandoffRuns, useIncrementalTimelineRows, useStableRows } from "./useTimelineRows";
+import { useIncrementalTimelineRows, useStableRows } from "./useTimelineRows";
 import { useClientSettings } from "../../hooks/useSettings";
 
 function timelineListStateFor(identity: string): {
@@ -231,40 +223,20 @@ interface MessagesTimelineProps {
   /** See isDetailBehindShell. */
   detailBehindShell?: boolean;
   runningRunId?: RunId | null;
-  turnDiffSummaries: ReadonlyArray<TurnDiffSummary>;
   routeThreadKey: string;
   displayThreadKey?: string;
-  /** Off where another region already speaks the thread's status, like a subagent's bar. */
-  announceTurnStatus?: boolean;
-  onOpenThread: (threadId: OrchestrationV2TurnItem["threadId"]) => void;
   turnItemSource?: TimelineRowSharedState["turnItemSource"];
-  /**
-   * The thread this one is a subagent or side chat of; `open` is absent when it cannot be
-   * opened from here.
-   */
-  parentThreadLink?: {
-    readonly title: string;
-    /** A side chat's inherited rows collapse into this link. */
-    readonly sideChat?: boolean;
-    /** Where it runs, when that is another environment. */
-    readonly environmentLabel?: string;
-    readonly open?: () => void;
-  } | null;
-  workflowOpening?: WorkflowOpening | null;
   supportsConversationRollback: boolean;
   rewindableMessageIds?: ReadonlySet<MessageId> | undefined;
   onRewindToMessage: (messageId: MessageId) => void;
   isRevertingCheckpoint: boolean;
   onImageExpand: (preview: ExpandedImagePreview) => void;
-  onFileOpen?: (attachment: ChatFileAttachment) => void;
-  onFileDownload?: (attachment: ChatFileAttachment) => void;
   activeThreadEnvironmentId: EnvironmentId;
   markdownCwd: string | undefined;
   resolvedTheme: "light" | "dark";
   timestampFormat: TimestampFormat;
   workspaceRoot: string | undefined;
   skills?: ReadonlyArray<ServerProviderSkill>;
-  runs: ReadonlyArray<HandoffTimelineRun>;
   anchorMessageId: MessageId | null;
   onAnchorReady: (messageId: MessageId, anchorIndex: number) => void;
   onAnchorSizeChanged: (messageId: MessageId, size: number) => void;
@@ -327,28 +299,20 @@ const ConversationTimeline = memo(function ConversationTimeline({
   announcedRun = null,
   detailBehindShell = false,
   runningRunId = null,
-  turnDiffSummaries,
   routeThreadKey,
   displayThreadKey,
-  announceTurnStatus = true,
-  onOpenThread,
   turnItemSource,
-  parentThreadLink = null,
-  workflowOpening = null,
   supportsConversationRollback,
   rewindableMessageIds,
   onRewindToMessage,
   isRevertingCheckpoint,
   onImageExpand,
-  onFileOpen = NOOP_OPEN_ATTACHMENT,
-  onFileDownload = NOOP_OPEN_ATTACHMENT,
   activeThreadEnvironmentId,
   markdownCwd,
   resolvedTheme,
   timestampFormat,
   workspaceRoot,
   skills = EMPTY_TIMELINE_SKILLS,
-  runs: runsProp,
   anchorMessageId,
   onAnchorReady,
   onAnchorSizeChanged,
@@ -390,7 +354,6 @@ const ConversationTimeline = memo(function ConversationTimeline({
   const [playingAudioRows, setPlayingAudioRows] = useState<ReadonlyMap<HTMLAudioElement, string>>(
     () => new Map(),
   );
-  const [fullscreenAppRowId, setFullscreenAppRowId] = useState<string | null>(null);
   let paintedExpandedRunIds = expandedRunIds;
   let paintedExpandedWorkGroupIds = expandedWorkGroupIds;
   let paintedExpandedAttemptIds = expandedAttemptIds;
@@ -408,9 +371,6 @@ const ConversationTimeline = memo(function ConversationTimeline({
     });
     setPositionedThreadKey(null);
     setSettlingListIdentity(listIdentityKey);
-    // A viewer pinned in another thread must not keep live follow off here,
-    // nor when that thread comes back.
-    setFullscreenAppRowId(null);
     paintedExpandedRunIds = rememberedPosition?.disclosures?.runs ?? new Set();
     paintedExpandedWorkGroupIds = rememberedPosition?.disclosures?.workGroups ?? new Set();
     paintedExpandedAttemptIds = rememberedPosition?.disclosures?.attempts ?? new Set();
@@ -619,7 +579,6 @@ const ConversationTimeline = memo(function ConversationTimeline({
     isWorking,
     runlessWorkActive,
     activeTurnStartedAt,
-    turnDiffSummaries,
     supportsConversationRollback,
     rewindableMessageIds,
     toolCallVisibility,
@@ -639,8 +598,6 @@ const ConversationTimeline = memo(function ConversationTimeline({
     (approval) =>
       isVisiblePendingApproval(approval) && !matchedApprovalRequestIds.has(approval.requestId),
   );
-  // Run status/timestamps change per stream event; keep them out of shared row context.
-  const runs = useStableHandoffRuns(runsProp);
   const minimapItems = deriveTimelineMinimapItems(rows);
   const minimapRowIndices = minimapItems.map((item) => item.rowIndex);
   const restoreRowIndex =
@@ -653,7 +610,6 @@ const ConversationTimeline = memo(function ConversationTimeline({
     rows.length === 0 &&
     unmatchedPendingApprovals.length === 0 &&
     !isWorking &&
-    parentThreadLink === null &&
     historyControls === undefined &&
     footer === null;
   const [listOpening, setListOpening] = useState<TimelineListOpening>(() =>
@@ -723,11 +679,6 @@ const ConversationTimeline = memo(function ConversationTimeline({
     setFindListReady(true);
   };
   const [minimapHasPersistentGutter, setMinimapHasPersistentGutter] = useState(false);
-  // Every full-screen viewer reports false when it unmounts, so a row that leaves the list
-  // while full screen releases its pin too.
-  const onAppFullscreenChange = (rowId: string, fullscreen: boolean) => {
-    setFullscreenAppRowId((current) => (fullscreen ? rowId : current === rowId ? null : current));
-  };
   const alwaysRenderIndices = restoringAlwaysRender?.indices ?? [];
   // Screen readers can only reach headings in the DOM. Keeping the first and
   // last messages mounted lets heading navigation wrap to either end.
@@ -737,7 +688,6 @@ const ConversationTimeline = memo(function ConversationTimeline({
     ...(firstMessageRow ? [firstMessageRow.id] : []),
     ...(lastMessageRow && lastMessageRow !== firstMessageRow ? [lastMessageRow.id] : []),
     ...(citationAlwaysRender?.keys ?? []),
-    ...(fullscreenAppRowId === null ? [] : [fullscreenAppRowId]),
     ...new Set(
       [...playingAudioRows].filter(([audio]) => audio.isConnected).map(([, rowId]) => rowId),
     ),
@@ -969,18 +919,12 @@ const ConversationTimeline = memo(function ConversationTimeline({
     resolvedTheme,
     workspaceRoot,
     skills,
-    runs,
     activeThreadEnvironmentId,
     onRewindToMessage,
     findActive,
     onImageExpand,
-    onFileOpen,
-    onAppFullscreenChange,
-    onFileDownload,
     openPullRequest,
-    onOpenThread,
       turnItemSource,
-    workflowOpening,
     onToggleTurnFold,
     onToggleAttemptFold,
     onToggleWorkGroup,
@@ -1007,7 +951,7 @@ const ConversationTimeline = memo(function ConversationTimeline({
   // starts from a baseline instead of a fresh, silent region.
   const activityAnnouncer = (
     <ThreadActivityAnnouncer
-      threadKey={announceTurnStatus ? listIdentityKey : null}
+      threadKey={listIdentityKey}
       status={awaitingUser ?? (isWorking ? "working" : "idle")}
       requestId={awaitingRequestId}
       runId={announcedRun?.runId ?? null}
@@ -1018,36 +962,10 @@ const ConversationTimeline = memo(function ConversationTimeline({
       workspaceRoot={workspaceRoot}
     />
   );
-  const listHeaderLeadingContent =
-    parentThreadLink === null ? (
-      topFadeEnabled ? (
-        TIMELINE_LIST_FADE_HEADER
-      ) : (
-        TIMELINE_LIST_HEADER
-      )
-    ) : (
-      <div className="messages-timeline-row-frame">
-        <div className="chat-content-lane pt-1 sm:pt-2">
-          <TimelineSystemDivider
-            label={parentThreadLink.sideChat ? "Context from" : "Subagent of"}
-            detail={
-              parentThreadLink.environmentLabel === undefined
-                ? parentThreadLink.title
-                : `${parentThreadLink.title} on ${parentThreadLink.environmentLabel}`
-            }
-            icon={parentThreadLink.sideChat ? MessagesSquareIcon : BotIcon}
-            {...(parentThreadLink.open === undefined
-              ? {}
-              : { actionLabel: "Open parent thread", onAction: parentThreadLink.open })}
-          />
-        </div>
-      </div>
-    );
   const listHeader = (
     <>
-      {parentThreadLink === null ? listHeaderLeadingContent : null}
+      {topFadeEnabled ? TIMELINE_LIST_FADE_HEADER : TIMELINE_LIST_HEADER}
       {historyControls ? <TimelineHistoryControl {...historyControls} /> : null}
-      {parentThreadLink !== null ? listHeaderLeadingContent : null}
     </>
   );
 
@@ -1259,8 +1177,7 @@ const ConversationTimeline = memo(function ConversationTimeline({
                 citationPositioning ||
                 (restoringThreadPosition && rememberedPosition?.atEnd === false) ||
                 anchoredEndSpace ||
-                !liveFollowEnabled ||
-                fullscreenAppRowId !== null
+                !liveFollowEnabled
                   ? false
                   : isWorking && !prefersReducedMotion && settlingListIdentity === null
                     ? TIMELINE_MAINTAIN_SCROLL_AT_END_SMOOTH

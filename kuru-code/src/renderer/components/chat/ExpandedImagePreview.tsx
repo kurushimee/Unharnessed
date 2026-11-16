@@ -1,20 +1,11 @@
 import type { SnapShotSource } from "~/contracts";
 
 import type { ComposerFileAttachment } from "../../composerDraftStore";
-import { type ChatFileAttachment, type ChatImageAttachment, isVideoAttachment } from "../../types";
-import type {
-  AssetCreateUrlResult,
-  AssetResource,
-  EnvironmentId,
-  ScopedThreadRef,
-} from "~/contracts";
-import { videoMimeType } from "~/shared/video";
+import { type ChatImageAttachment, isVideoAttachment } from "../../types";
+import type { AssetCreateUrlResult, AssetResource, EnvironmentId, ScopedThreadRef } from "~/contracts";
 import { resolveMediaSource } from "~/rt/mediaSource";
 import { resolveAssetUrl } from "~/rt/state/assets";
-import {
-  squashAtomCommandFailure,
-  type AtomCommandResult,
-} from "~/rt/state/runtime";
+import { squashAtomCommandFailure, type AtomCommandResult } from "~/rt/state/runtime";
 import { resolveExternalWebLinkHost } from "./externalLinkContextMenu";
 import type { MediaActionSource } from "../media/MediaActions";
 import { resolveProtocolRelativeMediaUrl } from "../media/mediaContent";
@@ -103,60 +94,10 @@ export async function resolveMarkdownMediaPreview(input: {
   };
 }
 
-export function buildAttachmentVideoAsset(
-  environmentId: EnvironmentId,
-  attachment: Pick<ChatFileAttachment, "id" | "name" | "mimeType">,
-): NonNullable<MediaActionSource["asset"]> {
-  return {
-    environmentId,
-    resource: {
-      _tag: "attachment" as const,
-      attachmentId: attachment.id,
-      fileName: attachment.name,
-      mimeType: videoMimeType(attachment) ?? attachment.mimeType,
-    },
-  };
-}
-
-export function buildAttachmentVideoPreview(
-  environmentId: EnvironmentId,
-  attachment: ChatFileAttachment,
-): ExpandedImagePreview | null {
-  if (!isVideoAttachment(attachment)) return null;
-  const src = attachment.previewUrl ?? null;
-  const asset =
-    attachment.downloadable === false
-      ? undefined
-      : buildAttachmentVideoAsset(environmentId, attachment);
-  if (src === null && asset === undefined) return null;
-  return {
-    images: [
-      {
-        src,
-        name: attachment.name,
-        type: "video",
-        actionsSource: {
-          kind: "video",
-          name: attachment.name,
-          src,
-          ...(asset ? { asset } : {}),
-        },
-      },
-    ],
-    index: 0,
-  };
-}
-
 export function expandedImageKey(preview: ExpandedImagePreview): string {
   const item = preview.images[preview.index];
   const asset = item?.actionsSource?.asset;
   return `${item?.src ?? (asset ? JSON.stringify([asset.environmentId, asset.resource]) : "image")}:${preview.index}`;
-}
-
-export function attachVideoThumbnail(video: HTMLVideoElement, file: File): () => void {
-  const url = URL.createObjectURL(file);
-  video.src = url;
-  return () => URL.revokeObjectURL(url);
 }
 
 export function buildExpandedImagePreview(
