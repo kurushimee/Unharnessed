@@ -64,6 +64,8 @@ export const DEFAULT_KEYBINDINGS: ReadonlyArray<KeybindingRule> = [
   { key: "mod+[", command: "navigation.back" },
   { key: "mod+]", command: "navigation.forward" },
   { key: "mod+shift+b", command: "threadPanel.toggle" },
+  { key: "mod+alt+b", command: "rightPanel.toggle" },
+  { key: "mod+w", command: "rightPanel.close" },
   { key: "mod+k", command: "commandPalette.toggle" },
   { key: "mod+u", command: "usage.open" },
   { key: "mod+alt+a", command: "theme.select" },

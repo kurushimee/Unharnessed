@@ -4,7 +4,7 @@ import { readdir } from "node:fs/promises";
 import type { UsageReport, UsageTotals } from "@shared/usage";
 import { parse, sessionsDir } from "./sessions";
 
-type Reply = { at: number; provider: string; model: string; cost: number; input: number; output: number; cacheRead: number; cacheWrite: number };
+type Reply = { at: number; provider: string; model: string; cost: number; priced: boolean; input: number; output: number; cacheRead: number; cacheWrite: number };
 const cache = new Map<string, { key: string; replies: Reply[] }>();
 
 const empty = (): UsageTotals => ({ cost: 0, input: 0, output: 0, cacheRead: 0, cacheWrite: 0, replies: 0 });
@@ -41,6 +41,7 @@ async function replies(path: string): Promise<Reply[]> {
       provider: message.provider ?? "unknown",
       model: message.model ?? "unknown",
       cost: Number(cost?.total) || 0,
+      priced: typeof cost?.total === "number",
       input: Number(usage.input) || 0,
       output: Number(usage.output) || 0,
       cacheRead: Number(usage.cacheRead) || 0,
@@ -112,4 +113,143 @@ export async function usageReport(days: number): Promise<UsageReport> {
     providers: [...providers.values()].map(strip).sort(byCost),
     daily: [...daily.values()].sort((a, b) => a.day.localeCompare(b.day)),
   };
+}
+
+// ---- T3 Code's usage summary (its server.getUsageSummary), from the same session files.
+
+type SummaryInput = {
+  sinceDay: string;
+  untilDay: string;
+  timeZone: string;
+  resolution?: "day" | "hour";
+  sinceTime?: string;
+  untilTime?: string;
+  modelFilter?: { include?: { provider?: string; model: string }[]; exclude?: { provider?: string; model: string }[] };
+};
+
+const HOUR_MS = 3_600_000;
+
+function dayFormat(timeZone: string): Intl.DateTimeFormat {
+  try {
+    return new Intl.DateTimeFormat("en-CA", { timeZone, year: "numeric", month: "2-digit", day: "2-digit" });
+  } catch {
+    return new Intl.DateTimeFormat("en-CA", { timeZone: "UTC", year: "numeric", month: "2-digit", day: "2-digit" });
+  }
+}
+
+function matches(selectors: { provider?: string; model: string }[] | undefined, reply: Reply): boolean {
+  return (selectors ?? []).some((selector) => selector.model === reply.model && (selector.provider === undefined || selector.provider === reply.provider));
+}
+
+/**
+ * What the threads used in a window, as T3 Code's UsageSummary: buckets by day (or hour), provider
+ * and model. Unharnessed records each reply's cost itself, so costs are the provider's.
+ */
+export async function usageSummary(input: SummaryInput, hostId: string) {
+  const started = Date.now();
+  const dir = sessionsDir();
+  const format = dayFormat(input.timeZone);
+  const hourly = input.resolution === "hour" && input.sinceTime !== undefined && input.untilTime !== undefined;
+  const sinceMs = hourly ? Date.parse(input.sinceTime!) : Number.NEGATIVE_INFINITY;
+  const untilMs = hourly ? Date.parse(input.untilTime!) : Number.POSITIVE_INFINITY;
+  // The window's first day began at most 14 hours before its UTC midnight (the earliest zone).
+  const earliest = Math.max(Date.parse(`${input.sinceDay}T00:00:00Z`) - 14 * HOUR_MS, hourly ? sinceMs : 0);
+  let names: string[] = [];
+  try {
+    names = (await readdir(dir)).filter((name) => name.endsWith(".jsonl"));
+  } catch {
+    // No sessions yet.
+  }
+  type Bucket = {
+    day: string;
+    hourStart?: string;
+    provider: string;
+    model: string;
+    totals: { uncachedInputTokens: number; cachedInputTokens: number; cacheCreationTokens: number; outputTokens: number; reasoningTokens: number };
+    costUsd: number;
+    cacheSavingsUsd: number;
+    costSource: "providerReported" | "unpriced";
+    records: number;
+    unpricedRecords: number;
+    sessions: Set<string>;
+  };
+  const buckets = new Map<string, Bucket>();
+  const sessionsByProvider = new Map<string, Set<string>>();
+  let scanned = 0;
+  let skipped = 0;
+  for (const name of names) {
+    const path = join(dir, name);
+    let list: Reply[];
+    try {
+      if ((await stat(path)).mtimeMs < earliest) continue;
+      list = await replies(path);
+      scanned++;
+    } catch {
+      skipped++;
+      continue;
+    }
+    for (const reply of list) {
+      if (hourly ? reply.at < sinceMs || reply.at >= untilMs : false) continue;
+      const day = format.format(new Date(reply.at));
+      if (day < input.sinceDay || day > input.untilDay) continue;
+      if (input.modelFilter?.include && !matches(input.modelFilter.include, reply)) continue;
+      if (matches(input.modelFilter?.exclude, reply)) continue;
+      const hourStart = hourly ? new Date(sinceMs + Math.floor((reply.at - sinceMs) / HOUR_MS) * HOUR_MS).toISOString() : undefined;
+      const key = JSON.stringify([day, hourStart ?? null, reply.provider, reply.model]);
+      let bucket = buckets.get(key);
+      if (!bucket) {
+        bucket = {
+          day,
+          ...(hourStart === undefined ? {} : { hourStart }),
+          provider: reply.provider,
+          model: reply.model,
+          totals: { uncachedInputTokens: 0, cachedInputTokens: 0, cacheCreationTokens: 0, outputTokens: 0, reasoningTokens: 0 },
+          costUsd: 0,
+          cacheSavingsUsd: 0,
+          costSource: "unpriced",
+          records: 0,
+          unpricedRecords: 0,
+          sessions: new Set(),
+        };
+        buckets.set(key, bucket);
+      }
+      bucket.totals.uncachedInputTokens += reply.input;
+      bucket.totals.cachedInputTokens += reply.cacheRead;
+      bucket.totals.cacheCreationTokens += reply.cacheWrite;
+      bucket.totals.outputTokens += reply.output;
+      bucket.costUsd += reply.cost;
+      bucket.records++;
+      if (reply.priced) bucket.costSource = "providerReported";
+      else bucket.unpricedRecords++;
+      bucket.sessions.add(name);
+      const providerSessions = sessionsByProvider.get(reply.provider) ?? new Set<string>();
+      providerSessions.add(name);
+      sessionsByProvider.set(reply.provider, providerSessions);
+    }
+  }
+  return {
+    contractVersion: 6,
+    readAt: new Date().toISOString(),
+    timeZone: input.timeZone,
+    sinceDay: input.sinceDay,
+    untilDay: input.untilDay,
+    buckets: [...buckets.values()].map(({ sessions, ...bucket }) => ({ ...bucket, sessions: sessions.size })),
+    sources: [...sessionsByProvider].map(([provider, sessions]) => ({
+      fingerprint: { hostId, provider, resolvedHomePath: dir, volumeId: "" },
+      status: skipped > 0 ? ("partial" as const) : ("ok" as const),
+      scannedFiles: scanned,
+      skippedFiles: skipped,
+      malformedRecords: 0,
+      distinctSessions: sessions.size,
+      message: null,
+    })),
+    pricing: usagePricing(),
+    scanDurationMs: Date.now() - started,
+    ...(input.modelFilter === undefined ? {} : { modelFilter: input.modelFilter }),
+  };
+}
+
+/** Unharnessed prices each reply itself; there are no rates to fetch. */
+export function usagePricing() {
+  return { status: "fresh" as const, source: "Unharnessed", fetchedAt: null, knownModels: 0 };
 }

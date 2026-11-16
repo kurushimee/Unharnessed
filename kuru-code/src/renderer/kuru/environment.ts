@@ -88,13 +88,24 @@ const providersByEnvironmentAtom = Atom.make((get): ReadonlyMap<EnvironmentId, R
   return new Map([[LOCAL_ENVIRONMENT_ID, providers]]);
 }).pipe(Atom.withLabel("kuru:providers-by-environment"));
 
+/** With each environment's whole server config, providers included: what Usage limits reads. */
+const presentationsWithProvidersAtom = Atom.make((get) => {
+  const presentation = get(presentationsAtom).get(LOCAL_ENVIRONMENT_ID)!;
+  const serverConfig = get(serverConfigAtom(LOCAL_ENVIRONMENT_ID));
+  return new Map([[LOCAL_ENVIRONMENT_ID, { ...presentation, serverConfig }]]);
+}).pipe(Atom.withLabel("kuru:environment-presentations-with-providers"));
+
+const presentationFamily = Atom.family((environmentId: EnvironmentId | null) =>
+  Atom.make((get) => (environmentId === null ? null : (get(presentationsAtom).get(environmentId) ?? null))),
+);
+
 /** T3 Code's state/presentation.ts atoms for kuru code's one environment. */
 export const environmentPresentations = {
   presentationsAtom,
   serverConfigsAtom,
   providersByEnvironmentAtom,
-  presentationAtom: (environmentId: EnvironmentId | null) =>
-    Atom.make((get) => (environmentId === null ? null : (get(presentationsAtom).get(environmentId) ?? null))),
+  presentationsWithProvidersAtom,
+  presentationAtom: presentationFamily,
 };
 
 export function useServerConfigs(): ReadonlyMap<EnvironmentId, EnvironmentServerConfig> {

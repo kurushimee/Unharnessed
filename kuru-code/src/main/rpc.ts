@@ -6,7 +6,9 @@
 // `gh`. Any other answers `unsupported`, which the window shows as such.
 import type { WebContents } from "electron";
 import type { LogOutputChannel } from "vscode";
+import { hostname } from "node:os";
 import { type Git, run } from "./git";
+import { usagePricing, usageSummary } from "./usage";
 
 type Answer = { ok: true; value: unknown } | { ok: false; error: unknown; unsupported?: boolean };
 type Unary = (payload: any) => Promise<unknown>;
@@ -379,6 +381,8 @@ export function createRpc(options: {
   };
 
   const unary: Record<string, Unary> = {
+    "server.getUsageSummary": (input) => usageSummary(input, hostname()),
+    "server.refreshUsageRates": async () => usagePricing(),
     "vcs.listRefs": (input) => listRefs(input.cwd, input),
     "vcs.refreshStatus": async ({ cwd }) => {
       touch(cwd);

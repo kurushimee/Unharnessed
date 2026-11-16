@@ -7,16 +7,8 @@ export const USAGE_CONTRACT_VERSION = 6 as const;
 
 export const USAGE_MERGE_COMPATIBLE_SINCE = 4 as const;
 
-export const UsageProviderKind = Schema.Literals([
-  "claude",
-  "codex",
-  "grok",
-  "cursor",
-  "opencode",
-  "antigravity",
-  "pi",
-  "muse",
-]);
+/** In kuru code, the Unharnessed provider a reply came from (`anthropic`, `openai`...). */
+export const UsageProviderKind = TrimmedNonEmptyString;
 export type UsageProviderKind = typeof UsageProviderKind.Type;
 
 const USAGE_DAY_PATTERN = /^\d{4}-\d{2}-\d{2}$/;

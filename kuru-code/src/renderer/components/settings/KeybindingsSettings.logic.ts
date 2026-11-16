@@ -40,7 +40,7 @@ function compareCommands(
   );
 }
 
-export type KeybindingSource = "Default" | "Custom" | "Project";
+export type KeybindingSource = "Default" | "Custom";
 
 export interface KeybindingRow {
   readonly id: string;
@@ -58,9 +58,6 @@ export type WhenVariableOption = string;
 export type KeybindingCommandOption = KeybindingCommand;
 
 const CORE_WHEN_VARIABLES = [
-  "terminalFocus",
-  "terminalOpen",
-  "previewOpen",
   "isWeb",
   "isDesktop",
   "true",
@@ -75,7 +72,7 @@ for (const binding of DEFAULT_RESOLVED_KEYBINDINGS) {
 export const DEFAULT_WHEN_VARIABLE =
   [...DEFAULT_WHEN_VARIABLES].find(
     (identifier) => identifier !== "true" && identifier !== "false",
-  ) ?? "terminalFocus";
+  ) ?? "isDesktop";
 const KNOWN_WHEN_VARIABLES = new Set(DEFAULT_WHEN_VARIABLES);
 
 export function shortcutToKeybindingInput(shortcut: KeybindingShortcut): string {
@@ -134,10 +131,6 @@ export function parseWhenExpressionDraft(
 }
 
 function sourceForBinding(binding: ResolvedKeybindingRule): KeybindingSource {
-  if (String(binding.command).startsWith("script.")) {
-    return "Project";
-  }
-
   const bindingKey = shortcutToKeybindingInput(binding.shortcut);
   const bindingWhen = whenAstToExpression(binding.whenAst);
   const isDefault = DEFAULT_RESOLVED_KEYBINDINGS.some(
@@ -212,14 +205,11 @@ const KEYBINDING_GROUPS = [
   {
     id: "navigation",
     title: "Navigation",
-    prefixes: ["sidebar", "rightPanel", "commandPalette", "filePicker", "projectSearch", "editor"],
+    prefixes: ["sidebar", "rightPanel", "threadPanel", "commandPalette", "workspace", "navigation", "usage"],
   },
   { id: "threads", title: "Threads", prefixes: ["thread", "chat", "pullRequest"] },
   { id: "composer", title: "Composer", prefixes: ["composer", "modelPicker"] },
-  { id: "terminal", title: "Terminal", prefixes: ["terminal"] },
-  { id: "preview", title: "Preview & diff", prefixes: ["preview", "diff"] },
   { id: "appearance", title: "Appearance", prefixes: ["theme", "appearance", "themeEditor"] },
-  { id: "scripts", title: "Project scripts", prefixes: ["script"] },
 ] as const;
 const OTHER_KEYBINDING_GROUP = { id: "other", title: "Other" } as const;
 
@@ -374,7 +364,6 @@ export function commandLabel(command: KeybindingCommand): string {
   if (command === "composer.sendAlternate") return "Composer: Opposite Queue or Steer Action";
   if (command === "composer.sendBackground") return "Composer: Start in Background";
   if (command === "composer.sendAndNewThread") return "Composer: Send and Start New Thread";
-  if (command === "composer.dictation") return "Composer: Start or Finish Dictation";
   if (command === "thread.steerQueuedMessage") return "Queue: Send First Queued Message";
   if (command === "thread.editQueuedMessage") return "Queue: Edit Last Queued Message";
   if (command === "thread.copyReference") return "Pull Request: Copy Link or Thread";
@@ -382,12 +371,7 @@ export function commandLabel(command: KeybindingCommand): string {
   if (usageMetric) return `Usage: ${usageMetric.label}`;
   const usagePeriod = WINDOW_OPTIONS.find((option) => option.command === command);
   if (usagePeriod) return `Usage: Period: ${usagePeriod.label}`;
-  if (command === "view.reopenClosed") return "Reopen Closed Tab";
-  if (command === "preview.focusUrl") return "Preview: Focus URL";
   const raw = String(command);
-  if (raw.startsWith("script.") && raw.endsWith(".run")) {
-    return `Run Script: ${titleCaseCommandSegment(raw.slice("script.".length, -".run".length))}`;
-  }
   return raw.split(".").map(titleCaseCommandSegment).join(": ");
 }
 

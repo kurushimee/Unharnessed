@@ -11,7 +11,7 @@ import {
   formatUsd,
 } from "~/shared/usageFormat";
 import { cn } from "~/lib/utils";
-import { PROVIDER_ORDER, PROVIDER_PRESENTATION } from "./usageProviders";
+import { providerPresentation, providerOrder } from "./usageProviders";
 import { observeResize } from "~/lib/observeResize";
 
 const VIEW_WIDTH = 960;
@@ -59,6 +59,13 @@ function valueFor(
   return metric === "tokens" ? entry.totalTokens : entry.costUsd;
 }
 
+/** The providers' order, with any provider the periods name. */
+function periodProviderOrder(byPeriod: ReadonlyMap<string, DailyTotals | HourlyTotals>) {
+  const seen = new Set<UsageProviderKind>();
+  for (const totals of byPeriod.values()) for (const provider of totals.byProvider.keys()) seen.add(provider);
+  return providerOrder(seen);
+}
+
 export function buildPeriodColumns(
   periods: readonly string[],
   byPeriod: ReadonlyMap<string, DailyTotals | HourlyTotals>,
@@ -66,7 +73,7 @@ export function buildPeriodColumns(
 ): readonly DayColumn[] {
   return periods.map((period) => {
     const entry = byPeriod.get(period);
-    const bands = PROVIDER_ORDER.map((provider) => ({
+    const bands = periodProviderOrder(byPeriod).map((provider) => ({
       provider,
       value: valueFor(entry, provider, metric),
     }));
@@ -197,10 +204,11 @@ function buildChart(
   loadingProviders: ReadonlySet<UsageProviderKind>,
 ) {
   const columns = buildPeriodColumns(periods, byPeriod, metric);
+  const order = periodProviderOrder(byPeriod);
   const scale = chartScale(columns, loadingProviders);
   const stepX = periods.length < 2 ? 0 : VIEW_WIDTH / (periods.length - 1);
   const paths = providers.map((provider) => {
-    const slot = PROVIDER_ORDER.indexOf(provider);
+    const slot = order.indexOf(provider);
     const line = curvePath(
       smoothCurve(
         columns.map((column, periodIndex) => ({
@@ -248,7 +256,7 @@ function UsageChartTooltip({
     >
       <div className="mb-1 text-muted-foreground">{label}</div>
       {providers.map((provider) => {
-        const { label: providerLabel, driverKind } = PROVIDER_PRESENTATION[provider];
+        const { label: providerLabel, driverKind } = providerPresentation(provider);
         return (
           <div key={provider} className="flex items-center justify-between gap-3">
             <span className="flex items-center gap-1.5 text-muted-foreground">
@@ -491,7 +499,7 @@ export function UsageProviderChart({
               key={provider}
               d={area}
               className={seriesClassName(loading)}
-              fill={PROVIDER_PRESENTATION[provider].color}
+              fill={providerPresentation(provider).color}
               fillOpacity={0.12}
             />
           ))}
@@ -501,7 +509,7 @@ export function UsageProviderChart({
               d={line}
               className={seriesClassName(loading)}
               fill="none"
-              stroke={PROVIDER_PRESENTATION[provider].color}
+              stroke={providerPresentation(provider).color}
               strokeWidth={2}
               vectorEffect="non-scaling-stroke"
             />

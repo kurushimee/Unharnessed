@@ -41,7 +41,7 @@ import {
 import { Button } from "../ui/button";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
 import { UsageLimitsPooled } from "./UsageLimitsPooled";
-import { PROVIDER_PRESENTATION } from "./usageProviders";
+import { driverColor } from "./usageProviders";
 
 const PACE: Record<LimitPace, { readonly label: string; readonly icon: typeof GaugeIcon }> = {
   ahead: { label: "Ahead of pace: spending faster than the window elapses", icon: TrendingUpIcon },
@@ -50,10 +50,7 @@ const PACE: Record<LimitPace, { readonly label: string; readonly icon: typeof Ga
 };
 
 export function barColor(driver: ServerProvider["driver"]): string {
-  const presentation = Object.values(PROVIDER_PRESENTATION).find(
-    (entry) => entry.driverKind === driver,
-  );
-  return presentation?.color ?? "var(--foreground)";
+  return driverColor(driver) ?? "var(--foreground)";
 }
 
 export function PaceIcon({ pace }: { readonly pace: LimitPace }) {
@@ -361,15 +358,13 @@ export function UsageLimitsSection({
   readonly now: number;
 }) {
   const presentations = useAtomValue(environmentPresentations.presentationsWithProvidersAtom);
-  const hiddenDrivers = new Set<ServerProvider["driver"]>(
-    [...hiddenProviders].map((provider) => PROVIDER_PRESENTATION[provider].driverKind),
-  );
-  const isVisible = (driver: ServerProvider["driver"]) => !hiddenDrivers.has(driver);
+  // kuru code hides a provider by its Unharnessed id, which is its instance id.
+  const isVisible = (instanceId: string) => !hiddenProviders.has(instanceId);
   const selected = new Map(
     [...presentations].flatMap(([id, presentation]) => {
       if (selectedEnvironmentIds !== null && !selectedEnvironmentIds.has(id)) return [];
       const config = presentation.serverConfig;
-      if (hiddenDrivers.size === 0 || config === null) return [[id, presentation] as const];
+      if (hiddenProviders.size === 0 || config === null) return [[id, presentation] as const];
       return [
         [
           id,
@@ -377,13 +372,7 @@ export function UsageLimitsSection({
             ...presentation,
             serverConfig: {
               ...config,
-              providers: config.providers.filter((provider) => isVisible(provider.driver)),
-              usageLimitSources: config.usageLimitSources?.flatMap((source) => {
-                const accounts = source.accounts.filter((account) => isVisible(account.driver));
-                return accounts.length === 0 && source.accounts.length > 0
-                  ? []
-                  : [{ ...source, accounts }];
-              }),
+              providers: config.providers.filter((provider) => isVisible(provider.instanceId)),
             },
           },
         ] as const,

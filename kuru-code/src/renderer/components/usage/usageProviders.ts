@@ -1,7 +1,10 @@
-import type { UsageProviderKind } from "~/contracts";
+// From T3 Code's components/usage/usageProviders.ts. T3 Code's usage came from its coding
+// agents, a fixed list; kuru code's comes from Unharnessed's providers, whichever are set up.
+import type { ProviderDriverKind, UsageProviderKind } from "~/contracts";
 
-import { ProviderDriverKind } from "~/contracts";
-
+import { driverKindOfProvider } from "~/kuru/providers";
+import { appAtomRegistry } from "~/rpc/atomRegistry";
+import { primaryServerConfigAtom } from "~/state/server";
 import type { UsageMetric } from "./usageShortcuts";
 
 type UsageProviderPresentation = {
@@ -10,46 +13,45 @@ type UsageProviderPresentation = {
   readonly driverKind: ProviderDriverKind;
 };
 
-export const PROVIDER_PRESENTATION = {
-  codex: {
-    label: "Codex",
-    color: "var(--contrast-foreground)",
-    driverKind: ProviderDriverKind.make("codex"),
-  },
-  claude: {
-    label: "Claude Code",
-    color: "#d97757",
-    driverKind: ProviderDriverKind.make("claudeAgent"),
-  },
-  grok: {
-    label: "Grok Build",
-    color: "color-mix(in oklab, var(--contrast-foreground) 72%, var(--background))",
-    driverKind: ProviderDriverKind.make("grok"),
-  },
-  cursor: { label: "Cursor", color: "#8b8b8b", driverKind: ProviderDriverKind.make("cursor") },
-  opencode: {
-    label: "OpenCode",
-    color: "#5b9bbd",
-    driverKind: ProviderDriverKind.make("opencode"),
-  },
-  antigravity: {
-    label: "Antigravity",
-    color: "#8c7bd1",
-    driverKind: ProviderDriverKind.make("antigravity"),
-  },
-  pi: {
-    label: "Pi",
-    color: "#4d9f8a",
-    driverKind: ProviderDriverKind.make("pi"),
-  },
-  muse: {
-    label: "Muse Code",
-    color: "#0866ff",
-    driverKind: ProviderDriverKind.make("muse"),
-  },
-} satisfies Record<UsageProviderKind, UsageProviderPresentation>;
+/** T3 Code's colours, by the agent whose icon a provider shows. */
+const DRIVER_COLORS: Readonly<Record<string, string>> = {
+  codex: "var(--contrast-foreground)",
+  claudeAgent: "#d97757",
+  grok: "color-mix(in oklab, var(--contrast-foreground) 72%, var(--background))",
+  antigravity: "#8c7bd1",
+};
+const OTHER_COLORS = ["#5b9bbd", "#4d9f8a", "#0866ff", "#8b8b8b", "#c4a35a", "#c75f8f"];
 
-export const PROVIDER_ORDER = Object.keys(PROVIDER_PRESENTATION) as UsageProviderKind[];
+function configuredProviders() {
+  return appAtomRegistry.get(primaryServerConfigAtom)?.providers ?? [];
+}
+
+export function providerPresentation(provider: UsageProviderKind): UsageProviderPresentation {
+  const configured = configuredProviders().find((entry) => entry.instanceId === provider);
+  const driverKind = configured?.driver ?? driverKindOfProvider(provider, false);
+  let hash = 0;
+  for (const char of provider) hash = (hash * 31 + char.charCodeAt(0)) >>> 0;
+  return {
+    label: configured?.displayName ?? provider,
+    color: DRIVER_COLORS[driverKind] ?? OTHER_COLORS[hash % OTHER_COLORS.length]!,
+    driverKind,
+  };
+}
+
+/** The colour of the first of Unharnessed's providers showing this agent's icon. */
+export function driverColor(driver: ProviderDriverKind): string | undefined {
+  const configured = configuredProviders().find((entry) => entry.driver === driver);
+  return configured ? providerPresentation(configured.instanceId).color : DRIVER_COLORS[driver];
+}
+
+/** Unharnessed's providers in their order, then any others usage names (since removed). */
+export function providerOrder(
+  seen: Iterable<UsageProviderKind> = [],
+): readonly UsageProviderKind[] {
+  const order: UsageProviderKind[] = configuredProviders().map((entry) => entry.instanceId);
+  for (const provider of seen) if (!order.includes(provider)) order.push(provider);
+  return order;
+}
 
 export function providersWithUsage(
   totals: readonly {
@@ -63,7 +65,7 @@ export function providersWithUsage(
       .filter((entry) => entry.totalTokens > 0 || entry.costUsd > 0)
       .map((entry) => entry.provider),
   );
-  return PROVIDER_ORDER.filter((provider) => active.has(provider));
+  return providerOrder(active).filter((provider) => active.has(provider));
 }
 
 export function rankProvidersByMetric(

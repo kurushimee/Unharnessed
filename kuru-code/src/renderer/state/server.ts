@@ -20,7 +20,11 @@ import { useAtomValue } from "@effect/atom-react";
 import { Atom, AsyncResult } from "effect/reactivity";
 import { DEFAULT_RESOLVED_KEYBINDINGS, mergeWithDefaultKeybindings } from "~/shared/keybindings";
 import { serverConfigAtom, updateServerSettings } from "~/kuru/serverConfig";
-import { createEnvironmentRpcCommand, createLocalCommand } from "~/rt/state/runtime";
+import {
+  createEnvironmentRpcCommand,
+  createEnvironmentRpcQueryAtomFamily,
+  createLocalCommand,
+} from "~/rt/state/runtime";
 import { connectionAtomRuntime } from "~/connection/runtime";
 import { appAtomRegistry } from "~/rpc/atomRegistry";
 
@@ -88,6 +92,13 @@ export const serverEnvironment = {
   scheduledTasksLive: (_target: { environmentId: EnvironmentId; input: object }) => NO_SCHEDULED_TASKS,
   updateSettings,
   mutateProviderInstance: updateSettings,
+  // A cold scan of the session files takes a while, so a window's summary is kept for a minute.
+  usageSummary: createEnvironmentRpcQueryAtomFamily(connectionAtomRuntime, {
+    label: "environment-data:server:usage-summary",
+    tag: WS_METHODS.serverGetUsageSummary,
+    staleTimeMs: 60_000,
+  }),
+  refreshUsageRates: rpcCommand("environment-data:server:refresh-usage-rates", WS_METHODS.serverRefreshUsageRates),
   refreshProviders: rpcCommand("environment-data:server:refresh-providers", WS_METHODS.serverRefreshProviders),
   upsertKeybinding: rpcCommand("environment-data:server:upsert-keybinding", WS_METHODS.serverUpsertKeybinding),
   removeKeybinding: rpcCommand("environment-data:server:remove-keybinding", WS_METHODS.serverRemoveKeybinding),
