@@ -52,6 +52,13 @@ async function start(): Promise<void> {
   const limits = new Limits(log);
   let window: BrowserWindow | undefined;
 
+  /** The window, while it exists: closed by its X, it is destroyed and any call on it throws. */
+  const live = () => (window && !window.isDestroyed() ? window : undefined);
+  let quitting = false;
+  // A main-process error goes to the log: Electron's own dialog would block the app.
+  process.on("uncaughtException", (error) => log.error(`uncaught: ${error.stack ?? String(error)}`));
+  process.on("unhandledRejection", (reason) => log.error(`unhandled rejection: ${reason instanceof Error ? (reason.stack ?? reason.message) : String(reason)}`));
+
   const post = (message: HostMessage) => {
     if (window && !window.isDestroyed()) window.webContents.send("host", message);
   };
@@ -71,7 +78,8 @@ async function start(): Promise<void> {
   });
   threads.onApp((state) => post({ type: "app", app: state }));
   threads.onDone(({ id, title, failed, shown: onScreen }) => {
-    const focused = window?.isFocused() ?? false;
+    if (quitting) return;
+    const focused = live()?.isFocused() ?? false;
     if (!onScreen) post({ type: "threadDone", id, title, failed });
     if (store.prefs.notifications && (!focused || !onScreen) && Notification.isSupported()) {
       const note = new Notification({
@@ -80,8 +88,8 @@ async function start(): Promise<void> {
         silent: false,
       });
       note.on("click", () => {
-        window?.show();
-        window?.focus();
+        live()?.show();
+        live()?.focus();
         threads.openSaved(id);
       });
       note.show();
@@ -339,7 +347,9 @@ async function start(): Promise<void> {
   };
 
   const addProject = async () => {
-    const picked = await dialog.showOpenDialog(window!, { title: "Add project", properties: ["openDirectory", "createDirectory"] });
+    const owner = live();
+    if (!owner) return;
+    const picked = await dialog.showOpenDialog(owner, { title: "Add project", properties: ["openDirectory", "createDirectory"] });
     const path = picked.filePaths[0];
     if (picked.canceled || !path) return;
     const id = store.addProject(path);
@@ -481,12 +491,12 @@ async function start(): Promise<void> {
   };
 
   app.on("second-instance", () => {
-    if (!window) return;
-    if (window.isMinimized()) window.restore();
-    window.focus();
+    const shown = live();
+    if (!shown) return;
+    if (shown.isMinimized()) shown.restore();
+    shown.focus();
   });
 
-  let quitting = false;
   app.on("before-quit", (event) => {
     if (quitting) return;
     event.preventDefault();
