@@ -1,9 +1,7 @@
 import { rewindableMessageIdsAtom } from "~/kuru/threadDetails";
-import { ChildThreadApprovals } from "./chat/ChildThreadApprovals";
 import { workspaceAreaProps } from "../lib/workspaceFocus";
 import { sourceControlClients } from "~/rt/sourceControlClients";
 import { resolveNewThreadModelSelection } from "~/shared/usageLimits";
-import { queuedRunEditBlockedReason } from "~/rt/queuedRunEdit";
 import { ScrollToEndButton, WorkspaceFileDropOverlay } from "./chat/TimelineOverlays";
 import { usePasteToFocusComposer } from "./chat/usePasteToFocusComposer";
 import { announcedRun, isDetailBehindShell } from "./chat/threadActivityAnnouncement";
@@ -28,7 +26,6 @@ import { resolveDraftHeroState } from "./ChatView.logic";
 import { useQueuedRunEdit } from "./chat/useQueuedRunEdit";
 import { recallCheckoutIsRepo, rememberCheckoutIsRepo } from "./ChatView.logic";
 import { useStableCallback } from "../hooks/useStableCallback";
-import { usePendingThreadRequests } from "./chat/usePendingThreadRequests";
 import { visibleThreadPullRequests } from "~/shared/threadPullRequests";
 import { DEFAULT_RUNTIME_MODE } from "~/contracts";
 import { requestWorkspaceContentFocus, requestWorkspaceFocus } from "~/lib/workspaceFocus";
@@ -76,7 +73,6 @@ import { useLocation, useNavigate } from "@tanstack/react-router";
 import { assistantCitationFromLocation } from "../lib/assistantCitationNavigation";
 import type { AssistantCitationSourceAnchor } from "~/lib/assistantTextSelection";
 import { useStore } from "zustand";
-import { shallow } from "zustand/vanilla/shallow";
 import { useShallow } from "zustand/react/shallow";
 import {
   isAtomCommandInterrupted,
@@ -790,40 +786,6 @@ export default function ChatView(props: ChatViewProps) {
     setLocalDraftErrorsByDraftId,
   });
   const {
-    pendingApprovals,
-    pendingUserInputs,
-    activePendingApproval,
-    activePendingUserInput,
-    activePendingDraftAnswers,
-    activePendingQuestionIndex,
-    activePendingProgress,
-    activePendingResolvedAnswers,
-    activePendingIsResponding,
-    respondingRequestIds,
-    onRespondToApproval: onRespondToApprovalStable,
-    onDismissUserInput: onDismissUserInputStable,
-    onSelectActivePendingUserInputOption: onSelectActivePendingUserInputOptionStable,
-    onChangeActivePendingUserInputCustomAnswer,
-    onAdvanceActivePendingUserInput,
-    onAdvanceActivePendingUserInputStable,
-    onPreviousActivePendingUserInputQuestion: onPreviousActivePendingUserInputQuestionStable,
-  } = usePendingThreadRequests({
-    environmentId,
-    activeThreadId,
-    serverProjection,
-    composerDraftTarget,
-    setComposerDraftPrompt,
-    promptRef,
-    composerRef,
-    setThreadError,
-  });
-  const [heldApprovalRequestIds, setHeldApprovalRequestIds] = useState<ReadonlySet<string>>(
-    () => new Set(),
-  );
-  const onHeldRequestIdsChange = useStableCallback((requestIds: ReadonlySet<string>) => {
-    setHeldApprovalRequestIds((current) => (shallow(current, requestIds) ? current : requestIds));
-  });
-  const {
     beginLocalDispatch,
     resetLocalDispatch,
     localDispatchStartedAt,
@@ -835,8 +797,6 @@ export default function ChatView(props: ChatViewProps) {
     latestUserMessageId:
       serverProjection?.messages.findLast((message) => message.role === "user")?.id ?? null,
     phase,
-    activePendingApproval: activePendingApproval?.requestId ?? null,
-    activePendingUserInput: activePendingUserInput?.requestId ?? null,
     threadError,
   });
   const optimisticCompactionMessage = optimisticUserMessages.at(-1);
@@ -1375,12 +1335,10 @@ export default function ChatView(props: ChatViewProps) {
     activeBranchMismatchKey,
     attentionNow,
     workNow,
-    childInputNow,
     goalNow,
     handleSwitchCheckoutToThread,
     handleSwitchCheckoutToThreadStable,
     isRestoringThreadBranch,
-    onOpenRelatedThreadStable,
     sendStandaloneCommand,
     setBranchMismatchDismissTick,
     showBranchMismatchBanner,
@@ -1405,8 +1363,6 @@ export default function ChatView(props: ChatViewProps) {
     isWorking,
     pendingBackgroundTasks,
     turnItems: serverProjection?.turnItems ?? EMPTY_TURN_ITEMS,
-    activePendingApproval,
-    activePendingUserInput,
     localCheckoutBranchMismatch,
     gitStatusQuery,
     nowMinute,
@@ -1434,9 +1390,7 @@ export default function ChatView(props: ChatViewProps) {
     !manualCompactionProviderAvailable ||
     isWorking ||
     isRevertingCheckpoint ||
-    threadDetailLoading ||
-    pendingApprovals.length > 0 ||
-    pendingUserInputs.length > 0;
+    threadDetailLoading;
   const compactDisabled = compactThreadUnavailable;
   const resumeCompactionTokens =
     activeContextWindow &&
@@ -1472,9 +1426,6 @@ export default function ChatView(props: ChatViewProps) {
   };
   const freshSessionAvailable =
     activeMessageCount > 0 && serverConfig?.environment.capabilities.freshContext === true;
-  // While a question or approval owns the composer, its text answers that, not the agent.
-  const freshSessionCommandAvailable =
-    freshSessionAvailable && activePendingApproval === null && pendingUserInputs.length === 0;
   const freshSessionArmed = useFreshSessionArmed(routeThreadKey);
   const toggleKeepFullHistory = () => setKeepFullHistory(routeThreadKey, !keepFullHistory);
   const toggleKeepFullHistoryStable = useStableCallback(toggleKeepFullHistory);
@@ -1537,9 +1488,8 @@ export default function ChatView(props: ChatViewProps) {
       deriveProviderExtensionStatuses(serverProjection),
     );
     const extensionStatusItems = extensionStatusBanner === null ? [] : [extensionStatusBanner];
-    // An approval's feedback goes to that approval; the armed session waits for the next message.
     const freshSessionItems =
-      freshSessionAvailable && freshSessionArmed && activePendingApproval === null
+      freshSessionAvailable && freshSessionArmed
         ? [freshSessionBannerItem(() => disarmFreshSession(routeThreadKey))]
         : [];
     if (!localCheckoutBranchMismatch || !showBranchMismatchBanner || !activeBranchMismatchKey) {
@@ -1708,13 +1658,8 @@ export default function ChatView(props: ChatViewProps) {
     panelAnimationsActive,
     panelAnimationDurationMs,
     keepFullHistory,
-    freshSessionAvailable: freshSessionCommandAvailable,
+    freshSessionAvailable,
     resumeCompactionTokens,
-    pendingApprovals,
-    respondingRequestIds,
-    activePendingProgress,
-    onAdvanceActivePendingUserInput,
-    onRespondToApproval: onRespondToApprovalStable,
     beginLocalDispatch,
     resetLocalDispatch,
     captureDraftHeroComposerRect,
@@ -1748,9 +1693,6 @@ export default function ChatView(props: ChatViewProps) {
           threadId={activeThread.id}
           optimisticMessages={optimisticUserMessages}
           editingRunId={queuedRunEdit.editingRunId}
-          editBlockedReason={queuedRunEditBlockedReason({
-            openQuestionCount: pendingUserInputs.length,
-          })}
           onEditQueuedRun={queuedRunEdit.beginEdit}
           onCancelEdit={queuedRunEdit.cancelEdit}
           timestampFormat={timestampFormat}
@@ -1774,10 +1716,7 @@ export default function ChatView(props: ChatViewProps) {
         message.inputIntent === "queued_turn" &&
         !serverProjection?.messages.some((committed) => committed.id === message.id),
     );
-  const scrollToEndSummary =
-    [childInputNow?.waitingLabel ?? null, queuedRunCount === 0 ? null : `${queuedRunCount} queued`]
-      .filter((part) => part !== null)
-      .join(" · ") || null;
+  const scrollToEndSummary = queuedRunCount === 0 ? null : `${queuedRunCount} queued`;
   // The end of the timeline holds the thread's present and next turns: what it is doing now,
   // its lifecycle status, then your queued messages.
   const timelineFooter =
@@ -1935,10 +1874,6 @@ export default function ChatView(props: ChatViewProps) {
             >
               <WorkspaceMutationIdContext value={workspaceMutationId}>
                 <ThreadTimeline
-                  pendingApprovals={pendingApprovals}
-                  heldApprovalRequestIds={heldApprovalRequestIds}
-                  respondingRequestIds={respondingRequestIds}
-                  onRespondToApproval={onRespondToApprovalStable}
                   canOperateThread={canOperateThread}
                   threadDetailRef={routeThreadDetailRef}
                   entriesInput={timelineEntriesInput}
@@ -1952,18 +1887,6 @@ export default function ChatView(props: ChatViewProps) {
                   isWorking={isWorking}
                   runlessWorkActive={runlessWorkStartedAt !== null}
                   isCompacting={isCompacting}
-                  awaitingUser={
-                    activePendingApproval !== null
-                      ? "approval"
-                      : activePendingUserInput !== null ||
-                          // A secret request has no runtime request; the shell carries it.
-                          activeThreadShell?.hasPendingUserInput === true
-                        ? "input"
-                        : null
-                  }
-                  awaitingRequestId={
-                    activePendingApproval?.requestId ?? activePendingUserInput?.requestId ?? null
-                  }
                   activeTurnStartedAt={activeWorkStartedAt}
                   footer={timelineFooter}
                   listRef={legendListRef}
@@ -2061,7 +1984,6 @@ export default function ChatView(props: ChatViewProps) {
                         : undefined
                     }
                   >
-                    <ChildThreadApprovals threadRef={activeThreadRef} />
                     <div className="relative">
                       <ComposerSurface.Shell contextRow={showComposerContextStrip}>
                         <ComposerSurface.Host
@@ -2118,18 +2040,8 @@ export default function ChatView(props: ChatViewProps) {
                               keepFullHistory={keepFullHistory}
                               onToggleKeepFullHistory={toggleKeepFullHistoryStable}
                               onFreshSession={
-                                freshSessionCommandAvailable ? armFreshSessionStable : undefined
+                                freshSessionAvailable ? armFreshSessionStable : undefined
                               }
-                              activePendingApproval={activePendingApproval}
-                              pendingApprovals={pendingApprovals}
-                              onHeldRequestIdsChange={onHeldRequestIdsChange}
-                              pendingUserInputs={pendingUserInputs}
-                              activePendingProgress={activePendingProgress}
-                              activePendingResolvedAnswers={activePendingResolvedAnswers}
-                              activePendingIsResponding={activePendingIsResponding}
-                              activePendingDraftAnswers={activePendingDraftAnswers}
-                              activePendingQuestionIndex={activePendingQuestionIndex}
-                              respondingRequestIds={respondingRequestIds}
                               lockedProvider={modelPickerLockedProvider}
                               providerStatuses={providerStatuses as ServerProvider[]}
                               providerCatalogKnown={serverConfig !== null}
@@ -2165,19 +2077,6 @@ export default function ChatView(props: ChatViewProps) {
                               onSend={onComposerSendStable}
                               onResume={onComposerResumeStable}
                               onInterrupt={onInterruptStable}
-                              onSelectActivePendingUserInputOption={
-                                onSelectActivePendingUserInputOptionStable
-                              }
-                              onAdvanceActivePendingUserInput={
-                                onAdvanceActivePendingUserInputStable
-                              }
-                              onDismissActivePendingUserInput={onDismissUserInputStable}
-                              onPreviousActivePendingUserInputQuestion={
-                                onPreviousActivePendingUserInputQuestionStable
-                              }
-                              onChangeActivePendingUserInputCustomAnswer={
-                                onChangeActivePendingUserInputCustomAnswer
-                              }
                               onProviderModelSelect={onProviderModelSelectStable}
                               onOpenProviderSetup={openProviderSetupStable}
                               getModelDisabledReason={getModelDisabledReason}

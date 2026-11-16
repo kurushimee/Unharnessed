@@ -19,7 +19,6 @@ import {
   partitionStashAttachments,
   usePromptStashStore,
 } from "../../promptStashStore";
-import { type PendingUserInput } from "../../session-logic";
 import { type ReviewCommentContext } from "../../reviewCommentContext";
 import { collapseExpandedComposerCursor } from "../../composer-logic";
 import { compressImageForStash } from "../../lib/imageCompression";
@@ -56,8 +55,6 @@ export function useComposerStash(input: {
   readonly readAttachmentDraft: () => Pick<ComposerThreadDraftState, "images" | "files">;
   readonly routeThreadRef: ChatComposerProps["routeThreadRef"];
   readonly projectSelectionRequired: boolean;
-  readonly pendingUserInputs: ReadonlyArray<PendingUserInput>;
-  readonly activePendingProgress: ChatComposerProps["activePendingProgress"];
   readonly prompt: string;
   readonly composerMenuOpen: boolean;
   readonly isComposerCollapsedMobile: boolean;
@@ -84,8 +81,6 @@ export function useComposerStash(input: {
     readAttachmentDraft,
     routeThreadRef,
     projectSelectionRequired,
-    pendingUserInputs,
-    activePendingProgress,
     prompt,
     composerMenuOpen,
     isComposerCollapsedMobile,
@@ -429,11 +424,7 @@ export function useComposerStash(input: {
     event.preventDefault();
     event.stopPropagation();
     if (isCommandPaletteOpen() || isRevertingCheckpoint()) return;
-    if (pendingUserInputs.length > 0) {
-      setIsStashMenuOpen((open) => !open);
-      return;
-    }
-    if (projectSelectionRequired || activePendingProgress !== null) return;
+    if (projectSelectionRequired) return;
     void stashCurrentPromptStable();
   });
   // Capture phase while the composer is mounted, so Mod+S never reaches the browser's save

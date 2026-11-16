@@ -20,7 +20,6 @@ import {
   formatSearchToolLabel,
 } from "~/shared/toolActivity";
 import { contextCompactionLabel, workEntryIndicatesToolFailure } from "~/rt/work-log/presentation";
-import type { ThreadPendingApproval, ThreadPendingUserInput } from "~/rt/state/threadRequests";
 import type { ThreadRunSummary, ThreadRuntimeSummary } from "~/rt/state/models";
 import { threadRuntimeHasInterruptibleRun } from "~/rt/state/threadExecution";
 import { turnItemIsWorkspacePreparation } from "~/rt/state/turnItemPresentation";
@@ -79,9 +78,6 @@ export interface WorkLogEntry {
   readonly sourceItemType?: OrchestrationV2TurnItem["type"];
   readonly projectedItem?: OrchestrationV2ProjectedTurnItem;
 }
-
-export type PendingApproval = ThreadPendingApproval;
-export type PendingUserInput = ThreadPendingUserInput;
 
 export type TimelineAttempt = Pick<
   OrchestrationV2RunAttempt,
@@ -184,18 +180,6 @@ export function deriveActiveWorkStartedAt(
 ): string | null {
   const startedAt = resolveThreadWorkingStartedAt({ latestRun, runtime });
   return startedAt ?? (runtime?.activeRunId == null ? sendStartedAt : null);
-}
-
-export function derivePendingApprovals(
-  approvals: ReadonlyArray<ThreadPendingApproval>,
-): ThreadPendingApproval[] {
-  return [...approvals].toSorted((left, right) => left.createdAt.localeCompare(right.createdAt));
-}
-
-export function derivePendingUserInputs(
-  inputs: ReadonlyArray<ThreadPendingUserInput>,
-): ThreadPendingUserInput[] {
-  return [...inputs].toSorted((left, right) => left.createdAt.localeCompare(right.createdAt));
 }
 
 const STANDALONE_V2_ITEM_TYPES = new Set<OrchestrationV2ProjectedTurnItem["item"]["type"]>([

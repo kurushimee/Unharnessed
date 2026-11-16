@@ -589,14 +589,12 @@ export function hasServerAcknowledgedLocalDispatch(input: {
   latestRun: Thread["latestRun"] | null;
   latestUserMessageId?: ChatMessage["id"] | null;
   runtime: Thread["runtime"] | null;
-  hasPendingApproval: boolean;
-  hasPendingUserInput: boolean;
   threadError: string | null | undefined;
 }): boolean {
   if (!input.localDispatch) {
     return false;
   }
-  if (input.hasPendingApproval || input.hasPendingUserInput || Boolean(input.threadError)) {
+  if (input.threadError) {
     return true;
   }
   const latestUserMessageChanged =

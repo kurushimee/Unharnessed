@@ -38,13 +38,12 @@ function asOneAnnouncement(texts: ReadonlyArray<string>) {
 }
 
 /**
- * The open thread's polite live regions. Status has its own, so "Needs
- * approval" landing a moment after a message doesn't replace it unheard.
+ * The open thread's polite live regions. Status has its own, so "Done"
+ * landing a moment after a message doesn't replace it unheard.
  */
 export const ThreadActivityAnnouncer = memo(function ThreadActivityAnnouncer({
   threadKey,
   status,
-  requestId,
   runId,
   runStatus,
   detailBehind,
@@ -112,7 +111,6 @@ export const ThreadActivityAnnouncer = memo(function ThreadActivityAnnouncer({
     const previous = memoryRef.current?.threadKey === threadKey ? memoryRef.current : null;
     const turn = nextThreadAnnouncement(previous?.memory ?? null, {
       status,
-      requestId,
       runId,
       runStatus,
     });
@@ -165,7 +163,6 @@ export const ThreadActivityAnnouncer = memo(function ThreadActivityAnnouncer({
   }, [
     threadKey,
     status,
-    requestId,
     runId,
     runStatus,
     detailBehind,

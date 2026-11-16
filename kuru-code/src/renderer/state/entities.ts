@@ -24,7 +24,6 @@ import { environmentThreadDetails, environmentThreadShells } from "./threads";
 const allEnvironmentProjectSnapshotsReadyAtom = shellsBootstrappedAtom;
 const allEnvironmentShellsBootstrappedAtom = shellsBootstrappedAtom;
 const environmentPresentations = { serverConfigsAtom: environmentServerConfigsAtom };
-import { waitForAtomValue } from "./waitForAtomValue";
 
 const EMPTY_THREAD_REFS: ReadonlyArray<ScopedThreadRef> = Object.freeze([]);
 const EMPTY_VISIBLE_TURN_ITEMS: ReadonlyArray<OrchestrationV2ProjectedTurnItem> = Object.freeze([]);
@@ -142,12 +141,6 @@ export function useQuietThreadShell(ref: ScopedThreadRef | null): EnvironmentThr
 /** Every thread shell, held through streaming ticks; see quietThreadShellAtom. */
 export function useQuietThreadShells(): ReadonlyArray<EnvironmentThreadShell> {
   return useAtomValue(environmentThreadShells.quietThreadShellsAtom);
-}
-
-export function useChildThreadInputs(ref: ScopedThreadRef | null) {
-  return useAtomValue(
-    ref === null ? EMPTY_THREAD_SHELLS_ATOM : environmentThreadShells.childThreadInputsAtom(ref),
-  );
 }
 
 export function useThreadProjection(ref: ScopedThreadRef | null): EnvironmentThread | null {
@@ -269,15 +262,6 @@ export function waitForProject(
 
 export function readThreadShell(ref: ScopedThreadRef): EnvironmentThreadShell | null {
   return appAtomRegistry.get(environmentThreadShells.threadShellAtom(ref));
-}
-
-export function waitForThreadShell(ref: ScopedThreadRef, timeoutMs = 5_000): Promise<boolean> {
-  return waitForAtomValue({
-    registry: appAtomRegistry,
-    atom: environmentThreadShells.threadShellAtom(ref),
-    predicate: (thread) => thread !== null,
-    timeoutMs,
-  });
 }
 
 export function readEnvironmentServerConfigLoaded(environmentId: EnvironmentId): boolean {

@@ -1,4 +1,4 @@
-import { type MessageId, type RuntimeRequestId } from "~/contracts";
+import { type MessageId } from "~/contracts";
 import { useState } from "react";
 import { type ComposerSubmissionIntent } from "../../composer-logic";
 import { type SessionPhase, type Thread } from "../../types";
@@ -13,8 +13,6 @@ export function useLocalDispatchState(input: {
   activeLatestRun: Thread["latestRun"] | null;
   latestUserMessageId: MessageId | null;
   phase: SessionPhase;
-  activePendingApproval: RuntimeRequestId | null;
-  activePendingUserInput: RuntimeRequestId | null;
   threadError: string | null | undefined;
 }) {
   const [localDispatch, setLocalDispatch] = useState<LocalDispatchSnapshot | null>(null);
@@ -29,8 +27,6 @@ export function useLocalDispatchState(input: {
     latestRun: input.activeLatestRun,
     latestUserMessageId: input.latestUserMessageId,
     runtime: input.activeThread?.runtime ?? null,
-    hasPendingApproval: input.activePendingApproval !== null,
-    hasPendingUserInput: input.activePendingUserInput !== null,
     threadError: input.threadError,
   });
   const activeLocalDispatch = serverAcknowledgedLocalDispatch ? null : localDispatch;

@@ -13,7 +13,6 @@ import {
   collapseExpandedComposerCursor,
   composerSubmissionIntentForKey,
 } from "../../composer-logic";
-import { type PendingUserInput } from "../../session-logic";
 import { type ReviewCommentContext } from "../../reviewCommentContext";
 import { composerTargetKey } from "../../composerDraftStore";
 import {
@@ -37,8 +36,6 @@ export function composerCommandKeyHandler(input: {
   readonly isCompacting: boolean;
   readonly followUpBehavior: ChatComposerProps["settings"]["followUpBehavior"];
   readonly isSoftwareKeyboardOpen: boolean;
-  readonly isLiteralPendingAnswer: boolean;
-  readonly pendingUserInputs: ReadonlyArray<PendingUserInput>;
   readonly promptHistoryEntries: ChatComposerProps["promptHistoryEntries"];
   readonly promptHistoryPositionRef: RefObject<{
     targetKey: string;
@@ -85,8 +82,6 @@ export function composerCommandKeyHandler(input: {
     isCompacting,
     followUpBehavior,
     isSoftwareKeyboardOpen,
-    isLiteralPendingAnswer,
-    pendingUserInputs,
     promptHistoryEntries,
     promptHistoryPositionRef,
     composerDraftTarget,
@@ -131,7 +126,6 @@ export function composerCommandKeyHandler(input: {
     if (event.shiftKey || event.altKey || event.metaKey || event.ctrlKey || event.isComposing) {
       return false;
     }
-    if (pendingUserInputs.length > 0) return false;
     if (
       composerImagesRef.current.length > 0 ||
       composerFilesRef.current.length > 0 ||
@@ -169,7 +163,7 @@ export function composerCommandKeyHandler(input: {
     event: KeyboardEvent,
     listEdit: (value: string, start: number, end: number) => ComposerListEdit | null,
   ): boolean => {
-    if (isLiteralPendingAnswer || event.isComposing) return false;
+    if (event.isComposing) return false;
     const selection = composerEditorRef.current?.readSelectionRange();
     const snapshot = readComposerSnapshot();
     if (!selection || selection.start !== selection.end || snapshot.value !== promptRef.current) {
@@ -198,8 +192,7 @@ export function composerCommandKeyHandler(input: {
       return applyListEdit(event, listOutdentForTab);
     }
     const { trigger } = resolveActiveComposerTrigger();
-    const menuIsActive =
-      !isLiteralPendingAnswer && (composerMenuOpenRef.current || trigger !== null);
+    const menuIsActive = composerMenuOpenRef.current || trigger !== null;
     if (key === "Escape") {
       if (event.isComposing || event.keyCode === 229) return false;
       if (!menuIsActive) return false;

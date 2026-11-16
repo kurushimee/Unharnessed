@@ -109,12 +109,7 @@ function tokenStartForCursor(text: string, cursor: number): number {
   return index + 1;
 }
 
-export function expandCollapsedComposerCursor(
-  text: string,
-  cursorInput: number,
-  literalText = false,
-): number {
-  if (literalText) return clampCursor(text, cursorInput);
+export function expandCollapsedComposerCursor(text: string, cursorInput: number): number {
   const collapsedCursor = clampCursor(text, cursorInput);
   const segments = splitPromptIntoComposerSegments(text);
   if (segments.length === 0) {
@@ -180,24 +175,14 @@ function clampCollapsedComposerCursorForSegments(
   return Math.max(0, Math.min(collapsedLength, Math.floor(cursorInput)));
 }
 
-export function clampCollapsedComposerCursor(
-  text: string,
-  cursorInput: number,
-  literalText = false,
-): number {
-  if (literalText) return clampCursor(text, cursorInput);
+export function clampCollapsedComposerCursor(text: string, cursorInput: number): number {
   return clampCollapsedComposerCursorForSegments(
     splitPromptIntoComposerSegments(text),
     cursorInput,
   );
 }
 
-export function collapseExpandedComposerCursor(
-  text: string,
-  cursorInput: number,
-  literalText = false,
-): number {
-  if (literalText) return clampCursor(text, cursorInput);
+export function collapseExpandedComposerCursor(text: string, cursorInput: number): number {
   const expandedCursor = clampCursor(text, cursorInput);
   const segments = splitPromptIntoComposerSegments(text);
   if (segments.length === 0) {
@@ -302,19 +287,14 @@ export function pastedPathQueryLength(
   return /^\S*/.exec(pasted)![0].length;
 }
 
-export function composerStateAtPromptEnd(
-  text: string,
-  literalText = false,
-): {
+export function composerStateAtPromptEnd(text: string): {
   cursor: number;
   trigger: ComposerTrigger | null;
 } {
-  const cursor = collapseExpandedComposerCursor(text, text.length, literalText);
+  const cursor = collapseExpandedComposerCursor(text, text.length);
   return {
     cursor,
-    trigger: literalText
-      ? null
-      : detectComposerTrigger(text, expandCollapsedComposerCursor(text, cursor)),
+    trigger: detectComposerTrigger(text, expandCollapsedComposerCursor(text, cursor)),
   };
 }
 

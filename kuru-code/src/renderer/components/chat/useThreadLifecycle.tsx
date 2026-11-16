@@ -12,7 +12,6 @@ import {
 } from "../ChatView.logic";
 import { useStableCallback } from "../../hooks/useStableCallback";
 import { useDeadlinePassed } from "../../hooks/useDeadline";
-import type { usePendingThreadRequests } from "./usePendingThreadRequests";
 import {
   AuthOrchestrationOperateScope,
   AuthSourceControlWriteScope,
@@ -31,7 +30,7 @@ import { useThreadActions } from "../../hooks/useThreadActions";
 import { settleAndAdvance } from "../../settleAndAdvance";
 import type { ChatShortcutCommands } from "./useChatShortcuts";
 import { scopedThreadKey, scopeThreadRef } from "~/rt/environment/index";
-import { type SetStateAction, useRef, useState } from "react";
+import { type SetStateAction, useState } from "react";
 import { useNavigate, useRouter } from "@tanstack/react-router";
 import {
   isAtomCommandInterrupted,
@@ -42,31 +41,25 @@ import { type ChatMessage, DEFAULT_INTERACTION_MODE } from "../../types";
 import { CheckCircle2Icon } from "lucide-react";
 import { stackedThreadToast, toastManager } from "../ui/toast";
 import { newMessageId } from "~/lib/utils";
-import { buildThreadRouteParams } from "../../threadRoutes";
 import { composerDraftHasUserContent, useComposerDraftStore } from "../../composerDraftStore";
 import { useEnvironmentScope } from "~/state/session";
 import { threadEnvironment } from "../../state/threads";
 import { vcsEnvironment } from "../../state/vcs";
-import { useChildThreadInputs, readThreadShell, waitForThreadShell } from "../../state/entities";
-import { serverEnvironment } from "../../state/server";
 import { ThreadStatusLine } from "./ThreadStatusLine";
 import { formatRelativeTimeLabel } from "../../timestampFormat";
-import { appAtomRegistry } from "../../rpc/atomRegistry";
 import { readEnvironmentScope } from "../../state/session";
 import { useAtomCommand } from "../../state/use-atom-command";
 import { useOrchestrationCommand } from "../../state/use-orchestration-command";
-import { backgroundWorkNowItem, childInputNowItem, goalNowItem, runStopNowItem } from "./ThreadActivityBanners";
+import { backgroundWorkNowItem, goalNowItem, runStopNowItem } from "./ThreadActivityBanners";
 import { useAtomValue } from "@effect/atom-react";
 import type { RunStopPresentation } from "~/rt/state/threadExecution";
 import { Atom } from "effect/reactivity";
 import { environmentThreadDetails } from "../../state/threads";
 import type { useLocalDispatchState } from "./useLocalDispatchState";
-const RELATED_THREAD_SHELL_WAIT_MS = 1_000;
 const NO_RUN_STOP_ATOM = Atom.make<RunStopPresentation | null>(null).pipe(
   Atom.withLabel("web-thread-run-stop:empty"),
 );
 
-type PendingThreadRequests = ReturnType<typeof usePendingThreadRequests>;
 type LocalDispatchState = ReturnType<typeof useLocalDispatchState>;
 
 interface ThreadLifecycleInput {
@@ -89,8 +82,6 @@ interface ThreadLifecycleInput {
   readonly isWorking: boolean;
   readonly pendingBackgroundTasks: Parameters<typeof backgroundWorkNowItem>[0]["tasks"];
   readonly turnItems: Parameters<typeof backgroundWorkNowItem>[0]["turnItems"];
-  readonly activePendingApproval: PendingThreadRequests["activePendingApproval"];
-  readonly activePendingUserInput: PendingThreadRequests["activePendingUserInput"];
   readonly localCheckoutBranchMismatch: {
     readonly threadBranch: string;
     readonly currentBranch: string;
@@ -139,8 +130,6 @@ export function useThreadLifecycle(input: ThreadLifecycleInput) {
     isWorking,
     pendingBackgroundTasks,
     turnItems,
-    activePendingApproval,
-    activePendingUserInput,
     localCheckoutBranchMismatch,
     gitStatusQuery,
     nowMinute,
@@ -360,52 +349,6 @@ export function useThreadLifecycle(input: ThreadLifecycleInput) {
     }
   };
   const handleStopBackgroundWorkStable = useStableCallback(handleStopBackgroundWork);
-  const openRelatedThreadGenerationRef = useRef(0);
-  // A task delegated to a linked environment opens there; the default is this thread's own.
-  const onOpenRelatedThread = async (
-    threadId: ThreadId,
-    threadEnvironmentId: EnvironmentId = environmentId,
-  ) => {
-    const generation = ++openRelatedThreadGenerationRef.current;
-    const threadRef = scopeThreadRef(threadEnvironmentId, threadId);
-    // kuru code's one environment, the local machine, is always live.
-    const isEnvironmentLive = () => true;
-    // The shell can leave idle subagent children out, so absence is not deletion there: the
-    // route decides from the thread's own detail.
-    const shellOmitsChildren =
-      appAtomRegistry.get(serverEnvironment.configValueAtom(threadEnvironmentId))
-        ?.shellThreadFamilies === true;
-    // A just-launched child can reach this timeline before its shell syncs.
-    if (!shellOmitsChildren && isEnvironmentLive() && readThreadShell(threadRef) === null) {
-      const location = router.latestLocation;
-      await waitForThreadShell(threadRef, RELATED_THREAD_SHELL_WAIT_MS);
-      if (
-        generation !== openRelatedThreadGenerationRef.current ||
-        currentRouteThreadKeyRef.current !== routeThreadKey ||
-        router.latestLocation !== location
-      ) {
-        return;
-      }
-    }
-    const shell = readThreadShell(threadRef);
-    if (shell === null ? !shellOmitsChildren && isEnvironmentLive() : shell.deletedAt != null) {
-      toastManager.add({ type: "info", title: "This thread is no longer available" });
-      return;
-    }
-    void navigate({
-      to: "/$environmentId/$threadId",
-      params: buildThreadRouteParams(threadRef),
-    });
-  };
-  const onOpenRelatedThreadStable = useStableCallback(onOpenRelatedThread);
-  const childThreadInputs = useChildThreadInputs(activeThreadRef);
-  const childInputNow = childInputNowItem({
-    childThreadInputs,
-    parentAwaitingUser: Boolean(
-      activePendingApproval || activePendingUserInput || activeThreadShell?.hasPendingUserInput,
-    ),
-    onOpenThread: onOpenRelatedThreadStable,
-  });
 
   const sendStandaloneCommand = async (text: string, failureMessage: string) => {
     if (!activeThread || !clientSettingsHydrated || sendInFlightRef.current) return;
@@ -498,7 +441,6 @@ export function useThreadLifecycle(input: ThreadLifecycleInput) {
         stopDisabled: !canOperateThread || isStoppingBackgroundWork,
         stopping: isStoppingBackgroundWork,
         onStop: handleStopBackgroundWorkStable,
-        onOpenThread: onOpenRelatedThreadStable,
       })
     : null;
   // The relative times read the clock; nowMinute re-renders them on the minute.
@@ -559,15 +501,12 @@ export function useThreadLifecycle(input: ThreadLifecycleInput) {
     shortcuts,
     activeBranchMismatchKey,
     // A Stop that went unanswered needs the user; one in progress is the thread's work.
-    attentionNow: runStop?.state === "unresponsive" ? runStopNow : childInputNow,
+    attentionNow: runStop?.state === "unresponsive" ? runStopNow : null,
     workNow: runStop?.state === "stopping" ? runStopNow : backgroundWorkNow,
-    childInputNow,
     goalNow,
     handleSwitchCheckoutToThread,
     handleSwitchCheckoutToThreadStable,
     isRestoringThreadBranch,
-    onOpenRelatedThread,
-    onOpenRelatedThreadStable,
     sendStandaloneCommand,
     setBranchMismatchDismissTick,
     showBranchMismatchBanner,

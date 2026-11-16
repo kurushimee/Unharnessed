@@ -1,4 +1,3 @@
-import type { ProviderApprovalDecision, RuntimeRequestId } from "~/contracts";
 import {
   type EnvironmentId,
   type MessageId,
@@ -13,7 +12,6 @@ import type { AsyncResult, Atom } from "effect/reactivity";
 import type { CommandOutputView } from "~/rt/state/commandOutput";
 import { createContext, type MouseEvent } from "react";
 import { type LegendListRef } from "@legendapp/list/react";
-import type { PendingApproval } from "../../session-logic";
 import { ExpandedImagePreview } from "./ExpandedImagePreview";
 import { type AssistantCitationTarget } from "./AssistantCitationSource";
 import { type MessagesTimelineRow, type WorkGroupScrollAnchor } from "./MessagesTimeline.logic";
@@ -33,12 +31,7 @@ export interface TurnItemSource {
 }
 
 export interface TimelineRowSharedState {
-  pendingApprovals: ReadonlyMap<RuntimeRequestId, PendingApproval>;
-  respondingRequestIds: ReadonlyArray<RuntimeRequestId>;
   canOperateThread: boolean;
-  onRespondToApproval:
-    | ((requestId: RuntimeRequestId, decision: ProviderApprovalDecision) => Promise<unknown>)
-    | undefined;
   citationRequest: AssistantCitationTarget | null;
   listRef: React.RefObject<LegendListRef | null>;
   timestampFormat: TimestampFormat;
@@ -71,7 +64,6 @@ export interface TimelineRowActivityState {
   isWorking: boolean;
   isCompacting: boolean;
   isRevertingCheckpoint: boolean;
-  awaitingUser: boolean;
   latestRunId: RunId | null;
   liveAnswerPreview: string | null;
 }

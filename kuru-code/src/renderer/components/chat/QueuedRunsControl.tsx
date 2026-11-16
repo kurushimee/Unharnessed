@@ -72,7 +72,6 @@ export function QueuedRunsControl({
   >;
   readonly editingRunId: RunId | null;
   /** Set while something else holds the composer, such as an open question. */
-  readonly editBlockedReason: string | null;
   readonly onEditQueuedRun: (request: EditQueuedRunRequest) => void;
   readonly onCancelEdit: () => void;
   readonly timestampFormat: TimestampFormat;
@@ -189,7 +188,6 @@ export function QueuedRunsControl({
         !latest ||
         latest.context?.guest !== undefined ||
         props.editingRunId !== null ||
-        props.editBlockedReason !== null ||
         busyRunId !== null
       ) {
         return false;
@@ -311,8 +309,7 @@ export function QueuedRunsControl({
                           disabled={
                             item.runId === null ||
                             !item.editable ||
-                            busyRunId !== null ||
-                            props.editBlockedReason !== null
+                            busyRunId !== null
                           }
                           onClick={() => {
                             if (item.runId !== null && item.messageId !== null) {
@@ -329,8 +326,7 @@ export function QueuedRunsControl({
                         </Button>
                       </TooltipTrigger>
                       <TooltipPopup>
-                        {props.editBlockedReason ??
-                          `Edit in the composer${item.serverIndex === queued.length - 1 && props.editShortcutLabel ? ` (${props.editShortcutLabel})` : ""}`}
+                        {`Edit in the composer${item.serverIndex === queued.length - 1 && props.editShortcutLabel ? ` (${props.editShortcutLabel})` : ""}`}
                       </TooltipPopup>
                     </Tooltip>
                     <Tooltip>

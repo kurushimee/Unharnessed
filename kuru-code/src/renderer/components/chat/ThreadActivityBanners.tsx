@@ -5,13 +5,12 @@ import type {
   OrchestrationV2ProviderSession,
   ThreadId,
 } from "~/contracts";
-import type { EnvironmentThreadShell, ThreadStructure } from "~/rt/state/models";
+import type { ThreadStructure } from "~/rt/state/models";
 import {
   presentPendingBackgroundWork,
   presentProviderGoal,
   type RunStopPresentation,
 } from "~/rt/state/threadExecution";
-import { childThreadInputsTitle } from "~/rt/state/threads";
 import { commandDisplayText } from "~/rt/work-log/commandLabel";
 import { formatDuration } from "~/shared/orchestrationTiming";
 import * as DateTime from "effect/DateTime";
@@ -19,8 +18,6 @@ import {
   CircleDashedIcon,
   CircleStopIcon,
   GitBranchIcon,
-  MessageCircleIcon,
-  ShieldQuestionIcon,
   TargetIcon,
   TerminalIcon,
   TriangleAlertIcon,
@@ -42,47 +39,6 @@ export function extensionStatusBannerItem(
     variant: "default",
     icon: <span>▸</span>,
     title: <output>{`Pi · ${statuses.map((status) => status.text).join(" · ")}`}</output>,
-  };
-}
-
-/** Subagents and side chats waiting on the user, unless the parent is itself waiting on them. */
-export function childInputNowItem(input: {
-  readonly childThreadInputs: ReadonlyArray<EnvironmentThreadShell>;
-  readonly parentAwaitingUser: boolean;
-  // A task delegated to a linked environment lives there, not where the parent runs.
-  readonly onOpenThread: (threadId: ThreadId, environmentId: EnvironmentId) => void;
-}): (ThreadNowItem & { readonly waitingLabel: string }) | null {
-  const { childThreadInputs, onOpenThread } = input;
-  const first = childThreadInputs[0];
-  if (!first || input.parentAwaitingUser) return null;
-  return {
-    id: `child-input:${first.id}`,
-    // The only line at the end of the timeline that needs you gets the info color.
-    icon: first.hasPendingApprovals ? (
-      <ShieldQuestionIcon className="text-info-foreground" />
-    ) : (
-      <MessageCircleIcon className="text-info-foreground" />
-    ),
-    title: childThreadInputsTitle(childThreadInputs),
-    waitingLabel: childThreadInputs.every((child) => child.lineage.sideChat === true)
-      ? "Side chat waiting"
-      : "Subagent waiting",
-    description: childThreadInputs.map((child, index) => (
-      <Fragment key={child.id}>
-        {index > 0 ? " " : null}
-        <span className="whitespace-nowrap">
-          <InlineButton tone="muted" onClick={() => onOpenThread(child.id, child.environmentId)}>
-            {child.title}
-          </InlineButton>
-          {index < childThreadInputs.length - 1 ? "," : null}
-        </span>
-      </Fragment>
-    )),
-    actions: (
-      <InlineButton onClick={() => onOpenThread(first.id, first.environmentId)}>
-        {first.hasPendingApprovals ? "Open approval" : "Open question"}
-      </InlineButton>
-    ),
   };
 }
 
@@ -163,9 +119,7 @@ export function backgroundWorkNowItem(input: {
   readonly stopDisabled: boolean;
   readonly stopping: boolean;
   readonly onStop: () => Promise<void>;
-  readonly onOpenThread: (threadId: ThreadId) => void;
 }): ThreadNowItem | null {
-  const { onOpenThread } = input;
   const presentation = presentPendingBackgroundWork(input.tasks);
   if (presentation === null) return null;
   const rows = presentation.items.map((task) => {
@@ -189,7 +143,6 @@ export function backgroundWorkNowItem(input: {
       activity: subagent?.progress?.replace(/\s+/gu, " ").trim() || null,
       startedAtMs: item?.startedAt ? DateTime.toEpochMillis(item.startedAt) : null,
       updatedAtMs: subagent ? DateTime.toEpochMillis(subagent.updatedAt) : 0,
-      childThreadId: task.childThreadId ?? subagent?.childThreadId ?? undefined,
     };
   });
   const [only] = rows.length === 1 ? rows : [];
@@ -197,7 +150,6 @@ export function backgroundWorkNowItem(input: {
     .filter((row) => row.activity)
     .toSorted((left, right) => right.updatedAtMs - left.updatedAtMs)[0];
   const isCommand = (row: (typeof rows)[number]) => row.task.kind !== "subagent";
-  const onlyThreadId = only?.childThreadId;
   const startedAtMs = only?.startedAtMs ?? null;
   return {
     id: `background-work:${input.threadId}`,
@@ -240,13 +192,7 @@ export function backgroundWorkNowItem(input: {
           threadId={input.threadId}
           tasks={input.tasks}
           turnItems={input.turnItems}
-          onOpenThread={onOpenThread}
         />
-        {onlyThreadId === undefined ? null : (
-          <InlineButton tone="muted" onClick={() => onOpenThread(onlyThreadId)}>
-            Open
-          </InlineButton>
-        )}
         <InlineButton disabled={input.stopDisabled} onClick={() => void input.onStop()}>
           {input.stopping ? "Stopping..." : "Stop"}
         </InlineButton>

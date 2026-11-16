@@ -2,7 +2,6 @@
 // project commands. Its dispatch to a server is replaced by kuru code's
 // (state/threads.ts), which turns each command into what Unharnessed takes.
 import type {
-  ThreadLinkedPullRequest,
   CommandId,
   ChatAttachment,
   MessageId,
@@ -12,16 +11,10 @@ import type {
   OrchestrationV2CreationSource,
   PlanId,
   ProjectId,
-  ProjectIconOverride,
-  ProjectScript,
-  ProviderApprovalDecision,
   ProviderInteractionMode,
-  ProviderUserInputAnswers,
   RunId,
   RuntimeMode,
-  RuntimeRequestId,
   ThreadId,
-  ThreadEnvMode,
   UploadChatAttachment,
 } from "~/contracts";
 
@@ -31,76 +24,8 @@ export interface CommandMetadata {
   readonly creationSource?: OrchestrationV2CreationSource;
 }
 
-export interface CreateProjectInput extends CommandMetadata {
-  readonly projectId: ProjectId;
-  readonly title: string;
-  readonly workspaceRoot: string;
-  readonly createWorkspaceRootIfMissing?: boolean;
-  readonly defaultModelSelection?: ModelSelection | null;
-  readonly scripts?: ReadonlyArray<ProjectScript>;
-}
-
-export interface UpdateProjectInput extends CommandMetadata {
-  readonly projectId: ProjectId;
-  readonly title?: string;
-  readonly workspaceRoot?: string;
-  readonly defaultModelSelection?: ModelSelection | null;
-  readonly autoPull?: boolean;
-  readonly projectIcon?: ProjectIconOverride | null;
-  readonly faviconPath?: string | null;
-  readonly defaultThreadEnvMode?: ThreadEnvMode | null;
-  readonly scripts?: ReadonlyArray<ProjectScript>;
-  readonly pinned?: boolean;
-  readonly archived?: boolean;
-}
-
-export interface DeleteProjectInput extends CommandMetadata {
-  readonly projectId: ProjectId;
-  readonly force?: boolean;
-}
-
-export interface CreateThreadInput extends CommandMetadata {
-  readonly threadId: ThreadId;
-  readonly projectId: ProjectId;
-  readonly title: string;
-  readonly modelSelection: ModelSelection;
-  readonly runtimeMode: RuntimeMode;
-  readonly interactionMode: ProviderInteractionMode;
-  readonly branch: string | null;
-  readonly worktreePath: string | null;
-}
-
 export interface ThreadCommandInput extends CommandMetadata {
   readonly threadId: ThreadId;
-}
-
-export interface DeleteThreadInput extends ThreadCommandInput {
-  /** The server deletes only a thread with no runs and no messages. */
-  readonly onlyIfUnused?: boolean;
-}
-
-export type ArchiveThreadInput = ThreadCommandInput;
-
-export type UnarchiveThreadInput = ThreadCommandInput;
-
-export type SettleThreadInput = ThreadCommandInput;
-
-export interface UnsettleThreadInput extends ThreadCommandInput {
-  readonly reason: "user";
-}
-
-export interface PinThreadInput extends ThreadCommandInput {
-  readonly orderKey?: string;
-}
-
-export type UnpinThreadInput = ThreadCommandInput;
-
-export interface ReorderPinnedThreadInput extends ThreadCommandInput {
-  readonly orderKey: string;
-}
-
-export interface ReorderActiveThreadInput extends ThreadCommandInput {
-  readonly orderKey: string;
 }
 
 export interface VisitThreadInput extends ThreadCommandInput {
@@ -108,19 +33,6 @@ export interface VisitThreadInput extends ThreadCommandInput {
   /** Counts toward search frecency; `searchQuery` is the palette query that picked it. */
   readonly opened?: boolean;
   readonly searchQuery?: string;
-}
-
-export type MarkThreadUnreadInput = ThreadCommandInput;
-
-export interface UpdateThreadMetadataInput extends ThreadCommandInput {
-  readonly limitRecovery?: import("~/contracts").OrchestrationV2LimitRecoveryUpdate | null;
-  readonly title?: string;
-  readonly modelSelection?: ModelSelection;
-  readonly branch?: string | null;
-  readonly worktreePath?: string | null;
-  readonly regenerateTitle?: boolean;
-  readonly linkedPullRequest?: ThreadLinkedPullRequest | null;
-  readonly expectedEmpty?: boolean;
 }
 
 export interface SetThreadRuntimeModeInput extends ThreadCommandInput {
@@ -177,22 +89,6 @@ export interface InterruptThreadTurnInput extends ThreadCommandInput {
   readonly runId?: RunId;
   readonly subagentId?: NodeId;
   readonly turnId?: string;
-}
-
-export interface RespondToThreadApprovalInput extends ThreadCommandInput {
-  readonly requestId: RuntimeRequestId;
-  readonly decision: ProviderApprovalDecision;
-  readonly feedback?: string;
-}
-
-export interface RespondToThreadUserInputInput extends ThreadCommandInput {
-  readonly requestId: RuntimeRequestId;
-  readonly answers: ProviderUserInputAnswers;
-  readonly attachmentsByQuestionId?: import("~/contracts").UserInputAttachments;
-}
-
-export interface DismissThreadUserInputInput extends ThreadCommandInput {
-  readonly requestId: RuntimeRequestId;
 }
 
 export type StopThreadSessionInput = ThreadCommandInput;

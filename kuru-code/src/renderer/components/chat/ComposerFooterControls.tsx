@@ -8,13 +8,6 @@ export const ComposerFooterPrimaryActions = memo(function ComposerFooterPrimaryA
   children?: React.ReactNode;
   compact: boolean;
   canOperateThread: boolean;
-  pendingAction: {
-    questionIndex: number;
-    isLastQuestion: boolean;
-    canAdvance: boolean;
-    isResponding: boolean;
-    isComplete: boolean;
-  } | null;
   isRunning: boolean;
   canInterrupt: boolean;
   followUpBehavior: "queue" | "steer";
@@ -28,7 +21,6 @@ export const ComposerFooterPrimaryActions = memo(function ComposerFooterPrimaryA
   isEditingQueuedMessage: boolean;
   onSubmitMessage: React.MouseEventHandler<HTMLButtonElement>;
   onResume: () => void;
-  onPreviousPendingQuestion: () => void;
   onInterrupt: () => void;
   compactBeforeSendTokens: number | null;
   keepFullHistory: boolean;
@@ -39,7 +31,6 @@ export const ComposerFooterPrimaryActions = memo(function ComposerFooterPrimaryA
       <ComposerPrimaryActions
         compact={props.compact}
         canOperateThread={props.canOperateThread}
-        pendingAction={props.pendingAction}
         isRunning={props.isRunning}
         canInterrupt={props.canInterrupt}
         followUpBehavior={props.followUpBehavior}
@@ -53,7 +44,6 @@ export const ComposerFooterPrimaryActions = memo(function ComposerFooterPrimaryA
         isEditingQueuedMessage={props.isEditingQueuedMessage}
         onSubmitMessage={props.onSubmitMessage}
         onResume={props.onResume}
-        onPreviousPendingQuestion={props.onPreviousPendingQuestion}
         onInterrupt={props.onInterrupt}
         compactBeforeSendTokens={props.compactBeforeSendTokens}
         keepFullHistory={props.keepFullHistory}

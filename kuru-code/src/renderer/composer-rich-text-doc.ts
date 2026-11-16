@@ -738,18 +738,11 @@ export function buildTiptapContent(
   options?: {
     styling?: boolean;
     blocks?: boolean;
-    literalText?: boolean;
     literalLength?: number;
     isKnownModel?: IsKnownModel;
   },
 ): Record<string, unknown>[] {
   const chips = { skill: skillLabelFor, model: options?.isKnownModel ?? NO_MODELS };
-  if (options?.literalText) {
-    return value.split("\n").map((line) => ({
-      type: "paragraph",
-      ...(line ? { content: [{ type: "text", text: line }] } : {}),
-    }));
-  }
   const styling = options?.styling ?? true;
   const blockSyntax = styling && (options?.blocks ?? true);
   let sentinel = "\uFFFC";
@@ -980,7 +973,7 @@ export function buildTiptapContent(
 export function buildDocJson(
   value: string,
   skillLabelFor: (name: string) => SkillMeta | null,
-  options?: { styling?: boolean; literalText?: boolean; isKnownModel?: IsKnownModel },
+  options?: { styling?: boolean; isKnownModel?: IsKnownModel },
 ) {
   const content = buildTiptapContent(value, skillLabelFor, options);
   if (content.at(-1)?.type === "horizontalRule") content.push({ type: "paragraph" });

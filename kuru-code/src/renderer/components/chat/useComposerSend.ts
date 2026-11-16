@@ -23,10 +23,9 @@ import {
 } from "~/contracts";
 import { deriveThreadTitleSeed } from "~/rt/operations/index";
 import { wasBootstrapThreadDeleted } from "~/rt/errors/index";
-import { declinePendingApprovals, sendApprovalFeedback } from "~/rt/state/threadRequests";
 import { scopedThreadKey, scopeProjectRef, scopeThreadRef } from "~/rt/environment/index";
 import { createModelSelection } from "~/shared/model";
-import { type SetStateAction, useLayoutEffect, useRef } from "react";
+import { type SetStateAction, useRef } from "react";
 import { flushSync } from "react-dom";
 import { useNavigate } from "@tanstack/react-router";
 import {
@@ -57,10 +56,7 @@ import { buildMessageContext } from "../../lib/composerContextRecords";
 import { threadEnvironment } from "../../state/threads";
 import { runMobileComposerTransition } from "./draftHeroTransition";
 import { useClientSettingsHydrated } from "../../hooks/useSettings";
-import { environmentPresentations } from "../../state/presentation";
-import { approvalRedirectNotice } from "./composerSend.logic";
 import { type ComposerDispatchMode } from "~/rt/state/composerDispatch";
-import { appAtomRegistry } from "../../rpc/atomRegistry";
 import { readEnvironmentScope } from "../../state/session";
 import { useOrchestrationCommand } from "../../state/use-orchestration-command";
 import { ATTACHMENT_ONLY_BOOTSTRAP_PROMPT } from "~/shared/composerContextReferences";
@@ -73,15 +69,9 @@ import type { SessionPhase } from "../../types";
 import type { DraftSessionState } from "../../composerDraftStore";
 import type { ComposerHandleRef } from "../../composerHandleContext";
 import type { useLocalDispatchState } from "./useLocalDispatchState";
-import type { usePendingThreadRequests } from "./usePendingThreadRequests";
 import type { useQueuedRunEdit } from "./useQueuedRunEdit";
 import type { useTimelineFollow } from "./useTimelineFollow";
 
-function readEnvironmentPresentation(environmentId: EnvironmentId) {
-  return appAtomRegistry.get(environmentPresentations.presentationsAtom).get(environmentId);
-}
-
-type PendingThreadRequests = ReturnType<typeof usePendingThreadRequests>;
 type LocalDispatchState = ReturnType<typeof useLocalDispatchState>;
 type TimelineFollow = ReturnType<typeof useTimelineFollow>;
 
@@ -122,11 +112,6 @@ interface ComposerSendInput {
   /** `/clear` can arm a fresh session on this thread. */
   readonly freshSessionAvailable: boolean;
   readonly resumeCompactionTokens: number | null;
-  readonly pendingApprovals: PendingThreadRequests["pendingApprovals"];
-  readonly respondingRequestIds: PendingThreadRequests["respondingRequestIds"];
-  readonly activePendingProgress: PendingThreadRequests["activePendingProgress"];
-  readonly onAdvanceActivePendingUserInput: PendingThreadRequests["onAdvanceActivePendingUserInput"];
-  readonly onRespondToApproval: PendingThreadRequests["onRespondToApproval"];
   readonly beginLocalDispatch: LocalDispatchState["beginLocalDispatch"];
   readonly resetLocalDispatch: LocalDispatchState["resetLocalDispatch"];
   readonly captureDraftHeroComposerRect: () => void;
@@ -190,11 +175,6 @@ export function useComposerSend(input: ComposerSendInput) {
     keepFullHistory,
     freshSessionAvailable,
     resumeCompactionTokens,
-    pendingApprovals,
-    respondingRequestIds,
-    activePendingProgress,
-    onAdvanceActivePendingUserInput,
-    onRespondToApproval: onRespondToApprovalStable,
     beginLocalDispatch,
     resetLocalDispatch,
     captureDraftHeroComposerRect,
@@ -218,24 +198,12 @@ export function useComposerSend(input: ComposerSendInput) {
   const clearComposerDraftContent = useComposerDraftStore((store) => store.clearComposerContent);
   const { sendInFlight: sendInFlightRef } = draftSendState(routeThreadKey);
   const composerSendGenerationRef = useRef(0);
-  // A send awaits uploads before it declines, so it reads the approvals pending by then.
-  const pendingApprovalsRef = useRef(pendingApprovals);
-  const respondingRequestIdsRef = useRef(respondingRequestIds);
-  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- mirrors approvals into refs that an async send reads after awaiting uploads
-  useLayoutEffect(() => {
-    pendingApprovalsRef.current = pendingApprovals;
-    respondingRequestIdsRef.current = respondingRequestIds;
-  }, [pendingApprovals, respondingRequestIds]);
-
   const onSend = async (
     e?: { preventDefault: () => void },
     dispatchMode: ComposerDispatchMode = "auto",
     submissionIntent: ComposerSubmissionIntent = "foreground",
   ) => {
     e?.preventDefault();
-    // What the user pressed send on; uploads below can take a while, and a redirect must not
-    // decline approvals for a draft that changed meanwhile.
-    const promptAtSend = promptRef.current;
     if (
       !readEnvironmentScope(environmentId, AuthOrchestrationOperateScope) ||
       !activeThread ||
@@ -248,19 +216,9 @@ export function useComposerSend(input: ComposerSendInput) {
       return;
     }
     const sendCtx = composerRef.current?.getSendContext();
-    const answeringQuestion =
-      Boolean(activePendingProgress) && sendCtx?.answeringPendingUserInput !== false;
-    if (answeringQuestion) {
-      onAdvanceActivePendingUserInput();
-      return;
-    }
     if (!sendCtx?.providerAvailable) {
       return;
     }
-    const approvalFeedbackTarget = pendingApprovalsRef.current.find(
-      (approval) =>
-        approval.supportsFeedback && approval.requestId === sendCtx.shownPendingApprovalIds[0],
-    );
     const {
       images: composerImages,
       files: composerFiles,
@@ -413,121 +371,6 @@ export function useComposerSend(input: ComposerSendInput) {
         currentThreadKey === activeThreadKey ? null : currentThreadKey,
       );
       return;
-    }
-    // A message sent while approvals are pending redirects the agent. They are declined only
-    // here, after everything above has accepted the send, so local commands and rejected
-    // drafts leave them alone. After navigating away during an upload, the shown approvals
-    // are another thread's, so this send leaves them alone too.
-    const approvalsToDecline =
-      currentRouteThreadKeyRef.current === routeThreadKey
-        ? pendingApprovalsRef.current.filter((approval) =>
-            sendCtx?.shownPendingApprovalIds.includes(approval.requestId),
-          )
-        : [];
-    if (approvalsToDecline.length > 0 || approvalFeedbackTarget !== undefined) {
-      // A draft edited since send, or a paste still landing in it, is no longer the message
-      // the user sent.
-      const attachmentIdsAtSend = composerAttachmentsSnapshot.map((attachment) => attachment.id);
-      const sameIds = (left: ReadonlyArray<string>, right: ReadonlyArray<string>) =>
-        left.length === right.length && left.every((id, index) => id === right[index]);
-      const draftChangedSinceSend = () => {
-        if (composerRef.current?.hasPendingAttachments() === true) return true;
-        const sendContext = composerRef.current?.getSendContext();
-        const attachmentIds = sendContext
-          ? [...sendContext.images, ...sendContext.files].map((attachment) => attachment.id)
-          : attachmentIdsAtSend;
-        const promptUnchanged =
-          promptRef.current === promptAtSend || promptRef.current === promptForSend;
-        const attachmentsUnchanged = sameIds(attachmentIds, attachmentIdsAtSend);
-        return !promptUnchanged || !attachmentsUnchanged;
-      };
-      const draftBeforeDecline = useComposerDraftStore
-        .getState()
-        .getComposerDraft(composerDraftTarget);
-      const changedBeforeDecline = draftChangedSinceSend();
-      const pendingIdsBeforeDecline = pendingApprovalsRef.current.map(
-        (approval) => approval.requestId,
-      );
-      const approvalResponding = approvalsToDecline.some((approval) =>
-        respondingRequestIdsRef.current.includes(approval.requestId),
-      );
-      if (approvalFeedbackTarget !== undefined) {
-        if (composerAttachmentsSnapshot.length > 0 || outgoingMessageContext !== undefined) {
-          setThreadError(
-            threadIdForSend,
-            "Send approval feedback without attachments or added context.",
-          );
-          sendInFlightRef.current = false;
-          return;
-        }
-        if (
-          changedBeforeDecline ||
-          approvalResponding ||
-          currentRouteThreadKeyRef.current !== routeThreadKey
-        ) {
-          sendInFlightRef.current = false;
-          return;
-        }
-        const sent = await sendApprovalFeedback(
-          approvalFeedbackTarget,
-          messageTextForSend,
-          onRespondToApprovalStable,
-        ).catch(() => false);
-        sendInFlightRef.current = false;
-        if (
-          sent &&
-          !draftChangedSinceSend() &&
-          currentRouteThreadKeyRef.current === routeThreadKey &&
-          useComposerDraftStore.getState().getComposerDraft(composerDraftTarget) ===
-            draftBeforeDecline
-        ) {
-          promptRef.current = "";
-          clearComposerDraftContent(composerDraftTarget);
-          composerRef.current?.resetCursorState();
-        }
-        return;
-      }
-      const declined =
-        !changedBeforeDecline &&
-        !approvalResponding &&
-        (await declinePendingApprovals(approvalsToDecline, onRespondToApprovalStable).catch(
-          () => false,
-        ));
-      const draftChanged =
-        changedBeforeDecline ||
-        draftChangedSinceSend() ||
-        useComposerDraftStore.getState().getComposerDraft(composerDraftTarget) !==
-          draftBeforeDecline;
-      // An approval that arrived during the decline would block the redirect; keep the draft so
-      // the next send declines it too.
-      const approvalArrived = pendingApprovalsRef.current.some(
-        (approval) => !pendingIdsBeforeDecline.includes(approval.requestId),
-      );
-      if (
-        !declined ||
-        draftChanged ||
-        approvalArrived ||
-        currentRouteThreadKeyRef.current !== routeThreadKey
-      ) {
-        sendInFlightRef.current = false;
-        setDockedDraftHeroThreadKey((currentThreadKey) =>
-          currentThreadKey === activeThreadKey ? null : currentThreadKey,
-        );
-        const notice = approvalRedirectNotice({
-          draftChanged,
-          declined,
-          approvalResponding,
-          approvalArrived,
-        });
-        if (notice !== null) {
-          toastManager.add({
-            type: "info",
-            title: notice,
-            description: "Send again when it's ready.",
-          });
-        }
-        return;
-      }
     }
     if (sendQueuesBehindSetup) {
       setSetupQueueSendThreadKey(activeThreadKey);

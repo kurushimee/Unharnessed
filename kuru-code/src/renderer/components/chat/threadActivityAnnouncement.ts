@@ -1,12 +1,10 @@
 import type { OrchestrationV2Run, OrchestrationV2RunStatus, RunId } from "~/contracts";
 import { latestExecutedRun } from "~/shared/orchestrationV2ThreadError";
 
-export type ThreadActivityStatus = "working" | "approval" | "input" | "idle";
+export type ThreadActivityStatus = "working" | "idle";
 
 /** Background threads say these too, so a status sounds the same wherever it's heard. */
 export const THREAD_STATUS_TEXT = {
-  approval: "Needs approval",
-  input: "Needs your input",
   done: "Done",
   failed: "Failed",
   stopped: "Stopped",
@@ -14,8 +12,6 @@ export const THREAD_STATUS_TEXT = {
 
 export interface ThreadActivitySnapshot {
   readonly status: ThreadActivityStatus;
-  /** The pending approval or question, when there is one. */
-  readonly requestId: string | null;
   readonly runId: RunId | null;
   readonly runStatus: OrchestrationV2RunStatus | null;
 }
@@ -134,18 +130,7 @@ export function nextThreadAnnouncement(
       (newRunId !== null && turnRunId !== "unknown" && newRunId !== turnRunId);
     const nextTurnRunId =
       turnStarted || turnRunId === "unknown" ? (newRunId ?? "unknown") : turnRunId;
-    const announcement =
-      next.status === "approval"
-        ? previous.snapshot.status === "approval" && previous.snapshot.requestId === next.requestId
-          ? null
-          : THREAD_STATUS_TEXT.approval
-        : next.status === "input"
-          ? previous.snapshot.status === "input" && previous.snapshot.requestId === next.requestId
-            ? null
-            : THREAD_STATUS_TEXT.input
-          : turnStarted
-            ? "Working"
-            : null;
+    const announcement = turnStarted ? "Working" : null;
     return { memory: { ...memory, turnRunId: nextTurnRunId }, announcement };
   }
 

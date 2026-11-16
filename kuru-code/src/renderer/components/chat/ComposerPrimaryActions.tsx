@@ -1,39 +1,19 @@
 import { memo, type MouseEventHandler, type PointerEventHandler, type ReactNode } from "react";
-import {
-  CheckIcon,
-  ChevronLeftIcon,
-  Minimize2Icon,
-  PlayIcon,
-  CornerUpRightIcon,
-  ListPlusIcon,
-} from "lucide-react";
+import { CheckIcon, Minimize2Icon, PlayIcon, CornerUpRightIcon, ListPlusIcon } from "lucide-react";
 import { useEnvironmentIdentificationMode } from "~/hooks/useSettings";
 import { formatContextWindowTokens } from "~/lib/contextWindow";
 import { cn, isMacPlatform } from "~/lib/utils";
 import { useShortcutModifierState } from "../../shortcutModifierState";
 import { StageBackdropButtonArt, useSidebarStageBackdropVariant } from "../SidebarStageBackdrop";
-import { Button } from "../ui/button";
 import { Spinner } from "../ui/spinner";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
-import {
-  alternateComposerDispatchAction,
-  resolveComposerDispatchMode,
-} from "~/rt/state/composerDispatch";
-
-interface PendingActionState {
-  questionIndex: number;
-  isLastQuestion: boolean;
-  canAdvance: boolean;
-  isResponding: boolean;
-  isComplete: boolean;
-}
+import { alternateComposerDispatchAction, resolveComposerDispatchMode } from "~/rt/state/composerDispatch";
 
 interface ComposerPrimaryActionsProps {
   /** Footer controls (dictation) that always sit right before the primary button. */
   children?: ReactNode;
   compact: boolean;
   canOperateThread: boolean;
-  pendingAction: PendingActionState | null;
   isRunning: boolean;
   canInterrupt: boolean;
   followUpBehavior?: "queue" | "steer";
@@ -47,30 +27,11 @@ interface ComposerPrimaryActionsProps {
   isEditingQueuedMessage?: boolean;
   onSubmitMessage?: MouseEventHandler<HTMLButtonElement>;
   onResume?: () => void;
-  onPreviousPendingQuestion: () => void;
   onInterrupt: () => void;
   compactBeforeSendTokens?: number | null;
   keepFullHistory?: boolean;
   onToggleKeepFullHistory?: () => void;
 }
-
-const formatPendingPrimaryActionLabel = (input: {
-  compact: boolean;
-  isLastQuestion: boolean;
-  isResponding: boolean;
-  questionIndex: number;
-}) => {
-  if (input.isResponding) {
-    return "Submitting...";
-  }
-  if (input.compact) {
-    return input.isLastQuestion ? "Submit" : "Next";
-  }
-  if (!input.isLastQuestion) {
-    return "Next question";
-  }
-  return input.questionIndex > 0 ? "Submit answers" : "Submit answer";
-};
 
 const messageActionPillClassName =
   "inline-flex shrink-0 cursor-pointer items-center justify-center gap-1.5 whitespace-nowrap rounded-full bg-message-action font-medium text-base text-message-action-foreground shadow-xs shadow-message-action/24 outline-none hover:bg-message-action-hover focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring focus-visible:ring-offset-1 focus-visible:ring-offset-background disabled:pointer-events-none disabled:opacity-64 disabled:shadow-none sm:text-sm";
@@ -83,7 +44,6 @@ export const ComposerPrimaryActions = memo(function ComposerPrimaryActions({
   children,
   compact,
   canOperateThread,
-  pendingAction,
   isRunning,
   canInterrupt,
   followUpBehavior = "steer",
@@ -97,7 +57,6 @@ export const ComposerPrimaryActions = memo(function ComposerPrimaryActions({
   isEditingQueuedMessage = false,
   onSubmitMessage,
   onResume,
-  onPreviousPendingQuestion,
   onInterrupt,
   compactBeforeSendTokens = null,
   keepFullHistory = false,
@@ -120,7 +79,7 @@ export const ComposerPrimaryActions = memo(function ComposerPrimaryActions({
   const isSendDisabled = !canOperateThread || sendDisabledReason !== null;
   const stageBackdropVariant = useSidebarStageBackdropVariant(environmentIdentificationMode);
 
-  const renderStopGenerationButton = (insidePendingAction: boolean) => (
+  const renderStopGenerationButton = () => (
     <Tooltip key="interrupt">
       <TooltipTrigger
         render={
@@ -128,7 +87,7 @@ export const ComposerPrimaryActions = memo(function ComposerPrimaryActions({
             type="button"
             className={cn(
               "flex shrink-0 cursor-pointer items-center justify-center rounded-full bg-destructive/90 text-white shadow-xs shadow-destructive/24 inset-shadow-control-highlight transition-colors duration-150 hover:bg-destructive active:inset-shadow-control-pressed active:shadow-none [&_svg]:pointer-events-none",
-              insidePendingAction ? "size-8 sm:size-7" : "size-8 sm:h-8 sm:w-8",
+              "size-8 sm:h-8 sm:w-8",
             )}
             {...pointerFocusProps}
             disabled={!canOperateThread}
@@ -147,64 +106,11 @@ export const ComposerPrimaryActions = memo(function ComposerPrimaryActions({
     </Tooltip>
   );
 
-  if (pendingAction) {
-    return (
-      <div className={cn("flex items-center justify-end", compact ? "gap-1.5" : "gap-2")}>
-        {canInterrupt ? renderStopGenerationButton(true) : null}
-        {pendingAction.questionIndex > 0 ? (
-          compact ? (
-            <Button
-              size="icon-sm"
-              variant="outline"
-              {...pointerFocusProps}
-              onClick={onPreviousPendingQuestion}
-              disabled={pendingAction.isResponding}
-              aria-label="Previous question"
-            >
-              <ChevronLeftIcon className="size-3.5" />
-            </Button>
-          ) : (
-            <Button
-              size="sm"
-              variant="outline"
-              {...pointerFocusProps}
-              onClick={onPreviousPendingQuestion}
-              disabled={pendingAction.isResponding}
-            >
-              Previous
-            </Button>
-          )
-        ) : null}
-        {children}
-        <button
-          type="submit"
-          className={cn(messageActionPillClassName, "h-8 sm:h-7", compact ? "px-3" : "px-4")}
-          {...pointerFocusProps}
-          disabled={
-            !canOperateThread ||
-            isSendDisabled ||
-            pendingAction.isResponding ||
-            (pendingAction.isLastQuestion
-              ? !pendingAction.isComplete
-              : !pendingAction.canAdvance)
-          }
-        >
-          {formatPendingPrimaryActionLabel({
-            compact,
-            isLastQuestion: pendingAction.isLastQuestion,
-            isResponding: pendingAction.isResponding,
-            questionIndex: pendingAction.questionIndex,
-          })}
-        </button>
-      </div>
-    );
-  }
-
   if (canInterrupt && !hasSendableContent && !isEditingQueuedMessage) {
     return (
       <>
         {children}
-        {renderStopGenerationButton(false)}
+        {renderStopGenerationButton()}
       </>
     );
   }

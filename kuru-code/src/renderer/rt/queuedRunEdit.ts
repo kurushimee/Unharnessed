@@ -66,12 +66,6 @@ export function resolveQueuedEditExit(input: {
  * can. An open question takes the composer over for its answer, so an edit
  * begun then would happen out of sight and could be sent before it is seen.
  */
-export function queuedRunEditBlockedReason(input: {
-  readonly openQuestionCount: number;
-}): string | null {
-  return input.openQuestionCount > 0 ? "Answer the question to edit queued messages" : null;
-}
-
 interface ExitWatch<E> {
   readonly runs: QueuedRunsAtom;
   readonly runId: RunId;

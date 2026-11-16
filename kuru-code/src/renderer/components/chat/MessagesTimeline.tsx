@@ -5,7 +5,6 @@ import { ThreadFindTimelineContext } from "./ThreadFindProvider";
 import { MarkdownFindContext } from "./markdownFindContext";
 import { useChatCanvas } from "./ChatCanvasContext";
 import { WorkLogBlock } from "./WorkLog";
-import { TimelinePendingApprovalRow } from "./TimelinePendingApprovalRow";
 import { deriveTimelineMinimapItems } from "./timelineMinimapItems";
 import {
   type AssistantCitation,
@@ -20,8 +19,6 @@ import { resolveWorkGroupScrollAnchor } from "~/rt/work-log/scrollAnchor";
 import { observeResize } from "~/lib/observeResize";
 import { useStableCallback } from "~/hooks/useStableCallback";
 
-const EMPTY_PENDING_APPROVALS: ReadonlyArray<PendingApproval> = [];
-const EMPTY_RESPONDING_REQUEST_IDS: TimelineRowSharedState["respondingRequestIds"] = [];
 
 
 import { resolveChatListAnchoredEndSpace } from "~/shared/chatList";
@@ -39,7 +36,7 @@ import {
   type SyntheticEvent,
 } from "react";
 import { LegendList, type LegendListRef, type MaintainScrollAtEndOptions } from "@legendapp/list/react";
-import { type PendingApproval, type TimelineEntry } from "../../session-logic";
+import { type TimelineEntry } from "../../session-logic";
 import {
   ArrowRightIcon,
   CircleAlertIcon,
@@ -195,11 +192,7 @@ export interface MessagesTimelineHistoryControls {
 }
 
 interface MessagesTimelineProps {
-  pendingApprovals?: ReadonlyArray<PendingApproval>;
-  heldApprovalRequestIds?: ReadonlySet<string> | undefined;
-  respondingRequestIds?: TimelineRowSharedState["respondingRequestIds"];
   canOperateThread?: boolean;
-  onRespondToApproval?: TimelineRowSharedState["onRespondToApproval"];
   citationRequest?: AssistantCitationRequest | null;
   citationHistory?: CitedHistory;
   onCiteAssistantText?: (
@@ -210,9 +203,6 @@ interface MessagesTimelineProps {
   runlessWorkActive?: boolean;
   activeTurnStartedAt?: string | null;
   isCompacting?: boolean;
-  awaitingUser?: "approval" | "input" | null;
-  /** Which request is waiting, so a second one of the same kind is announced too. */
-  awaitingRequestId?: string | null;
   footer?: ReactNode;
 
   listRef: React.RefObject<LegendListRef | null>;
@@ -273,11 +263,7 @@ export function MessagesTimeline(props: MessagesTimelineProps) {
 }
 
 const ConversationTimeline = memo(function ConversationTimeline({
-  pendingApprovals = EMPTY_PENDING_APPROVALS,
-  heldApprovalRequestIds,
-  respondingRequestIds = EMPTY_RESPONDING_REQUEST_IDS,
   canOperateThread = false,
-  onRespondToApproval,
   citationRequest = null,
   citationHistory = CITED_HISTORY_LOADING,
   onCiteAssistantText,
@@ -286,8 +272,6 @@ const ConversationTimeline = memo(function ConversationTimeline({
   activeTurnStartedAt = null,
   footer = null,
   isCompacting = false,
-  awaitingUser = null,
-  awaitingRequestId = null,
   listRef,
   timelineEntries,
   findOpen = false,
@@ -563,14 +547,8 @@ const ConversationTimeline = memo(function ConversationTimeline({
       ? new Set(paintedExpandedAttemptIds).add(activeFindAttemptId)
       : paintedExpandedAttemptIds;
 
-  const isVisiblePendingApproval = (approval: PendingApproval) =>
-    !heldApprovalRequestIds?.has(approval.requestId);
-  const pendingApprovalRequestIds = new Set(
-    pendingApprovals.filter(isVisiblePendingApproval).map((approval) => approval.requestId),
-  );
   const rawRows = useIncrementalTimelineRows(`${listIdentityKey}\0${workspaceRoot ?? ""}`, {
     timelineEntries,
-    pendingApprovalRequestIds,
     latestRun,
     runningRunId,
     expandedRunIds: visibleExpandedRunIds,
@@ -585,19 +563,6 @@ const ConversationTimeline = memo(function ConversationTimeline({
     revealedMessageId,
   });
   const rows = useStableRows(rawRows, listIdentityKey);
-  const matchedApprovalRequestIds = new Set<string>();
-  for (const row of pendingApprovalRequestIds.size > 0 ? rows : []) {
-    const entries =
-      row.kind === "work" ? row.groupedEntries : row.kind === "work-live" ? [row.entry] : [];
-    for (const entry of entries) {
-      const item = entry.projectedItem?.item;
-      if (item?.type === "approval_request") matchedApprovalRequestIds.add(item.requestId);
-    }
-  }
-  const unmatchedPendingApprovals = pendingApprovals.filter(
-    (approval) =>
-      isVisiblePendingApproval(approval) && !matchedApprovalRequestIds.has(approval.requestId),
-  );
   const minimapItems = deriveTimelineMinimapItems(rows);
   const minimapRowIndices = minimapItems.map((item) => item.rowIndex);
   const restoreRowIndex =
@@ -608,7 +573,6 @@ const ConversationTimeline = memo(function ConversationTimeline({
     restoringThreadPosition && restoreRowIndex >= 0 ? { indices: [restoreRowIndex] } : undefined;
   const showsEmptyState =
     rows.length === 0 &&
-    unmatchedPendingApprovals.length === 0 &&
     !isWorking &&
     historyControls === undefined &&
     footer === null;
@@ -898,18 +862,8 @@ const ConversationTimeline = memo(function ConversationTimeline({
     };
   };
 
-  // Built from props after the last hook so the compiler can memoize the row context; a map
-  // made before a hook would rebuild it, and re-render every row, on each streamed update.
-  const pendingApprovalsByRequestId = new Map(
-    pendingApprovals
-      .filter(isVisiblePendingApproval)
-      .map((approval) => [approval.requestId, approval]),
-  );
   const sharedState: TimelineRowSharedState = {
-    pendingApprovals: pendingApprovalsByRequestId,
-    respondingRequestIds,
     canOperateThread,
-    onRespondToApproval,
     citationRequest: readyCitationRequest,
     listRef,
     timestampFormat,
@@ -942,7 +896,6 @@ const ConversationTimeline = memo(function ConversationTimeline({
     isWorking,
     isCompacting: compactionAwaitingRow,
     isRevertingCheckpoint,
-    awaitingUser: awaitingUser !== null,
     latestRunId: latestRun?.runId ?? null,
     liveAnswerPreview:
       isWorking && toolCallVisibility === "zen" ? liveAnswerPreview(timelineEntries) : null,
@@ -952,8 +905,7 @@ const ConversationTimeline = memo(function ConversationTimeline({
   const activityAnnouncer = (
     <ThreadActivityAnnouncer
       threadKey={listIdentityKey}
-      status={awaitingUser ?? (isWorking ? "working" : "idle")}
-      requestId={awaitingRequestId}
+      status={isWorking ? "working" : "idle"}
       runId={announcedRun?.runId ?? null}
       runStatus={announcedRun?.status ?? null}
       detailBehind={detailBehindShell}
@@ -1096,19 +1048,6 @@ const ConversationTimeline = memo(function ConversationTimeline({
       onGrow={onFooterGrow}
     >
       {footer}
-      {unmatchedPendingApprovals.length > 0 ? (
-        <TimelineRowCtx value={sharedState}>
-          <div className="messages-timeline-row-frame">
-            <div className="chat-content-lane overflow-x-clip" data-timeline-root="true">
-              <WorkLogBlock>
-                {unmatchedPendingApprovals.map((approval) => (
-                  <TimelinePendingApprovalRow key={approval.requestId} approval={approval} />
-                ))}
-              </WorkLogBlock>
-            </div>
-          </div>
-        </TimelineRowCtx>
-      ) : null}
     </TimelineListFooter>
   );
 

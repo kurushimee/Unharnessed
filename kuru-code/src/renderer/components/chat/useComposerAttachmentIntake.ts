@@ -11,7 +11,6 @@ import {
 } from "~/lib/composerContextReferences";
 import { type ComposerImageAttachment } from "../../composerDraftStore";
 import { type ComposerPromptEditorHandle } from "../ComposerPromptEditorTiptap";
-import { type PendingUserInput } from "../../session-logic";
 import { classifyComposerAttachmentFile, normalizeComposerImageFileMimeType } from "./composerAttachmentFiles";
 import { imageContextReference } from "~/lib/composerContextRecords";
 import { randomUUID } from "~/lib/utils";
@@ -32,8 +31,6 @@ import {
  */
 export function useComposerAttachmentIntake(input: {
   readonly activeThreadId: ChatComposerProps["activeThreadId"];
-  readonly pendingUserInputs: ReadonlyArray<PendingUserInput>;
-  readonly isLiteralPendingAnswer: boolean;
   readonly projectSelectionRequired: boolean;
   readonly attachmentTargetKey: string;
   readonly promptRef: ChatComposerProps["promptRef"];
@@ -52,8 +49,6 @@ export function useComposerAttachmentIntake(input: {
 }) {
   const {
     activeThreadId,
-    pendingUserInputs,
-    isLiteralPendingAnswer,
     projectSelectionRequired,
     attachmentTargetKey,
     promptRef,
@@ -75,13 +70,6 @@ export function useComposerAttachmentIntake(input: {
     },
   ): Promise<boolean> => {
     if (!activeThreadId || files.length === 0 || isRevertingCheckpointRef.current) return false;
-    if (pendingUserInputs.length > 0) {
-      toastManager.add({
-        type: "error",
-        title: "This question cannot accept attachments.",
-      });
-      return false;
-    }
     // Captured before the awaits below: the user may switch threads while a
     // large image is being compressed, and the attachments and errors belong
     // to the thread the paste happened in.
@@ -89,7 +77,6 @@ export function useComposerAttachmentIntake(input: {
     const imageAttachmentsGetChips =
       !options?.skipImageInlineChip &&
       (options?.selection !== undefined ||
-        pendingUserInputs.length > 0 ||
         projectSelectionRequired ||
         stripInlineContextReferences(promptRef.current).trim().length > 0);
 
@@ -231,7 +218,6 @@ export function useComposerAttachmentIntake(input: {
     _bypassAutoAttachment: boolean,
     selectionOverride?: { start: number; end: number },
   ): boolean => {
-    if (isLiteralPendingAnswer) return false;
     const selection = selectionOverride ?? composerEditorRef.current?.readSelectionRange();
     const wouldExceedInputLimit = wouldTextPasteExceedLimit({
       valueLength: promptRef.current.length,

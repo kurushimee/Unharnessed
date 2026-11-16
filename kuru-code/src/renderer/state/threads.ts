@@ -4,8 +4,7 @@
 // session option (the model, its reasoning effort, its fast mode). A draft's
 // thread is named before Unharnessed makes its session: the main process
 // keeps the draft's id as the session's alias, so the thread keeps the id
-// T3 Code's draft gave it. What Unharnessed has no equivalent for (approvals,
-// checkpoints, forks, guest shares) fails with the reason.
+// T3 Code's draft gave it.
 import type {
   EnvironmentId,
   ModelSelection,
@@ -19,12 +18,9 @@ import { useStore } from "~/state";
 import { createLocalCommand, type AtomCommand, type AtomCommandResult } from "~/rt/state/runtime";
 import type {
   CancelQueuedRunInput,
-  DismissThreadUserInputInput,
   EditQueuedRunInput,
   InterruptThreadTurnInput,
   PromoteQueuedRunInput,
-  RespondToThreadApprovalInput,
-  RespondToThreadUserInputInput,
   ResumeThreadQueueInput,
   SetThreadInteractionModeInput,
   SetThreadRuntimeModeInput,
@@ -43,7 +39,6 @@ export interface ThreadMetadataUpdate {
   readonly input: {
     readonly threadId: ThreadId;
     readonly title?: string;
-    readonly regenerateTitle?: boolean;
     readonly modelSelection?: ModelSelection;
     readonly [key: string]: unknown;
   };
@@ -54,7 +49,6 @@ export type OrchestrationCommand<I> = (input: I) => Promise<AtomCommandResult<un
 const updateMetadata = createLocalCommand({
   label: "kuru:thread:update-metadata",
   execute: async ({ input }: ThreadMetadataUpdate) => {
-    if (input.regenerateTitle) throw new Error("Unharnessed has no title generator.");
     if (input.modelSelection) applyModelSelection(input.modelSelection);
     await invoke("threads.update", {
       id: input.threadId,
@@ -74,12 +68,6 @@ type Target<I> = { readonly environmentId: EnvironmentId; readonly input: I };
 
 function command<I, A>(label: string, execute: (input: I) => Promise<A> | A): AtomCommand<Target<I>, A, never> {
   return createLocalCommand({ label: `kuru:thread:${label}`, execute: async (target: Target<I>) => execute(target.input) });
-}
-
-function unsupported<I>(label: string, reason: string): AtomCommand<Target<I>, never, never> {
-  return command<I, never>(label, () => {
-    throw new Error(reason);
-  });
 }
 
 /** Whether the thread is the one kuru code's main process has on screen. */
@@ -276,9 +264,6 @@ export const threadEnvironment = {
   unarchive: metaCommand<{ readonly threadId: ThreadId }>("unarchive", () => ({ archivedAt: null })),
   markUnread: metaCommand<{ readonly threadId: ThreadId }>("mark-unread", () => ({ unread: true })),
   editQueuedRun,
-  respondToApproval: unsupported<RespondToThreadApprovalInput>("approval", "Unharnessed asks for no approvals."),
-  respondToUserInput: unsupported<RespondToThreadUserInputInput>("user-input", "Unharnessed asks no questions."),
-  dismissUserInput: unsupported<DismissThreadUserInputInput>("dismiss-user-input", "Unharnessed asks no questions."),
   linkPullRequest,
   unlinkPullRequest,
 };
@@ -287,12 +272,6 @@ export { environmentThreadDetails } from "~/kuru/threadDetails";
 
 export { environmentThreadShells } from "~/kuru/shells";
 
-/** T3 Code's approvals its child threads wait on; Unharnessed asks for none. */
-import { Atom } from "effect/reactivity";
-import type { ChildThreadApproval } from "~/rt/state/threadRequests";
-import type { ScopedThreadRef } from "~/contracts";
-const NO_CHILD_APPROVALS = Atom.make<ReadonlyArray<ChildThreadApproval>>([]);
-export const childThreadApprovalsAtom = (_ref: ScopedThreadRef | null) => NO_CHILD_APPROVALS;
 
 // T3 Code's thread state reads, over kuru code's projections (kuru/threadDetails.ts).
 import { useAtomValue } from "@effect/atom-react";
