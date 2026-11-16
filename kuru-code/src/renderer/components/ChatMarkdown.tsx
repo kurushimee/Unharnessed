@@ -150,7 +150,6 @@ interface ChatMarkdownProps {
   text: string;
   cwd: string | undefined;
   threadRef?: ScopedThreadRef | undefined;
-  pullRequestPanelRef?: ScopedThreadRef | undefined;
   environmentId?: EnvironmentId | undefined;
   onTaskListChange?: ((input: { markerOffset: number; checked: boolean }) => void) | undefined;
   isStreaming?: boolean;
@@ -333,7 +332,6 @@ function useChatMarkdownState({
   inline = false,
   cwd,
   threadRef,
-  pullRequestPanelRef,
   environmentId: explicitEnvironmentId,
   onTaskListChange,
   isStreaming = false,
@@ -453,10 +451,8 @@ function useChatMarkdownState({
         : payload.html,
     );
   };
-  const openChangeRequestLink = useOpenChangeRequestLink(threadRef, pullRequestPanelRef);
+  const openChangeRequestLink = useOpenChangeRequestLink(threadRef);
   const openDeferredMarkdownLink = useOpenLink(threadRef);
-  // Subscribe so hydrated settings apply before the anchor synchronously decides whether to intercept _blank.
-  const linkTargetPreference = useClientSettings((settings) => settings.browserLinkTarget);
   const mathEnabled = useClientSettings((settings) => settings.mathRenderingEnabled);
   // Keyed by the file links found, not the text, so streamed text that adds none keeps the
   // renderer context, and every block reading it, unchanged.
@@ -556,7 +552,6 @@ function useChatMarkdownState({
     inline,
     mathEnabled,
     isStreaming,
-    linkTargetPreference,
     markdownFileLinkMetaByHref,
     onTaskListChange,
     openChangeRequestLink,
@@ -704,7 +699,6 @@ const CHAT_MARKDOWN_COMPONENTS = {
       openMarkdownMedia,
       openChangeRequestLink,
       openDeferredMarkdownLink,
-      linkTargetPreference,
         projects,
       pullRequestsEnabled,
         fileLinkChip,

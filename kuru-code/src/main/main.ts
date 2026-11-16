@@ -22,6 +22,8 @@ import { Threads } from "./threads";
 import { usageReport } from "./usage";
 import { writeCommitMessage } from "./writer";
 
+const READ_MEDIA_MAX_BYTES = 256 * 1024 * 1024;
+
 // Started from a VS Code terminal or extension, Electron would run as Node.
 delete process.env.ELECTRON_RUN_AS_NODE;
 
@@ -371,6 +373,43 @@ async function start(): Promise<void> {
     }
   };
   nativeTheme.on("updated", () => applyTheme(store.prefs));
+  // T3 Code's window names its theme (desktopBridge.setTheme); the next launch opens in it.
+  ipcMain.handle("desktop:set-theme", (_event, theme: unknown) => {
+    if (theme !== "light" && theme !== "dark" && theme !== "system") return;
+    store.setPrefs({ theme });
+    applyTheme(store.prefs);
+  });
+  // From T3 Code's readMedia: the window can show media it cannot fetch(); reading it here keeps
+  // Save and Copy working for it. Like an <img>, it sends the session's cookies.
+  ipcMain.handle("desktop:read-media", async (event, url: unknown) => {
+    if (typeof url !== "string" || !window || window.webContents.id !== event.sender.id) return null;
+    if (!/^https?:$/.test(URL.parse(url)?.protocol ?? "")) return null;
+    try {
+      const response = await window.webContents.session.fetch(url, { credentials: "include" });
+      const mimeType = response.headers.get("content-type") ?? "";
+      if (!response.ok || !response.body) {
+        await response.body?.cancel();
+        return { status: response.status, mimeType, data: new Uint8Array() };
+      }
+      // The whole body crosses IPC, so stop before a huge file can exhaust main-process memory.
+      const chunks: Uint8Array[] = [];
+      let size = 0;
+      const reader = response.body.getReader();
+      for (let read = await reader.read(); !read.done; read = await reader.read()) {
+        const chunk = read.value;
+        size += chunk.byteLength;
+        if (size > READ_MEDIA_MAX_BYTES) {
+          await reader.cancel();
+          return { status: 413, mimeType, data: new Uint8Array() };
+        }
+        chunks.push(chunk);
+      }
+      return { status: response.status, mimeType, data: Buffer.concat(chunks) };
+    } catch (error) {
+      log.warn(`readMedia failed: ${String(error)}`);
+      return null;
+    }
+  });
 
   ipcMain.on("webview", (_event, message: WebviewMessage) => {
     try {

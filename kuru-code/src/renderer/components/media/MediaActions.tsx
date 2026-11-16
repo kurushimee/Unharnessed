@@ -1,30 +1,15 @@
-import {
-  formatFilePathForClipboard,
-  type MediaActionId,
-} from "~/rt/mediaActions";
-import {
-  mediaReferenceFileName,
-  type MediaReference,
-} from "~/rt/mediaReference";
+import { formatFilePathForClipboard, type MediaActionId } from "~/rt/mediaActions";
+import { mediaReferenceFileName, type MediaReference } from "~/rt/mediaReference";
 import { resolveAssetUrl } from "~/rt/state/assets";
 import { settlePromise, squashAtomCommandFailure } from "~/rt/state/runtime";
-import {
-  AuthFilesystemReadScope,
-  type AssetResource,
-  type ContextMenuItem,
-  type EnvironmentId,
-  sessionGrantsScope,
-  type SessionGrantInput,
-} from "~/contracts";
+import { type AssetResource, type ContextMenuItem, type EnvironmentId } from "~/contracts";
 import { AsyncResult } from "effect/reactivity";
 import { useRef, useState, type ReactElement } from "react";
 
 import { writeTextToClipboard } from "../../hooks/useCopyToClipboard";
 import { readLocalApi } from "../../localApi";
-import { appAtomRegistry } from "../../rpc/atomRegistry";
 import { assetEnvironment } from "../../state/assets";
-import { useEnvironmentQuery } from "../../state/query";
-import { environmentSession, readPreparedConnection } from "../../state/session";
+import { readPreparedConnection } from "../../state/session";
 import { useAtomQueryRunner } from "../../state/use-atom-query-runner";
 import { stackedThreadToast, toastManager } from "../ui/toast";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
@@ -45,33 +30,10 @@ function mediaFileName(source: MediaActionSource): string {
   );
 }
 
-function allowsHostMedia(session: SessionGrantInput | null) {
-  return session === null || sessionGrantsScope(session, AuthFilesystemReadScope);
-}
-
-function canReadHostMedia(environmentId: EnvironmentId | null): boolean {
-  if (environmentId === null) return true;
-  const result = appAtomRegistry.get(environmentSession.sessionStateAtom(environmentId));
-  return result._tag !== "Failure" && allowsHostMedia(AsyncResult.getOrElse(result, () => null));
-}
-
 export function useMediaActions(source: MediaActionSource) {
-  const hostEnvironmentId =
-    source.asset &&
-    (source.asset.resource._tag === "workspace-file" || source.asset.resource._tag === "media-file")
-      ? source.asset.environmentId
-      : null;
-  const fileSession = useEnvironmentQuery(
-    hostEnvironmentId === null ? null : environmentSession.sessionStateAtom(hostEnvironmentId),
-  );
-  const canReadMedia =
-    hostEnvironmentId === null ||
-    (fileSession.error === null && fileSession.data !== null && allowsHostMedia(fileSession.data));
-  const assertCanReadMedia = () => {
-    if (!canReadHostMedia(hostEnvironmentId)) {
-      throw new Error("This connection cannot read host files.");
-    }
-  };
+  // kuru code's one environment is this machine, so its files are always readable.
+  const canReadMedia = true;
+  const assertCanReadMedia = () => undefined;
   const createAssetUrl = useAtomQueryRunner(assetEnvironment.createUrl, {
     reportFailure: false,
     refresh: true,

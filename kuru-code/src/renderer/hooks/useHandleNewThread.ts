@@ -60,8 +60,6 @@ export function useNewThreadHandler() {
       threadId = ThreadId.make(randomUUID());
       store.setProjectDraftThreadId(projectRef, draftId, {
         threadId,
-        environmentId: projectRef.environmentId,
-        projectId: projectRef.projectId,
         createdAt: new Date().toISOString(),
         branch: options?.branch ?? null,
         worktreePath: options?.worktreePath ?? null,

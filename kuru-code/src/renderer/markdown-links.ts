@@ -10,7 +10,6 @@ import {
 import { parseFileUrlHref, splitFilePathPosition } from "~/shared/fileLinks";
 
 import { formatWorkspaceRelativePath } from "./filePathDisplay";
-import { isTerminalLinkActivation } from "./terminal-links";
 
 export interface MarkdownFileLinkMeta {
   filePath: string;
@@ -22,17 +21,6 @@ export interface MarkdownFileLinkMeta {
   line?: number;
   column?: number;
   endLine?: number;
-}
-
-export function shouldOpenMarkdownFileLinkInEditor(
-  event: Pick<MouseEvent, "metaKey" | "ctrlKey">,
-  platform?: string,
-): boolean {
-  return isTerminalLinkActivation(event, platform);
-}
-
-export function shouldOpenMarkdownFileLinkInBrowserByDefault(path: string): boolean {
-  return /\.pdf$/i.test(path.split(/[?#]/, 1)[0] ?? "");
 }
 
 export function rewriteMarkdownFileUriHref(href: string | undefined): string | null {

@@ -48,6 +48,7 @@
     "esbuild": "^0.28.2",
     "hast-util-to-html": "^9.0.6",
     "lucide-react": "^0.564.0",
+    "mdast-util-to-hast": "^13.2.1",
     "oxc-transform-react": "^0.152.0",
     "pele": "^1.13.0",
     "react": "19.3.0",

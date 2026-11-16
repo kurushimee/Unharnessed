@@ -1,25 +1,16 @@
 import * as Schema from "effect/Schema";
-import type { PreviewCaptureFailureEncoded } from "./previewCapture";
 
 import { SnapShotSource } from "./chatAttachment";
 import { EnvironmentId, TrimmedNonEmptyString } from "./baseSchemas";
 import { BrowserProfileId } from "./browserProfile";
-import type {
-  BrowserImportResult,
-  BrowserImportSource,
-  BrowserImportSourceId,
-} from "./browserImport";
 import { AuthAccessTokenResult, AuthSessionState } from "./auth";
 import { AdvertisedEndpoint } from "./remoteAccess";
 import { ExecutionEnvironmentDescriptor } from "./environment";
 import { type ClientSettings, type QuitConfirmationMode, SnapShotShortcut } from "./settings";
 import type { EditorId } from "./editor";
-import { KeybindingShortcut, type PreviewForwardedShortcut } from "./keybindings";
+import { KeybindingShortcut } from "./keybindings";
 
-import type {
-  DesktopAppActivationRequest,
-  DesktopAppActivationResponse,
-} from "./desktopAppActivation";
+import type { DesktopAppActivationRequest, DesktopAppActivationResponse } from "./desktopAppActivation";
 
 export interface ContextMenuItem<T extends string = string> {
   id: T;
@@ -1158,7 +1149,6 @@ export interface DesktopBridge {
     complete: (response: DesktopAppActivationResponse) => Promise<void>;
     onRequest: (listener: (request: DesktopAppActivationRequest) => void) => () => void;
   };
-  preview: DesktopPreviewBridge;
 }
 
 /** Renderer callback invoked by Electron with a fresh user gesture before display-media capture. */
@@ -1236,76 +1226,6 @@ export const DesktopPreviewPickElementInputSchema = Schema.Struct({
   tabId: DesktopPreviewTabIdSchema,
   voice: Schema.optional(DesktopPreviewAnnotationVoiceConfigSchema),
 });
-
-export interface DesktopPreviewBridge {
-  setForwardedShortcuts: (shortcuts: ReadonlyArray<PreviewForwardedShortcut>) => Promise<void>;
-  createTab: (tabId: string, defaults?: DesktopPreviewTabDefaults) => Promise<void>;
-  closeTab: (tabId: string) => Promise<void>;
-  registerWebview: (tabId: string, webContentsId: number) => Promise<void>;
-  navigate: (tabId: string, url: string) => Promise<void>;
-  goBack: (tabId: string) => Promise<void>;
-  goForward: (tabId: string) => Promise<void>;
-  refresh: (tabId: string) => Promise<void>;
-  zoomIn: (tabId: string) => Promise<void>;
-  zoomOut: (tabId: string) => Promise<void>;
-  resetZoom: (tabId: string) => Promise<void>;
-  setZoomFactor: (tabId: string, zoomFactor: number) => Promise<void>;
-  hardReload: (tabId: string) => Promise<void>;
-  setColorScheme: (tabId: string, colorScheme: DesktopPreviewColorScheme) => Promise<void>;
-  setAudioMuted: (tabId: string, audioMuted: boolean) => Promise<void>;
-  /** Tells the tab's server whether its webview is on screen. */
-  setShown: (tabId: string, shown: boolean) => Promise<void>;
-  openDevTools: (tabId: string) => Promise<void>;
-  clearCookies: (environmentId: EnvironmentId, profileId?: string) => Promise<void>;
-  clearCache: (environmentId: EnvironmentId, profileId?: string) => Promise<void>;
-  getPreviewConfig: (
-    environmentId: EnvironmentId,
-    profileId?: string,
-  ) => Promise<DesktopPreviewWebviewConfig>;
-  listBrowserImportSources: () => Promise<ReadonlyArray<BrowserImportSource>>;
-  importBrowserCookies: (input: {
-    readonly environmentId: EnvironmentId;
-    readonly sourceId: BrowserImportSourceId;
-    readonly sourceProfileDirectory: string;
-    readonly targetProfileId: string;
-  }) => Promise<BrowserImportResult>;
-  setAnnotationTheme: (theme: DesktopPreviewAnnotationTheme) => Promise<void>;
-  setAnnotationSendEnabled: (tabId: string, enabled: boolean) => Promise<void>;
-  annotationVoice: {
-    onEvent: (
-      listener: (tabId: string, event: DesktopPreviewAnnotationVoiceEvent) => void,
-    ) => () => void;
-    update: (state: DesktopPreviewAnnotationVoiceState) => Promise<void>;
-  };
-  /** Resolves with the annotation and attach/send intent, or null on cancellation. Rejects if activation fails. */
-  pickElement: (
-    tabId: string,
-    voice?: DesktopPreviewAnnotationVoiceConfig,
-  ) => Promise<PreviewAnnotationSubmissionResult | null>;
-  cancelPickElement: (tabId: string) => Promise<void>;
-  captureScreenshot: (
-    tabId: string,
-  ) => Promise<DesktopPreviewScreenshotArtifact | PreviewCaptureFailureEncoded>;
-  revealArtifact: (path: string) => Promise<void>;
-  copyArtifactToClipboard: (path: string) => Promise<void>;
-  pictureInPicture: {
-    open: (tabId: string) => Promise<void>;
-    close: (tabId: string) => Promise<void>;
-  };
-  recording: {
-    onInput: (listener: (event: DesktopPreviewRecordingInputEvent) => void) => () => void;
-    startScreencast: (tabId: string) => Promise<void | PreviewCaptureFailureEncoded>;
-    stopScreencast: (tabId: string) => Promise<void>;
-    save: (
-      tabId: string,
-      mimeType: string,
-      data: Uint8Array,
-    ) => Promise<DesktopPreviewRecordingArtifact>;
-  };
-  onStateChange: (listener: (tabId: string, state: DesktopPreviewTabState) => void) => () => void;
-  onPointerEvent: (listener: (event: DesktopPreviewPointerEvent) => void) => () => void;
-  onOpenLink: (listener: (event: DesktopPreviewOpenLinkEvent) => void) => () => void;
-}
 
 export type ConfirmDialogVariant = "default" | "destructive";
 

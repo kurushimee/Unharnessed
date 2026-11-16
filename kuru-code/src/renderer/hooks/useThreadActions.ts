@@ -218,7 +218,7 @@ export function useThreadActions() {
     for (const kind of ["settle", "pin", "archive"]) {
       ThreadUndo.invalidate(kind, scopedThreadKey(target));
     }
-    useComposerDraftStore.getState().clearComposerDraft(target);
+    useComposerDraftStore.getState().clearComposerContent(target);
     leaveRouteThread(target);
     const result = await settlePromise(() => invoke<string | null>("threads.delete", { id: target.threadId }));
     if (result._tag === "Success" && typeof result.value === "string") return fail(result.value);

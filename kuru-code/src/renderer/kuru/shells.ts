@@ -4,6 +4,7 @@
 // thread becomes the shell T3 Code's server would send (its wire shell); a
 // running turn is its active run. T3 Code's own shell atoms
 // (rt/state/threadShell.ts) and presentation (rt/state/models.ts) read them.
+import { environmentCatalogAtom } from "./environment";
 import * as DateTime from "effect/DateTime";
 import { Atom } from "effect/reactivity";
 import {
@@ -24,7 +25,6 @@ import {
   type EnvironmentThreadShell,
 } from "~/rt/state/models";
 import { createEnvironmentThreadShellAtoms } from "~/rt/state/threadShell";
-import type { EnvironmentCatalogState } from "~/rt/state/connections";
 import type { ThreadPullRequestLink } from "~/contracts";
 import { appAtomRegistry } from "~/rpc/atomRegistry";
 import { useStore } from "~/state";
@@ -280,11 +280,6 @@ const snapshotAtom = Atom.make<OrchestrationV2ShellSnapshot | null>(null).pipe(
   Atom.keepAlive,
   Atom.withLabel("kuru:shell-snapshot"),
 );
-
-export const environmentCatalogAtom = Atom.make<EnvironmentCatalogState>({
-  isReady: true,
-  entries: new Map([[LOCAL_ENVIRONMENT_ID, { enabled: true }]]),
-}).pipe(Atom.keepAlive, Atom.withLabel("kuru:environment-catalog"));
 
 const NO_SNAPSHOT = Atom.make<OrchestrationV2ShellSnapshot | null>(null);
 const NO_TAGS = Atom.make<ReadonlyArray<string> | null>(null);

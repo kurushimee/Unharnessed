@@ -42,14 +42,6 @@ export function readPastedComposerContext(
   );
   const records = new Map<string, ComposerContextRecord>();
   for (const record of [...(decodedFragment?.records ?? []), ...threads.records]) {
-    if (
-      record.kind === "preview-annotation" &&
-      !("payload" in record) &&
-      pastedIds.has(record.contextId) &&
-      record.screenshotContextId
-    ) {
-      pastedIds.add(record.screenshotContextId);
-    }
     records.set(record.contextId, record);
   }
   return {

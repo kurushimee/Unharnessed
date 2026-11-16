@@ -21,8 +21,10 @@ contextBridge.exposeInMainWorld("kuru", {
   platform: process.platform,
 });
 
-/** T3 Code's desktop bridge, the part its window reads: menu actions from the main process. */
+/** T3 Code's desktop bridge, the part its window reads: its theme, and menu actions from the main process. */
 contextBridge.exposeInMainWorld("desktopBridge", {
+  setTheme: (theme: "light" | "dark" | "system") => ipcRenderer.invoke("desktop:set-theme", theme),
+  readMedia: (url: string) => ipcRenderer.invoke("desktop:read-media", url),
   onMenuAction: (listener: (action: string) => void) => {
     const wrapped = (_event: unknown, action: string) => listener(action);
     ipcRenderer.on("menu-action", wrapped);

@@ -1,10 +1,81 @@
-// Adapted from T3 Code's lib/discardComposerDraft.ts: drops a thread's unsent
-// prompt (or a whole draft thread). T3 Code offers an undo toast; kuru code's
-// drafts are only text and images, dropped at once.
-import { useComposerDraftStore, type ComposerThreadTarget } from "../composerDraftStore";
+import * as Cause from "effect/Cause";
+import { AsyncResult } from "effect/reactivity";
+
+import {
+  type ComposerThreadTarget,
+  composerDraftHasUserContent,
+  resolveComposerDraftKey,
+  useComposerDraftStore,
+} from "../composerDraftStore";
+import { showThreadUndoNotice } from "../hooks/showThreadUndoNotice";
+import * as ThreadUndo from "~/rt/state/threadUndo";
 
 export function discardComposerDraft(target: ComposerThreadTarget): void {
   const store = useComposerDraftStore.getState();
-  if (typeof target === "string") store.clearDraftThread(target);
-  else store.clearComposerDraft(target);
+  const key = resolveComposerDraftKey(store, target);
+  const draft = key === null ? undefined : store.draftsByThreadKey[key];
+  if (key === null || !draft) return;
+  const session = store.draftThreadsByThreadKey[key];
+  const logicalProjectKeys = Object.entries(store.logicalProjectDraftThreadKeyByLogicalProjectKey)
+    .filter(([, draftKey]) => draftKey === key)
+    .map(([logicalProjectKey]) => logicalProjectKey);
+  const discardsSession = typeof target === "string";
+
+  const claim = ThreadUndo.begin("discard", key);
+  if (discardsSession) {
+    store.clearDraftThread(target);
+  } else {
+    store.clearComposerContent(target);
+  }
+
+  const releaseDiscardedDraft = () => {
+    // Draft-session removal already revoked these previews.
+    if (!discardsSession) {
+      for (const image of draft.images) {
+        if (image.previewUrl.startsWith("blob:")) URL.revokeObjectURL(image.previewUrl);
+      }
+    }
+  };
+
+  showThreadUndoNotice({
+    action: "Discarded",
+    claim,
+    failureTitle: "Failed to restore draft",
+    undo: async () => {
+      const current = useComposerDraftStore.getState().draftsByThreadKey[key];
+      if (current && composerDraftHasUserContent(current)) {
+        releaseDiscardedDraft();
+        return AsyncResult.failure(Cause.fail(new Error("The draft has new content.")));
+      }
+      useComposerDraftStore.setState((state) => {
+        const logicalProjectDraftThreadKeyByLogicalProjectKey = {
+          ...state.logicalProjectDraftThreadKeyByLogicalProjectKey,
+        };
+        for (const logicalProjectKey of logicalProjectKeys) {
+          logicalProjectDraftThreadKeyByLogicalProjectKey[logicalProjectKey] ??= key;
+        }
+        return {
+          draftsByThreadKey: {
+            ...state.draftsByThreadKey,
+            [key]: discardsSession
+              ? {
+                  ...draft,
+                  images: draft.images.map((image) =>
+                    image.previewUrl.startsWith("blob:")
+                      ? { ...image, previewUrl: URL.createObjectURL(image.file) }
+                      : image,
+                  ),
+                }
+              : draft,
+          },
+          draftThreadsByThreadKey: session
+            ? { ...state.draftThreadsByThreadKey, [key]: session }
+            : state.draftThreadsByThreadKey,
+          logicalProjectDraftThreadKeyByLogicalProjectKey,
+        };
+      });
+      return AsyncResult.success(undefined);
+    },
+    commit: releaseDiscardedDraft,
+  });
 }

@@ -646,7 +646,6 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
                     : null;
 
   const branchMismatch = resolveLocalCheckoutBranchMismatch({
-    effectiveEnvMode: thread.worktreePath === null ? "local" : "worktree",
     activeWorktreePath: thread.worktreePath,
     activeThreadBranch: thread.branch,
     currentGitBranch: visibleGitStatus?.refName ?? null,
@@ -1361,7 +1360,6 @@ export const SidebarSearchResultRow = memo(function SidebarSearchResultRow(props
     gitStatus.data,
   );
   const branchMismatch = resolveLocalCheckoutBranchMismatch({
-    effectiveEnvMode: thread.worktreePath === null ? "local" : "worktree",
     activeWorktreePath: thread.worktreePath,
     activeThreadBranch: thread.branch,
     currentGitBranch: visibleGitStatus?.refName ?? null,
