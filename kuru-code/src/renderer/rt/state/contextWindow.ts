@@ -217,10 +217,8 @@ export function shouldOfferResumeCompaction(input: {
   readonly promptCacheTtlMs?: number | undefined;
   readonly now: string;
 }): boolean {
-  if (
-    input.provider !== "claudeAgent" ||
-    (input.usedTokens ?? 0) < COMPACTION_SUGGESTION_MIN_TOKENS
-  ) {
+  // kuru code: Unharnessed compacts with any provider, so any idle thread is offered it.
+  if ((input.usedTokens ?? 0) < COMPACTION_SUGGESTION_MIN_TOKENS) {
     return false;
   }
 

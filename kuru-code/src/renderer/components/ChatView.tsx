@@ -66,7 +66,7 @@ import { parseScopedThreadKey, scopedThreadKey, scopeProjectRef, scopeThreadRef 
 import { resolveProjectSettings } from "~/shared/projectSettings";
 import { resolveThreadReferenceCopyTarget } from "~/rt/threadReference";
 import { useAtomValue } from "@effect/atom-react";
-import { type SetStateAction, use, useEffect, useLayoutEffect, useRef, useState } from "react";
+import { type SetStateAction, use, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { BackgroundThreadContext } from "./chat/backgroundThread";
 import { WorkspaceMutationIdContext } from "./chat/ChatMarkdownMedia";
 import { useLocation, useNavigate } from "@tanstack/react-router";
@@ -74,6 +74,8 @@ import { assistantCitationFromLocation } from "../lib/assistantCitationNavigatio
 import type { AssistantCitationSourceAnchor } from "~/lib/assistantTextSelection";
 import { useStore } from "zustand";
 import { useShallow } from "zustand/react/shallow";
+import { useStore as useKuruStore } from "~/state";
+import { chatContextWindow } from "~/kuru/contextWindow";
 import {
   isAtomCommandInterrupted,
   mapAtomCommandResult,
@@ -836,11 +838,28 @@ export default function ChatView(props: ChatViewProps) {
     (compactionRunning || (compactRequestIsActive && !compactionSettled));
   const isWorking =
     phase === "running" || isSendBusy || isCompacting || runlessWorkStartedAt !== null;
-  const activeContextWindow = deriveLatestContextWindowSnapshot(
-    serverVisibleTurnItems ?? [],
-    activeThreadLiveTokenUsage,
-    activeProviderThread,
+  // kuru code: the shown thread's agent reports its context on the chat.
+  const kuruShownChat = useKuruStore(
+    useShallow((state) =>
+      state.app?.shown.id === activeThreadId
+        ? { usage: state.chat.usage, entries: state.chat.entries }
+        : { usage: null, entries: null },
+    ),
   );
+  const kuruContextWindow = useMemo(
+    () =>
+      kuruShownChat.entries === null
+        ? null
+        : chatContextWindow(kuruShownChat.usage, kuruShownChat.entries),
+    [kuruShownChat.usage, kuruShownChat.entries],
+  );
+  const activeContextWindow =
+    kuruContextWindow ??
+    deriveLatestContextWindowSnapshot(
+      serverVisibleTurnItems ?? [],
+      activeThreadLiveTokenUsage,
+      activeProviderThread,
+    );
   const pendingBackgroundTasks = deriveThreadPendingBackgroundTasks(serverProjection);
   const activeWorkStartedAt =
     deriveActiveWorkStartedAt(activeActivityRun, activeRuntime, localDispatchStartedAt) ??
@@ -943,14 +962,8 @@ export default function ChatView(props: ChatViewProps) {
   });
   const keybindings = useAtomValue(primaryServerKeybindingsAtom);
   const backgroundThread = use(BackgroundThreadContext);
-  const manualCompactionProviderAvailable = hasAvailableCompactionProvider({
-    providers: providerInstanceEntries,
-    driverKind: selectedProvider,
-    instanceId: activeProviderInstanceId,
-    lockedInstanceId: lockedProvider
-      ? (activeRuntime?.providerInstanceId ?? activeThread?.modelSelection.instanceId ?? null)
-      : null,
-  });
+  // kuru code: the agent compacts with any provider (`/compact`).
+  const manualCompactionProviderAvailable = true;
   const [resumeCompactionPermanentlyDismissed, setResumeCompactionPermanentlyDismissed] =
     useLocalStorage(
       `t3code:resume-compaction-dismissed:${environmentId}:${activeProviderInstanceId ?? "claudeAgent"}`,
