@@ -55,6 +55,13 @@ impl Wake {
     }
 }
 
+/// A provider usage limit a turn stopped on.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct QuotaLimit {
+    /// When the provider said it resets (epoch ms), when it said.
+    pub reset_at_ms: Option<u64>,
+}
+
 /// The session's pending wakes; the `bash.*` host handlers and the retry
 /// chain's quota park feed it, the host drains it.
 #[derive(Default)]
@@ -75,6 +82,8 @@ struct WakeState {
     quota_resume_at_ms: Option<u64>,
     /// Parks of the current quota episode; a turn that succeeds ends it.
     quota_parks_used: u32,
+    /// The usage limit the last turn stopped on; `None` when it did not.
+    quota_limit: Option<QuotaLimit>,
     /// The goal backoff deadline last seen open; due once it passes.
     goal_wake_at_ms: Option<u64>,
 }
@@ -177,6 +186,31 @@ impl SessionWakes {
             state.quota_parks_used += 1;
         }
         self.poke();
+    }
+
+    /// When the quota park wakes the session (epoch ms), while it is parked.
+    #[must_use]
+    pub fn quota_resume_at(&self) -> Option<u64> {
+        self.state().quota_resume_at_ms
+    }
+
+    /// Wake the session at `resume_at_ms` with the quota resume marker, or
+    /// end the park (`None`): the user's own choice for a limited session.
+    /// Unlike a retry-chain park, it spends none of the episode's parks.
+    pub fn set_quota_resume(&self, resume_at_ms: Option<u64>) {
+        self.state().quota_resume_at_ms = resume_at_ms;
+        self.poke();
+    }
+
+    /// The usage limit the last turn stopped on; `None` when it did not.
+    #[must_use]
+    pub fn quota_limit(&self) -> Option<QuotaLimit> {
+        self.state().quota_limit
+    }
+
+    /// Record the limit a failed turn hit (`None`: none, a new turn began).
+    pub fn set_quota_limit(&self, limit: Option<QuotaLimit>) {
+        self.state().quota_limit = limit;
     }
 
     pub(crate) fn quota_parks_used(&self) -> u32 {

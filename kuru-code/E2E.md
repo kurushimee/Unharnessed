@@ -60,3 +60,23 @@ packaged `resources/bin/unharnessed.exe`), the window driven over CDP
 | Usage limits from the agent's login | dev app with `UNHARNESSED_CODING_AGENT_DIR` = the temp dir (fake Codex token) | `auth/fresh` gives the token; ChatGPT answers 401; the Limits tab ends with "ChatGPT Plus/Pro (Codex Subscription): Could not read usage limits: ChatGPT answered with HTTP 401." (before the startup retry: "no token from the agent: ACP connection closed" for three logins) |
 | Model prices | Usage → All environments → Model prices: add `next-genium/code` input 1, output 2, cache read 0.1 → Save; then output 4 → Save | saved in `usagePriceOverrides`; Cost goes from $0.00 (the gateway reports $0) to $92.18 (cache read $78.09, cache write $9.94, output $4.13), then to $96.38 without a reload |
 | Hub removed | Settings → Providers → Remove → Remove hub | "No hubs configured."; `usageLimitSources` `{}`; no console or page error |
+
+| `_unharnessed/session/quota` | `python f:/tools/quota_test.py` (debug agent, `UNHARNESSED_CODING_AGENT_DIR=f:/tools/quota-test`, `f:/tools/mock_429.py` answers 429 `usage_limit_reached` with `Retry-After: 7200`, or a reply while `f:/tools/quota-test/ok` exists) | before a turn `limited:false`; bad `resumeAt` -32602; unknown session -32603; after the limited turn `limited:true`, reset 7200 s ahead, resume 30 s after it (the agent's own pause); `resumeAt:null` ends it; armed 3 s ahead it wakes (`wake: quota` turn, one more request); a good turn gives `limited:false`. With `pauseUntilReset:false`: `limited:true`, `resumeAt:null` |
+| Usage limit notice | dev app, same agent dir: new thread in kuru-e2e, "Say hello." | sidebar "Limited", composer notice "Usage limit reached · Resumes 11:59 AM · Cancel auto-resume"; Cancel → "Resets 11:59 AM · Resume at reset", `state.json` `limit.resumeAt` null; Resume at reset → resumeAt = reset + 30 s |
+| Resume with the agent closed | app closed, `limit.resumeAt` set 25 s ahead, app started on another thread | at that time "goes on after its usage limit", the agent opens the thread, the wake turn runs (one request), stops on the limit again; the thread shows "The agent went on by itself: A usage limit reset" and "Resumes 12:00 PM" |
+| A message while it waits | "Again." in that thread | `quota {resumeAt:null}` goes before the prompt; the new turn stops on the limit and pauses again |
+
+```
+1 before any turn: {"limited": false, "resetAt": null, "resumeAt": null}
+2 bad resumeAt: {"code": -32602, "message": "Invalid params", "data": {"details": "resumeAt must be epoch milliseconds or null"}}
+3 unknown session: {"code": -32603, "message": "Internal error", "data": {"details": "Unknown ACP session: nope"}}
+prompt: {"jsonrpc": "2.0", "id": 6, "result": {"stopReason": "end_turn"}} took 165 ms
+4 after limit: {"limited": true, "resetAt": 1794891194121, "resumeAt": 1794891224120}
+   reset-now(s)= 7200  resume-reset(s)= 30
+5 cancel: {"limited": true, "resetAt": 1794891194121, "resumeAt": null}
+6 arm in 3s: {"limited": true, "resetAt": 1794891194121, "resumeAt": 1794883997122}
+7 wake turn seen: True mock hits after arm: 1
+8 after wake: {"limited": true, "resetAt": 1794891197242, "resumeAt": 1794891227241}
+prompt 2: {"jsonrpc": "2.0", "id": 11, "result": {"stopReason": "end_turn"}}
+9 after a good turn: {"limited": false, "resetAt": null, "resumeAt": 1794891227241}
+```

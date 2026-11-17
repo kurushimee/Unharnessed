@@ -183,6 +183,8 @@ import { useThreadLinkedPullRequest } from "./pullRequest/useThreadLinkedPullReq
 import { useIncrementalTimelineEntries } from "../hooks/useIncrementalTimelineEntries";
 import { ComposerBannerStack, type ComposerBannerStackItem } from "./chat/ComposerBannerStack";
 import { modelFallbackBannerItem } from "./chat/ComposerUsageLimits";
+import { usageLimitRecoveryBannerItem } from "./chat/UsageLimitRecoveryBanner";
+import { invoke } from "~/bridge";
 import { ComposerSurface } from "./chat/ComposerSurface";
 import { resolveThreadSyncPhase } from "../threadSync";
 import { hasAvailableCompactionProvider } from "./chat/compaction.logic";
@@ -1440,6 +1442,30 @@ export default function ChatView(props: ChatViewProps) {
     void handleSwitchCheckoutToThread();
   };
   const handleRestoreThreadBranchStable = useStableCallback(handleRestoreThreadBranch);
+  // T3 Code's usage limit notice: when the thread goes on by itself, and the choice to.
+  const limitRecoveryRun =
+    activeThreadShell?.runtime?.status === "failed" &&
+    activeThreadShell.runtime.lastErrorClass === "usage_limit"
+      ? activeThreadShell.latestRun
+      : null;
+  const limitRecoveryBanner =
+    limitRecoveryRun !== null && activeThreadShell
+      ? usageLimitRecoveryBannerItem({
+          runId: limitRecoveryRun.runId,
+          resetAt: activeThreadShell.runtime?.usageLimitResetAt ?? null,
+          stoppedAt: limitRecoveryRun.completedAt ?? activeThreadShell.updatedAt,
+          settled: activeThreadShell.settledOverride === "settled",
+          autoResume: activeThreadShell.limitRecovery?.autoResume === true,
+          timestampFormat,
+          onChange: async (resume) => {
+            const error = await invoke<string | null>("threads.resumeAfterLimit", {
+              id: activeThreadShell.id,
+              resume,
+            });
+            if (error) throw new Error(error);
+          },
+        })
+      : null;
   const composerBannerItems = (() => {
     const fallbackSelection = draftFallback?.selection;
     const defaultSelection =
@@ -1493,11 +1519,13 @@ export default function ChatView(props: ChatViewProps) {
       freshSessionAvailable && freshSessionArmed
         ? [freshSessionBannerItem(() => disarmFreshSession(routeThreadKey))]
         : [];
+    const limitRecoveryItems = limitRecoveryBanner === null ? [] : [limitRecoveryBanner];
     if (!localCheckoutBranchMismatch || !showBranchMismatchBanner || !activeBranchMismatchKey) {
-      return [...fallbackItems, ...extensionStatusItems, ...freshSessionItems];
+      return [...fallbackItems, ...extensionStatusItems, ...limitRecoveryItems, ...freshSessionItems];
     }
     return [
       ...fallbackItems,
+      ...limitRecoveryItems,
       ...extensionStatusItems,
       ...freshSessionItems,
       branchMismatchBannerItem({

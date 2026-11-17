@@ -131,6 +131,8 @@ function toWireThread(row: ThreadRow): OrchestrationV2ThreadShell {
   const started = row.workingSince ?? updated;
   const threadId = ThreadId.make(row.id);
   // A thread with an unseen ending was last seen before the ending.
+  const limit = working ? undefined : row.limit;
+  const limitResetAt = limit?.resetAt == null ? null : new Date(limit.resetAt).toISOString();
   const visited = row.mark === "unread" ? created : (row.seenAt ?? (working ? undefined : (row.turnEndedAt ?? updated)));
   return {
     createdBy: "user",
@@ -158,8 +160,15 @@ function toWireThread(row: ThreadRow): OrchestrationV2ThreadShell {
     activityRunStartedAt: working ? utc(started) : null,
     activityRunStatus: working ? "running" : null,
     // T3 Code's server says "idle" only for a thread that never ran.
-    status: working ? "running" : row.failed ? "failed" : "completed",
-    lastError: row.failed && !working ? "The turn failed." : null,
+    // A turn the agent paused on a usage limit ends without an error; T3 Code's thread failed there.
+    status: working ? "running" : row.failed || limit ? "failed" : "completed",
+    lastError: limit ? "Usage limit reached" : row.failed && !working ? "The turn failed." : null,
+    lastErrorClass: limit ? "usage_limit" : null,
+    usageLimitResetAt: limitResetAt,
+    limitRecovery:
+      limitResetAt === null
+        ? null
+        : { runId, resetAt: limitResetAt, autoResume: limit?.resumeAt != null },
     pendingRuntimeRequest: null,
     latestVisibleMessage: null,
     latestUserMessageAt: utc(started),

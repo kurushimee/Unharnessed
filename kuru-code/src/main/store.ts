@@ -1,6 +1,6 @@
 import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
 import { basename, dirname, join, resolve } from "node:path";
-import { DEFAULT_PREFS, type AppPrefs, type Project, type ProjectIconOverride, type PullRequestRef, type LinkedPullRequest } from "@shared/protocol";
+import { DEFAULT_PREFS, type AppPrefs, type Project, type ProjectIconOverride, type PullRequestRef, type LinkedPullRequest, type UsageLimitStop } from "@shared/protocol";
 
 /** What the app keeps of a thread beside its session file. */
 export type ThreadMeta = {
@@ -19,6 +19,8 @@ export type ThreadMeta = {
   seenAt?: number;
   turnEndedAt?: number;
   failed?: boolean;
+  /** The usage limit its last turn stopped on. */
+  limit?: UsageLimitStop;
   /** A title the user gave it. */
   title?: string;
   /** A turn ended in it while another thread was on screen, not seen since. */

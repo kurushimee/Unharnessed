@@ -393,9 +393,9 @@ export const SETTINGS_SEARCH_ITEMS = [
   },
   {
     id: "usage-limit-wait",
-    title: "Wait for the reset",
+    title: "Resume after usage limits",
     to: "/settings/agent",
-    searchTerms: ["usage limits plan pause resume reset hours"],
+    searchTerms: ["usage limits plan pause auto-resume reset hours wait"],
   },
   {
     id: "image-model",

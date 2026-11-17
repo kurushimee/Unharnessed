@@ -317,6 +317,8 @@ async fn run_prompt_turn(
     mode: AcpModeState,
     tx: producer::FrameSink,
 ) {
+    // The limit the last turn stopped on is behind this one.
+    mode.engine.wakes().set_quota_limit(None);
     // Where the conversation stands before the prompt: going back there
     // sends it again, changed.
     let rewind_to = match &start {

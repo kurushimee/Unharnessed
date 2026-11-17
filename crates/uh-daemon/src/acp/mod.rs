@@ -42,6 +42,7 @@ mod meta;
 mod producer;
 mod prompt;
 mod providers;
+mod quota;
 mod rewind;
 mod session;
 mod settings;
@@ -479,6 +480,7 @@ async fn handle_request(
             handle_session_close(id, params, state, mode, tx).await;
         }
         rewind::REWIND => rewind::handle_rewind(id, params, state, mode, tx).await,
+        quota::QUOTA => quota::handle_quota(id, params, state, mode, tx).await,
         complete::COMPLETE => {
             let (cwd, agent_dir) = (mode.actual_cwd.clone(), mode.agent_dir.clone());
             complete::handle_complete(id, params, cwd, agent_dir, tx).await;

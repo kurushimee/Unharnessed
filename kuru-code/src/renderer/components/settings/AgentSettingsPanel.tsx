@@ -97,8 +97,8 @@ const GROUPS: Group[] = [
       {
         kind: "switch",
         key: "retry.provider.waitForUsage.pauseUntilReset",
-        label: "Wait for the reset",
-        help: "Pause, then resume on its own once the limit resets.",
+        label: "Resume after usage limits",
+        help: "Automatically resume threads when their usage limits reset. You can cancel auto-resume in each thread.",
         search: "usage-limit-wait",
       },
       {

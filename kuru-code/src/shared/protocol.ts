@@ -46,6 +46,9 @@ export type PullRequestRef = {
 /** A pull request linked to a thread by hand, and when. */
 export type LinkedPullRequest = PullRequestRef & { linkedAt: number };
 
+/** The provider usage limit a thread's last turn stopped on, ms: when it resets, if known, and when the thread goes on by itself. */
+export type UsageLimitStop = { resetAt: number | null; resumeAt: number | null };
+
 /** A thread mark: a turn runs in it, or one ended there and was not seen. */
 export type ThreadMark = "working" | "unread";
 
@@ -84,6 +87,8 @@ export type ThreadRow = {
   /** When its last turn ended, ms, and whether it failed. */
   turnEndedAt?: number;
   failed?: boolean;
+  /** The usage limit its last turn stopped on. */
+  limit?: UsageLimitStop;
   /** When it was last on screen, ms. */
   seenAt?: number;
 };

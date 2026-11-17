@@ -24,9 +24,10 @@ use super::messages::create_provider_retry_outcome_message;
 use super::provider_adapter::{map_thinking_level, model_thinking_level, ProviderTarget};
 use super::provider_failover::run_turn_with_provider_failover;
 use super::provider_park::{
-    provider_park_decision, quota_failure_reset_ms, quota_parked_final_error, ParkFuture,
-    ProviderParkDecision, ProviderParkOutcome,
+    is_quota_block_failure, provider_park_decision, quota_failure_reset_ms,
+    quota_parked_final_error, ParkFuture, ProviderParkDecision, ProviderParkOutcome,
 };
+use super::wakes::QuotaLimit;
 use super::TrailingAssistantFilter;
 
 /// What the host lends the retry chain.
@@ -259,6 +260,16 @@ impl SessionEngine {
         )
         .await?;
         let parked = parked.load(std::sync::atomic::Ordering::SeqCst);
+        // What the client reads of the limit: the parked turn's message
+        // leaves the conversation below.
+        self.wakes.set_quota_limit(
+            (message.stop_reason == StopReason::Error && is_quota_block_failure(&message)).then(
+                || QuotaLimit {
+                    reset_at_ms: quota_failure_reset_ms(&message)
+                        .map(|after| crate::autonomous::now_millis().saturating_add(after)),
+                },
+            ),
+        );
         if message.stop_reason != StopReason::Error {
             self.wakes.end_quota_episode();
         } else if parked {

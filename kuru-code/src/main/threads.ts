@@ -14,6 +14,14 @@ import { generateThreadTitle, type TitleModel } from "./titles";
 
 /** A thread in the background sleeps after this long without work, like the extension's conversations. */
 const SLEEP_AFTER_MS = 90 * 60_000;
+/** The usage limit a thread stopped on, read from and changed in its agent. */
+const QUOTA = "_unharnessed/session/quota";
+/** A thread resumes this long after its usage limit resets, as the agent's own pause does (PROVIDER_RESUME_GRACE_MS). */
+const RESUME_GRACE_MS = 30_000;
+/** A resume missed by more than this (the app was closed) is dropped, as T3 Code's server does. */
+const MAX_OVERDUE_RESUME_MS = 24 * 60 * 60_000;
+type QuotaAnswer = { limited: boolean; resetAt: number | null; resumeAt: number | null };
+
 /** A pull request is looked up again after this long. */
 const PR_TTL_MS = 5 * 60_000;
 const NO_DRAFT: Draft = { text: "", images: [] };
@@ -39,6 +47,8 @@ export class Threads {
   /** When each working thread's running turn started, ms, by id. */
   private readonly workingSince = new Map<string, number>();
   private readonly timers = new Map<Conversation, NodeJS.Timeout>();
+  /** The threads whose agent is closed that go on by themselves once a usage limit resets, by id. */
+  private readonly resumeTimers = new Map<string, NodeJS.Timeout>();
   /** Agents still stopping, by id: one holds its file until it exits. */
   private readonly stopping = new Map<string, Promise<void>>();
   private sessions: SessionSummary[] = [];
@@ -106,6 +116,7 @@ export class Threads {
   async start(cwd: string): Promise<void> {
     this.begin(undefined, cwd, NO_DRAFT);
     await this.refresh();
+    for (const session of this.sessions) this.scheduleResume(session.id);
     try {
       this.watcher = watch(sessionsDir(), () => this.scheduleRescan());
     } catch (error) {
@@ -157,7 +168,97 @@ export class Threads {
     // T3 Code titles a new thread from its first message.
     const saved = this.sessions.some((session) => session.id === conversation?.id);
     if (conversation.empty && !saved) this.title(conversation, text, images);
+    // A message replaces going on after a usage limit: the agent's pause ends before it.
+    const target = conversation;
+    const sessionId = target.id;
+    if (sessionId && this.store.thread(sessionId).limit?.resumeAt != null) {
+      this.store.setThread(sessionId, { limit: undefined });
+      this.scheduleResume(sessionId);
+      if (target.session.sessionId) {
+        void this.quota(target, null)
+          .catch((error: unknown) => this.log.warn(`threads: [${target.tag}] its pause did not end: ${errorText(error)}`))
+          .finally(() => target.chat.send(text, images, undefined, now));
+        return;
+      }
+    }
     conversation.chat.send(text, images, undefined, now);
+  }
+
+  /** The usage limit `id`'s last turn stopped on, as its agent tells; with `resumeAt`, the time it goes on at (or not) first. */
+  private quota(conversation: Conversation, resumeAt?: number | null): Promise<QuotaAnswer> {
+    const sessionId = conversation.session.sessionId;
+    if (!sessionId) return Promise.reject(new Error("the thread has no session."));
+    return conversation.agent.request<QuotaAnswer>(QUOTA, { sessionId, ...(resumeAt === undefined ? {} : { resumeAt }) });
+  }
+
+  /**
+   * Whether the thread `windowId`, stopped on a usage limit, goes on by itself once the limit
+   * resets (T3 Code's "Resume at reset" and "Cancel auto-resume"); why not, when it cannot.
+   */
+  async resumeAfterLimit(windowId: string, resume: boolean): Promise<string | undefined> {
+    const id = this.resolve(windowId);
+    const limit = this.store.thread(id).limit;
+    if (!limit) return "The thread is not stopped on a usage limit.";
+    if (resume && limit.resetAt === null) return "The provider did not say when the limit resets.";
+    const resumeAt = resume && limit.resetAt !== null ? Math.max(Date.now(), limit.resetAt + RESUME_GRACE_MS) : null;
+    const conversation = this.open.find((open) => open.id === id);
+    if (conversation?.session.sessionId) {
+      try {
+        const answer = await this.quota(conversation, resumeAt);
+        this.store.setThread(id, { limit: { resetAt: answer.resetAt ?? limit.resetAt, resumeAt: answer.resumeAt } });
+      } catch (error) {
+        return errorText(error);
+      }
+    } else {
+      // Its agent starts on it at that time (scheduleResume), or sets it once open (rearm).
+      this.store.setThread(id, { limit: { ...limit, resumeAt } });
+      if (conversation) this.rearm(conversation, id);
+    }
+    this.log.info(`threads: ${id} ${resumeAt === null ? "no longer goes on after its usage limit" : `goes on at ${new Date(resumeAt).toISOString()}`}`);
+    this.scheduleResume(id);
+    this.emit();
+    return undefined;
+  }
+
+  /** A closed thread that goes on after its usage limit: its agent starts on it then. */
+  private scheduleResume(id: string): void {
+    clearTimeout(this.resumeTimers.get(id));
+    this.resumeTimers.delete(id);
+    const limit = this.store.thread(id).limit;
+    if (limit?.resumeAt == null || this.open.some((open) => open.id === id)) return;
+    if (Date.now() - limit.resumeAt > MAX_OVERDUE_RESUME_MS) {
+      this.store.setThread(id, { limit: { ...limit, resumeAt: null } });
+      return;
+    }
+    // A timer waits 2^31-1 ms at most: a later time is looked at again then.
+    const wait = Math.min(Math.max(0, limit.resumeAt - Date.now()), 2 ** 31 - 1);
+    this.resumeTimers.set(id, setTimeout(() => void this.resumeClosed(id), wait));
+  }
+
+  private async resumeClosed(id: string): Promise<void> {
+    this.resumeTimers.delete(id);
+    const resumeAt = this.store.thread(id).limit?.resumeAt;
+    if (resumeAt == null || this.open.some((open) => open.id === id)) return;
+    if (resumeAt > Date.now()) return this.scheduleResume(id);
+    const summary = this.sessions.find((session) => session.id === id);
+    if (!summary) return;
+    this.log.info(`threads: ${id} goes on after its usage limit`);
+    const saved = { id, path: summary.path };
+    const conversation = this.create(saved, summary.cwd || this.home);
+    conversation.chat.reset(true);
+    conversation.agent.start(saved);
+    this.rearm(conversation, id);
+  }
+
+  /** An agent started on a thread that goes on after its usage limit: its pause is set again (the last agent's ended with it). */
+  private rearm(conversation: Conversation, id: string): void {
+    if (this.store.thread(id).limit?.resumeAt == null) return;
+    void this.opened(conversation)
+      .then(() => {
+        const resumeAt = this.store.thread(id).limit?.resumeAt;
+        return resumeAt == null ? undefined : this.quota(conversation, Math.max(Date.now(), resumeAt));
+      })
+      .catch((error: unknown) => this.log.warn(`threads: [${conversation.tag}] its pause was not set again: ${errorText(error)}`));
   }
 
   /** A title for the new thread `conversation` (titles.ts); a rename made meanwhile is kept. */
@@ -194,6 +295,22 @@ export class Threads {
     if (this.store.thread(id).title !== undefined) return;
     this.store.setThread(id, { title });
     this.emit();
+  }
+
+  /** The session of `conversation` is open. */
+  private opened(conversation: Conversation): Promise<void> {
+    if (conversation.session.sessionId) return Promise.resolve();
+    return new Promise((resolve, reject) => {
+      const listening = conversation.session.onChange(() => {
+        if (conversation.session.sessionId) {
+          listening.dispose();
+          resolve();
+        } else if (conversation.agent.current.kind === "failed") {
+          listening.dispose();
+          reject(new Error("the agent did not start"));
+        }
+      });
+    });
   }
 
   /** The agent of `conversation` answers requests. */
@@ -418,6 +535,7 @@ export class Threads {
         workingSince: working ? this.workingSince.get(session.id) : undefined,
         turnEndedAt: meta.turnEndedAt,
         failed: meta.failed,
+        limit: working ? undefined : meta.limit,
         seenAt: meta.seenAt,
       };
       if (working) row.mark = "working";
@@ -511,6 +629,11 @@ export class Threads {
     const stopping = saved && this.stopping.get(saved.id);
     if (stopping) void stopping.then(() => conversation.agent.start(saved));
     else conversation.agent.start(saved);
+    if (saved) {
+      clearTimeout(this.resumeTimers.get(saved.id));
+      this.resumeTimers.delete(saved.id);
+      this.rearm(conversation, saved.id);
+    }
     return conversation;
   }
 
@@ -566,7 +689,11 @@ export class Threads {
       this.aliases.delete(conversation);
       this.emit();
     }
-    if (!before && working && id) this.workingSince.set(id, Date.now());
+    if (!before && working && id) {
+      this.workingSince.set(id, Date.now());
+      // The limit the last turn stopped on is behind this one.
+      if (this.store.thread(id).limit) this.store.setThread(id, { limit: undefined });
+    }
     if (before && !working && id) {
       this.workingSince.delete(id);
       this.ended(conversation, id, away);
@@ -590,6 +717,21 @@ export class Threads {
     const last = conversation.chat.current.entries.findLast((entry) => entry.kind === "turn");
     const failed = last?.kind === "turn" && last.state === "failed";
     this.store.setThread(id, { turnEndedAt: Date.now(), failed: failed || undefined, ...(away ? {} : { seenAt: Date.now() }) });
+    // A turn the agent paused on a usage limit ends without an error: the agent tells.
+    void this.quota(conversation).then(
+      (answer) => {
+        const limit = answer.limited ? { resetAt: answer.resetAt, resumeAt: answer.resumeAt } : undefined;
+        if (limit) {
+          const resumes = limit.resumeAt === null ? "does not go on by itself" : `goes on at ${new Date(limit.resumeAt).toISOString()}`;
+          this.log.info(`threads: [${conversation.tag}] stopped on a usage limit; it ${resumes}`);
+        }
+        if (limit || this.store.thread(id).limit) {
+          this.store.setThread(id, { limit });
+          this.emit();
+        }
+      },
+      (error: unknown) => this.log.warn(`threads: [${conversation.tag}] its usage limit was not read: ${errorText(error)}`),
+    );
     const title = this.store.thread(id).title ?? this.sessions.find((session) => session.id === id)?.title;
     const windowId = this.store.thread(id).alias ?? id;
     for (const listener of this.doneListeners) listener({ id: windowId, title, failed, shown: !away });
@@ -628,6 +770,7 @@ export class Threads {
     if (id) this.stopping.set(id, stopped);
     await stopped;
     if (id && this.stopping.get(id) === stopped) this.stopping.delete(id);
+    if (id) this.scheduleResume(id);
     this.emit();
   }
 }
