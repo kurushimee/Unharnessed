@@ -5,6 +5,7 @@
 // thread is named before Unharnessed makes its session: the main process
 // keeps the draft's id as the session's alias, so the thread keeps the id
 // T3 Code's draft gave it.
+import { collectComposerContextReferences } from "~/shared/composerContextReferences";
 import type {
   EnvironmentId,
   ModelSelection,
@@ -101,6 +102,30 @@ function dataUrlParts(dataUrl: string): { mimeType: string; data: string } | nul
   return match ? { mimeType: match[1]!, data: match[2]! } : null;
 }
 
+/**
+ * The images the text names first, in the order it names them, then the others: the thread
+ * shows the n-th image the text names as the n-th image it sent (kuru/projection.ts).
+ */
+function namedImagesFirst(message: StartThreadTurnInput["message"]): ReadonlyArray<ChatAttachment | UploadChatAttachment> {
+  const byContext = new Map<string, string>();
+  for (const record of message.context?.records ?? []) {
+    const known = record as { kind?: unknown; contextId?: unknown; attachmentId?: unknown };
+    if (known.kind === "image" && typeof known.contextId === "string" && typeof known.attachmentId === "string") {
+      byContext.set(known.contextId, known.attachmentId);
+    }
+  }
+  const order = [
+    ...new Set(
+      collectComposerContextReferences(message.text).flatMap((reference) => {
+        const id = reference.kind === "image" ? byContext.get(reference.contextId) : undefined;
+        return id === undefined ? [] : [id];
+      }),
+    ),
+  ];
+  const named = order.flatMap((id) => message.attachments.filter((attachment) => attachment.id === id));
+  return [...named, ...message.attachments.filter((attachment) => !named.includes(attachment))];
+}
+
 /** The images a message carries, as Unharnessed takes them. */
 function toAttachments(attachments: ReadonlyArray<ChatAttachment | UploadChatAttachment>): Attachment[] {
   return attachments.flatMap((attachment) => {
@@ -121,7 +146,7 @@ const startTurn = command<StartThreadTurnInput, { readonly sequence?: number }>(
       id: input.threadId,
       projectId: projectId === null ? null : appProjectIdOf(projectId),
       text: input.message.text,
-      images: toAttachments(input.message.attachments),
+      images: toAttachments(namedImagesFirst(input.message)),
       now: input.dispatchMode === "steer",
     });
   } catch (error) {

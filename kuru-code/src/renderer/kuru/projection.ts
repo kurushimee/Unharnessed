@@ -28,6 +28,7 @@ import type { ChatEntry, ChatState, DiffLine, TurnHead, TurnItem } from "@shared
 import * as DateTime from "effect/DateTime";
 
 import { rootThreadLineage } from "~/rt/state/models";
+import { collectComposerContextReferences } from "~/shared/composerContextReferences";
 
 type Turn = TurnHead & { items: TurnItem[] };
 type Tool = Extract<TurnItem, { kind: "tool" }>;
@@ -178,7 +179,8 @@ function toolItem(tool: Tool, base: ItemBase, turnRunning: boolean): Item {
         ...common,
         type: "dynamic_tool",
         toolName: "Read",
-        ...(cell.kind === "view" && cell.files[0] ? { viewedImagePath: cell.files[0] } : {}),
+        // The image shows once the cell read it: while it runs, the file may not be written yet.
+        ...(cell.kind === "view" && cell.files[0] && tool.status === "done" ? { viewedImagePath: cell.files[0] } : {}),
         input: { path: cell.files[0] ?? "", code: tool.input },
         ...(output !== undefined ? { output } : {}),
       };
@@ -341,6 +343,7 @@ export class ThreadProjector {
         nodeId: null,
         role: "user",
         text: queued.text,
+        ...imageContext(queued.text, queued.images, (position) => queuedAttachmentId(threadId, queued.id, position)),
         attachments: queued.images.map((image, position) => ({
           type: "image" as const,
           id: ChatAttachmentId.make(queuedAttachmentId(threadId, queued.id, position)),
@@ -444,6 +447,7 @@ export class ThreadProjector {
           creationSource: "web",
           inputIntent: "turn_start",
           text: prompt.text,
+          ...imageContext(prompt.text, prompt.images, (index) => promptAttachmentId(threadId, turn.id, index)),
           attachments: prompt.images.map((image, index) => ({
             type: "image" as const,
             id: ChatAttachmentId.make(promptAttachmentId(threadId, turn.id, index)),
@@ -663,4 +667,34 @@ export function attachmentImageUrl(chat: ChatState, threadId: string, attachment
     if (attachmentId.startsWith(prefix)) return queued.images[Number(attachmentId.slice(prefix.length))]?.thumb ?? null;
   }
   return null;
+}
+
+/**
+ * The chips of the images `text` names (`![image.png](t3-context://v1/image/…)`), as T3 Code
+ * keeps them on a message: the n-th image it names is the message's n-th image, as it sent them.
+ */
+function imageContext(
+  text: string,
+  images: ReadonlyArray<{ readonly thumb: string; readonly name?: string }>,
+  attachmentId: (index: number) => string,
+): { context?: Extract<Item, { type: "user_message" }>["context"] } {
+  const named = [
+    ...new Map(
+      collectComposerContextReferences(text)
+        .filter((reference) => reference.kind === "image")
+        .map((reference) => [reference.contextId, reference] as const),
+    ).values(),
+  ].slice(0, images.length);
+  if (named.length === 0) return {};
+  const records = named.map((reference, index) => ({
+    version: 1 as const,
+    kind: "image" as const,
+    contextId: reference.contextId,
+    label: reference.label,
+    attachmentId: attachmentId(index),
+    name: images[index]!.name || "image",
+    mimeType: mimeOf(images[index]!.thumb),
+    sizeBytes: 0,
+  }));
+  return { context: { version: 1, records } as unknown as NonNullable<Extract<Item, { type: "user_message" }>["context"]> };
 }
