@@ -2,7 +2,7 @@
   "name": "kuru-code",
   "productName": "kuru code",
   "version": "0.1.0",
-  "description": "kuru code: a desktop app for the Unharnessed agent, its interface taken from T3 Code.",
+  "description": "kuru code",
   "license": "MIT",
   "private": true,
   "main": "dist/main/main.cjs",
