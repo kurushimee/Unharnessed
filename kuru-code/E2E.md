@@ -80,3 +80,6 @@ prompt: {"jsonrpc": "2.0", "id": 6, "result": {"stopReason": "end_turn"}} took 1
 prompt 2: {"jsonrpc": "2.0", "id": 11, "result": {"stopReason": "end_turn"}}
 9 after a good turn: {"limited": false, "resetAt": null, "resumeAt": 1794891227241}
 ```
+
+| Reveal in File Explorer | dev app (`UNHARNESSED_CODING_AGENT_DIR=f:/tools/quota-test`, the mock answering "Run `f:\tools\kuru-e2e\hello.txt` or see [README.md](f:/tools/kuru-e2e/README.md).") → right-click the `hello.txt` chip; `window.kuru.invoke('files.reveal', …)` | the native menu reads "Reveal in File Explorer / Copy relative path / Copy full path"; `hello.txt` → an Explorer window on `F:\tools\kuru-e2e` with `hello.txt` selected (Shell.Application lists it); `nope.txt` → "f:\tools\kuru-e2e\nope.txt does not exist." |
+| Delete the thread on screen | `threads.delete` on the shown thread (was "the agent is not running": the new thread's agent was still starting), then on a closed one | "[2] new… [1] closes (deleted)… deleted" for both, no error |

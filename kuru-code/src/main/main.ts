@@ -493,6 +493,13 @@ async function start(): Promise<void> {
       return null;
     },
     // T3 Code's rewind: back to before a prompt, which goes back to the message box.
+    // T3 Code's "Reveal in File Explorer" for a file the chat links.
+    "files.reveal": ({ path }) => {
+      const target = String(path ?? "");
+      if (!target || !existsSync(target)) return `${target || "The file"} does not exist.`;
+      shell.showItemInFolder(target);
+      return null;
+    },
     "threads.rewind": async ({ id, turn }) => (await threads.rewind(String(id), Number(turn))) ?? null,
     "threads.resumeAfterLimit": async ({ id, resume }) =>
       (await threads.resumeAfterLimit(String(id), resume === true)) ?? null,

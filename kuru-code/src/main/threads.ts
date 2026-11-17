@@ -394,6 +394,8 @@ export class Threads {
     if (conversation && conversation === this.shownOne) this.begin(undefined, this.cwdOf(conversation), NO_DRAFT);
     if (conversation) await this.close(conversation, "deleted");
     try {
+      // The new thread that took its place may still be starting its agent.
+      await this.ready(this.shown);
       await this.shownAgent.request(DELETE, { sessionId: id });
       this.log.info(`threads: ${id} deleted`);
       this.store.forgetThread(id);

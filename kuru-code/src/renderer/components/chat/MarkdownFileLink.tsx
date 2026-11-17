@@ -2,6 +2,7 @@ import { formatFilePathForClipboard } from "~/rt/mediaActions";
 import type { EnvironmentId } from "~/contracts";
 import { memo, type MouseEvent as ReactMouseEvent } from "react";
 
+import { invoke } from "~/bridge";
 import { readLocalApi } from "../../localApi";
 import { cn } from "../../lib/utils";
 import type { markdownFileCopyPaths } from "../../markdownFileHostPath";
@@ -87,6 +88,32 @@ export const MarkdownFileLink = memo(function MarkdownFileLink({
     );
   };
 
+  // T3 Code's "Reveal in File Explorer": the file selected in a File Explorer window.
+  const handleRevealInFileManager = () => {
+    void (async () => {
+      try {
+        const { fullPath } = await resolveCopyPaths();
+        const error = await invoke<string | null>("files.reveal", { path: fullPath });
+        if (error === null) return;
+        toastManager.add(
+          stackedThreadToast({ type: "error", title: "Unable to reveal file", description: error }),
+        );
+      } catch (cause) {
+        reportMarkdownActionFailure(
+          { operation: "reveal-file-in-file-manager", target: targetPath },
+          cause,
+        );
+        toastManager.add(
+          stackedThreadToast({
+            type: "error",
+            title: "Unable to reveal file",
+            description: cause instanceof Error ? cause.message : "An error occurred.",
+          }),
+        );
+      }
+    })();
+  };
+
   const showFileContextMenu = async (position: { x: number; y: number }) => {
     const api = readLocalApi();
     if (!api) return;
@@ -96,6 +123,7 @@ export const MarkdownFileLink = memo(function MarkdownFileLink({
       const clicked = await api.contextMenu.show(
         [
           ...(onOpenMedia ? ([{ id: "preview-media", label: "Preview media" }] as const) : []),
+          { id: "reveal", label: "Reveal in File Explorer" },
           ...copyItems.map(({ id, label }) => ({ id, label })),
         ] as const,
         position,
@@ -103,6 +131,10 @@ export const MarkdownFileLink = memo(function MarkdownFileLink({
 
       if (clicked === "preview-media") {
         onOpenMedia?.();
+        return;
+      }
+      if (clicked === "reveal") {
+        handleRevealInFileManager();
         return;
       }
       if (clicked === "copy-relative" || clicked === "copy-full") {
