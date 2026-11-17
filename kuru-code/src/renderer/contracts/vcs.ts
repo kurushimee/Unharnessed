@@ -1,62 +1,8 @@
 import * as Schema from "effect/Schema";
-import { NonNegativeInt, TrimmedNonEmptyString } from "./baseSchemas";
+import { NonNegativeInt } from "./baseSchemas";
 
 export const VcsDriverKind = Schema.Literals(["git", "jj", "unknown"]);
 export type VcsDriverKind = typeof VcsDriverKind.Type;
-
-export const VcsFreshnessSource = Schema.Literals([
-  "live-local",
-  "cached-local",
-  "cached-remote",
-  "explicit-remote",
-]);
-export type VcsFreshnessSource = typeof VcsFreshnessSource.Type;
-
-export const VcsFreshness = Schema.Struct({
-  source: VcsFreshnessSource,
-  observedAt: Schema.DateTimeUtc,
-  expiresAt: Schema.Option(Schema.DateTimeUtc),
-});
-export type VcsFreshness = typeof VcsFreshness.Type;
-
-export const VcsDriverCapabilities = Schema.Struct({
-  kind: VcsDriverKind,
-  supportsWorktrees: Schema.Boolean,
-  supportsBookmarks: Schema.Boolean,
-  supportsAtomicSnapshot: Schema.Boolean,
-  supportsPushDefaultRemote: Schema.Boolean,
-  ignoreClassifier: Schema.Literals(["native", "git-compatible-fallback"]),
-});
-export type VcsDriverCapabilities = typeof VcsDriverCapabilities.Type;
-
-export const VcsRepositoryIdentity = Schema.Struct({
-  kind: VcsDriverKind,
-  rootPath: TrimmedNonEmptyString,
-  metadataPath: Schema.NullOr(TrimmedNonEmptyString),
-  freshness: VcsFreshness,
-});
-export type VcsRepositoryIdentity = typeof VcsRepositoryIdentity.Type;
-
-export const VcsListWorkspaceFilesResult = Schema.Struct({
-  paths: Schema.Array(TrimmedNonEmptyString),
-  truncated: Schema.Boolean,
-  freshness: VcsFreshness,
-});
-export type VcsListWorkspaceFilesResult = typeof VcsListWorkspaceFilesResult.Type;
-
-export const VcsRemote = Schema.Struct({
-  name: TrimmedNonEmptyString,
-  url: TrimmedNonEmptyString,
-  pushUrl: Schema.Option(TrimmedNonEmptyString),
-  isPrimary: Schema.Boolean,
-});
-export type VcsRemote = typeof VcsRemote.Type;
-
-export const VcsListRemotesResult = Schema.Struct({
-  remotes: Schema.Array(VcsRemote),
-  freshness: VcsFreshness,
-});
-export type VcsListRemotesResult = typeof VcsListRemotesResult.Type;
 
 export interface VcsProcessErrorContext {
   readonly operation: string;

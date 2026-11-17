@@ -111,11 +111,6 @@ export const KeybindingRule = Schema.Struct({
 });
 export type KeybindingRule = typeof KeybindingRule.Type;
 
-export const KeybindingsConfig = Schema.Array(KeybindingRule).check(
-  Schema.isMaxLength(MAX_KEYBINDINGS_COUNT),
-);
-export type KeybindingsConfig = typeof KeybindingsConfig.Type;
-
 export const KeybindingShortcut = Schema.Struct({
   key: KeybindingValue,
   metaKey: Schema.Boolean,
@@ -168,15 +163,3 @@ export const ResolvedKeybindingsConfig = ForwardCompatibleArray(ResolvedKeybindi
 );
 export type ResolvedKeybindingsConfig = typeof ResolvedKeybindingsConfig.Type;
 
-export class KeybindingsConfigError extends Schema.TaggedError<KeybindingsConfigError>()(
-  "KeybindingsConfigParseError",
-  {
-    configPath: Schema.String,
-    detail: Schema.String,
-    cause: Schema.optional(Schema.Defect()),
-  },
-) {
-  override get message(): string {
-    return `Unable to parse keybindings config at ${this.configPath}: ${this.detail}`;
-  }
-}

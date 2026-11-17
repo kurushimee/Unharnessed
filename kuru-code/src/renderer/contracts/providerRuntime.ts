@@ -1,11 +1,7 @@
-import * as Effect from "effect/Effect";
 import * as Schema from "effect/Schema";
 import { NonNegativeInt, PositiveInt, TrimmedNonEmptyString } from "./baseSchemas";
 
 const TrimmedNonEmptyStringSchema = TrimmedNonEmptyString;
-
-const RuntimeTurnState = Schema.Literals(["completed", "failed", "interrupted", "cancelled"]);
-export type RuntimeTurnState = typeof RuntimeTurnState.Type;
 
 const RuntimeItemStatus = Schema.Literals(["inProgress", "completed", "failed", "declined"]);
 export type RuntimeItemStatus = typeof RuntimeItemStatus.Type;
@@ -125,21 +121,3 @@ export const ToolActivitySource = Schema.Struct({
 });
 export type ToolActivitySource = typeof ToolActivitySource.Type;
 
-const UserInputQuestionOption = Schema.Struct({
-  label: TrimmedNonEmptyStringSchema,
-  description: Schema.String,
-  value: Schema.optional(Schema.String),
-});
-
-export const UserInputQuestion = Schema.Struct({
-  id: TrimmedNonEmptyStringSchema,
-  header: TrimmedNonEmptyStringSchema,
-  question: TrimmedNonEmptyStringSchema,
-  options: Schema.Array(UserInputQuestionOption),
-  allowCustomAnswer: Schema.optional(Schema.Boolean),
-  initialAnswer: Schema.optional(Schema.String),
-  multiSelect: Schema.optional(Schema.Boolean).pipe(
-    Schema.withConstructorDefault(Effect.succeed(false)),
-  ),
-});
-export type UserInputQuestion = typeof UserInputQuestion.Type;

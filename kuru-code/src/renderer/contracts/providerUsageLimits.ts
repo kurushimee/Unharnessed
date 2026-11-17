@@ -61,12 +61,6 @@ export const ServerProviderUsageLimits = Schema.Struct({
 });
 export type ServerProviderUsageLimits = typeof ServerProviderUsageLimits.Type;
 
-/** Partial updates merge windows by id; omitted windows remain unchanged. */
-export const ProviderUsageLimitsUpdate = Schema.Struct({
-  windows: Schema.Array(ServerProviderUsageWindow),
-});
-export type ProviderUsageLimitsUpdate = typeof ProviderUsageLimitsUpdate.Type;
-
 export const UsageLimitSourceAccount = Schema.Struct({
   id: TrimmedNonEmptyString,
   driver: ProviderDriverKind,
@@ -106,29 +100,6 @@ export const ProviderConsumeResetCreditInput = Schema.Union([
   UsageLimitSourceConsumeResetCreditInput,
 ]);
 export type ProviderConsumeResetCreditInput = typeof ProviderConsumeResetCreditInput.Type;
-
-export class UsageLimitSourceError extends Schema.TaggedError<UsageLimitSourceError>()(
-  "UsageLimitSourceError",
-  { detail: Schema.String },
-) {
-  override get message(): string {
-    return this.detail;
-  }
-}
-
-export const ProviderConsumeResetCreditOutcome = Schema.Literals([
-  "reset",
-  "nothingToReset",
-  "noCredit",
-  "alreadyRedeemed",
-]);
-export type ProviderConsumeResetCreditOutcome = typeof ProviderConsumeResetCreditOutcome.Type;
-
-export const ProviderConsumeResetCreditResult = Schema.Struct({
-  outcome: ProviderConsumeResetCreditOutcome,
-  warning: Schema.optional(TrimmedNonEmptyString),
-});
-export type ProviderConsumeResetCreditResult = typeof ProviderConsumeResetCreditResult.Type;
 
 export const UsageLimitsReport = Schema.Struct({
   createdAt: IsoDateTime,

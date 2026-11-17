@@ -9,7 +9,6 @@ import { followStreamInEnvironment } from "./environmentStreams";
 import { reuseUnchanged } from "./serverConfigProjection";
 export { runStreamInEnvironment, followStreamInEnvironment } from "./environmentStreams";
 import {
-  type ClientGuardedRpcTag,
   EnvironmentId,
   type EnvironmentId as EnvironmentIdType,
 } from "~/contracts";
@@ -899,7 +898,7 @@ export function createEnvironmentCommand<R, ER, Input, A, E>(
 export function createEnvironmentRpcQueryAtomFamily<
   R,
   ER,
-  TTag extends Exclude<EnvironmentUnaryRpcTag, ClientGuardedRpcTag>,
+  TTag extends EnvironmentUnaryRpcTag,
 >(
   runtime: Atom.AtomRuntime<EnvironmentRegistry.EnvironmentRegistry | R, ER>,
   options: {

@@ -95,8 +95,6 @@ export function createPullRequests(options: {
     "pullRequests.list": plain((pr, input) => pr.list(input)),
     "pullRequests.listStats": plain((pr, input) => pr.listStats(input)),
     "pullRequests.filterOptions": plain((pr, input) => pr.filterOptions(input)),
-    "pullRequests.routingIdentity": plain((pr, input) => pr.routingIdentity(input)),
-    "pullRequests.routing": plain((pr, input) => pr.routing(input)),
     "pullRequests.summary": viewer((pr, input) => pr.summary(input)),
     "pullRequests.stack": viewer((pr, input) => pr.stack(input)),
     // The threads on the pull request's branch (kuru code links a thread to the pull request of
@@ -137,7 +135,6 @@ export function createPullRequests(options: {
     "pullRequests.replyToThread": viewer((pr, input) => pr.replyToThread(input)),
     "pullRequests.setThreadResolution": viewer((pr, input) => pr.setThreadResolution(input)),
     "pullRequests.setReaction": viewer((pr, input) => pr.setReaction(input)),
-    "pullRequests.reportState": plain((pr, input) => pr.reportState(input)),
     "pullRequests.invalidate": plain((pr, input) => pr.invalidate(input, { notifyReaders: true })),
     "pullRequests.reviewerCandidates": viewer((pr, input) => pr.reviewerCandidates(input)),
     "pullRequests.requestReviewers": viewer((pr, input) => pr.requestReviewers(input)),

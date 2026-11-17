@@ -66,11 +66,6 @@ export type ProviderInstanceEnvironmentVariable = typeof ProviderInstanceEnviron
 export const ProviderInstanceEnvironment = Schema.Array(ProviderInstanceEnvironmentVariable);
 export type ProviderInstanceEnvironment = typeof ProviderInstanceEnvironment.Type;
 
-/** What drivers receive: every secret reference has been read into a plain value. */
-export type ResolvedProviderInstanceEnvironment = ReadonlyArray<
-  Omit<ProviderInstanceEnvironmentVariable, "value"> & { readonly value: string }
->;
-
 /** Drivers decode their own config; unknown-driver envelopes round-trip verbatim across versions. */
 export const ProviderInstanceConfig = Schema.Struct({
   driver: ProviderDriverKind,
@@ -99,9 +94,6 @@ export const ProviderInstanceMutation = Schema.Union([
   }),
 ]);
 export type ProviderInstanceMutation = typeof ProviderInstanceMutation.Type;
-
-export const ProviderInstanceConfigMap = Schema.Record(ProviderInstanceId, ProviderInstanceConfig);
-export type ProviderInstanceConfigMap = typeof ProviderInstanceConfigMap.Type;
 
 /** Driver-kind ids keep stored selections routable without migration. */
 export const defaultInstanceIdForDriver = (driver: ProviderDriverKind): ProviderInstanceId =>

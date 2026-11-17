@@ -70,11 +70,6 @@ export class PullRequestProviderError extends Schema.TaggedError<PullRequestProv
   }
 }
 
-export interface ProviderChangeRequestWatchFingerprint {
-  readonly status: string;
-  readonly remarks: string;
-}
-
 export interface PullRequestProviderFailure {
   readonly reason: PullRequestProviderError["reason"];
   readonly retryAt?: number | undefined;
@@ -393,9 +388,6 @@ export interface PullRequestProviderApi {
   ) => Effect.Effect<ProviderChangeRequestSummary, PullRequestProviderError>;
 
   /** Null means unknown; an absent method requires full watch reads. */
-  readonly getChangeRequestWatchFingerprint?: (
-    input: ProviderRepositoryRef & { readonly number: number },
-  ) => Effect.Effect<ProviderChangeRequestWatchFingerprint | null, PullRequestProviderError>;
 
   /**
    * Emits whenever the host says the change request may have changed, and once on connecting.

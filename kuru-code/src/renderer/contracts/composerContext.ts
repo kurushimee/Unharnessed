@@ -39,12 +39,6 @@ export const ComposerContextId = TrimmedNonEmptyString.check(
 ).pipe(Schema.brand("ComposerContextId"));
 export type ComposerContextId = typeof ComposerContextId.Type;
 
-export const ComposerContextReferenceId = TrimmedNonEmptyString.check(
-  Schema.isMaxLength(CONTEXT_ID_MAX_CHARS),
-  Schema.isPattern(CONTEXT_ID_PATTERN),
-).pipe(Schema.brand("ComposerContextReferenceId"));
-export type ComposerContextReferenceId = typeof ComposerContextReferenceId.Type;
-
 export const ComposerContextKind = TrimmedNonEmptyString.check(
   Schema.isPattern(CONTEXT_KIND_PATTERN),
 );
@@ -58,7 +52,6 @@ const ContextAttachmentId = TrimmedNonEmptyString.check(
 const ContextLabel = Schema.String.check(Schema.isMaxLength(COMPOSER_CONTEXT_LABEL_MAX_CHARS));
 const BoundedString = (max: number) => Schema.String.check(Schema.isMaxLength(max));
 const ShortString = BoundedString(2_048);
-const NullableShortString = Schema.NullOr(ShortString);
 
 export const PullRequestContextMetadata = Schema.Struct({
   number: PositiveInt,

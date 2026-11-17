@@ -430,29 +430,6 @@ export const PullRequestReviewerCandidatesInput = Schema.Struct({
 });
 export type PullRequestReviewerCandidatesInput = typeof PullRequestReviewerCandidatesInput.Type;
 
-export const PullRequestRoutingIdentityInput = Schema.Struct({
-  host: TrimmedNonEmptyString,
-});
-export type PullRequestRoutingIdentityInput = typeof PullRequestRoutingIdentityInput.Type;
-
-export const PullRequestRoutingIdentityResult = Schema.Struct({
-  accountId: TrimmedNonEmptyString,
-  host: TrimmedNonEmptyString,
-  provider: SourceControlProviderKind,
-  viewer: TrimmedNonEmptyString,
-});
-export type PullRequestRoutingIdentityResult = typeof PullRequestRoutingIdentityResult.Type;
-
-export const PullRequestRoutingResult = Schema.Struct({
-  accountId: TrimmedNonEmptyString,
-  host: TrimmedNonEmptyString,
-  provider: SourceControlProviderKind,
-  viewer: TrimmedNonEmptyString,
-  projectTitle: TrimmedNonEmptyString,
-  workspaceRoot: TrimmedNonEmptyString,
-});
-export type PullRequestRoutingResult = typeof PullRequestRoutingResult.Type;
-
 export const PullRequestLinkedThreadsResult = Schema.Struct({
   threads: Schema.Array(
     Schema.Struct({
@@ -594,13 +571,6 @@ export const PullRequestInvalidateInput = Schema.Struct({
   filesViewedOnly: Schema.optional(Schema.Boolean),
 });
 export type PullRequestInvalidateInput = typeof PullRequestInvalidateInput.Type;
-
-export const PullRequestReportStateInput = Schema.Struct({
-  reference: PullRequestRef,
-  state: PullRequestState,
-  isDraft: Schema.optional(Schema.Boolean),
-});
-export type PullRequestReportStateInput = typeof PullRequestReportStateInput.Type;
 
 export const PullRequestDetail = Schema.Struct({
   provider: SourceControlProviderKind,

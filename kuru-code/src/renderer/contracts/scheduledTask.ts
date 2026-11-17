@@ -1,12 +1,9 @@
 import * as Schema from "effect/Schema";
 
 import {
-  CommandId,
-  ForwardCompatibleArray,
   IsoDateTime,
   ProjectId,
   ScheduledTaskId,
-  SecretRef,
   ThreadId,
   TrimmedNonEmptyString,
 } from "./baseSchemas";
@@ -21,8 +18,6 @@ import { ProviderInteractionMode, RuntimeMode } from "./providerPolicy";
 const TimeOfDay = TrimmedNonEmptyString.check(
   Schema.isPattern(/^([01]?\d|2[0-3]):([0-5]\d)$/),
 ).annotate({ description: "Local time as HH:MM, such as 09:30." });
-
-export const MIN_SCHEDULED_TASK_INTERVAL_MS = 60_000;
 
 const ScheduledTaskIntervalMs = Schema.Int.check(Schema.isGreaterThan(0));
 
@@ -147,7 +142,6 @@ export const ScheduledTaskWebhookFilter = Schema.Union([
     "Path: `headers.x-event` or `body.action`. String compare. Objects pass only 'exists'. A `[]` segment matches any array item. `notEquals` passes only if no item equals.",
 });
 export type ScheduledTaskWebhookFilter = typeof ScheduledTaskWebhookFilter.Type;
-export type ScheduledTaskWebhookFilterOp = ScheduledTaskWebhookFilter["op"];
 
 const ScheduledTaskWebhookFilters = Schema.Array(ScheduledTaskWebhookFilter)
   .check(Schema.isMaxLength(MAX_WEBHOOK_FILTERS))
@@ -165,31 +159,6 @@ const ScheduledTaskWebhookSchedule = Schema.Struct({
   description: "Run on each webhook request.",
 });
 
-const ScheduledTaskUpsertWebhookSchedule = Schema.Struct({
-  type: Schema.Literal("webhook"),
-  signature: Schema.optional(
-    Schema.NullOr(
-      Schema.Struct({
-        ...ScheduledTaskWebhookSignatureFields,
-        secret: Schema.optional(TrimmedNonEmptyString).annotate({
-          description: "Default: stored secret.",
-        }),
-        secretRef: Schema.optional(SecretRef).annotate({
-          description: "From `request_secret`. Instead of `secret`. Spent by this save.",
-        }),
-      }),
-    ),
-  ).annotate({
-    description: "Omit for URL token only.",
-  }),
-  maxDeliveryAgeMinutes: Schema.optional(Schema.NullOr(WebhookMaxDeliveryAgeMinutes)),
-  dedupe: Schema.optional(ScheduledTaskWebhookDedupe),
-  filters: Schema.optional(ScheduledTaskWebhookFilters),
-}).annotate({
-  description:
-    "Run per webhook request. Prompt can use {{body.path}}, {{headers.name}}, {{query.name}}, {{body}}, {{request}}.",
-});
-
 /** Accept legacy sub-minute schedules so users can still manage them. */
 export const ScheduledTaskSchedule = Schema.Union([
   ScheduledTaskIntervalSchedule,
@@ -198,21 +167,6 @@ export const ScheduledTaskSchedule = Schema.Union([
   ScheduledTaskWebhookSchedule,
 ]);
 export type ScheduledTaskSchedule = typeof ScheduledTaskSchedule.Type;
-
-export const ScheduledTaskUpsertSchedule = Schema.Union([
-  Schema.Struct({
-    type: Schema.Literal("interval"),
-    everyMs: ScheduledTaskIntervalMs.check(
-      Schema.isGreaterThanOrEqualTo(MIN_SCHEDULED_TASK_INTERVAL_MS),
-    ).annotate({
-      description: "Min 60000.",
-    }),
-  }),
-  ScheduledTaskFixedTimeSchedule,
-  ScheduledTaskOnceSchedule,
-  ScheduledTaskUpsertWebhookSchedule,
-]);
-export type ScheduledTaskUpsertSchedule = typeof ScheduledTaskUpsertSchedule.Type;
 
 export const ScheduledTaskRunStatus = Schema.Literals(["never", "running", "succeeded", "failed"]);
 export type ScheduledTaskRunStatus = typeof ScheduledTaskRunStatus.Type;
@@ -230,93 +184,6 @@ export type ScheduledTaskWebhookEndpoint = typeof ScheduledTaskWebhookEndpoint.T
  */
 export const ScheduledTaskThreadMode = Schema.Literals(["new_thread", "continue", "fresh_session"]);
 export type ScheduledTaskThreadMode = typeof ScheduledTaskThreadMode.Type;
-
-/** Servers before thread modes omit it; their bound tasks continue the conversation. */
-export function scheduledTaskThreadMode(
-  task: Pick<ScheduledTask, "threadId" | "threadMode">,
-): ScheduledTaskThreadMode {
-  return task.threadMode ?? (task.threadId === null ? "new_thread" : "continue");
-}
-
-export const ScheduledTask = Schema.Struct({
-  id: ScheduledTaskId,
-  title: TrimmedNonEmptyString,
-  prompt: TrimmedNonEmptyString,
-  enabled: Schema.Boolean,
-  schedule: ScheduledTaskSchedule,
-  projectId: ProjectId,
-  threadId: Schema.NullOr(ThreadId),
-  threadMode: Schema.optional(ScheduledTaskThreadMode),
-  workspaceStrategy: OrchestrationV2ThreadLaunchWorkspaceStrategy,
-  modelSelection: ModelSelection,
-  runtimeMode: RuntimeMode,
-  interactionMode: ProviderInteractionMode,
-  createdBy: OrchestrationV2Actor,
-  creationSource: OrchestrationV2CreationSource,
-  createdAt: IsoDateTime,
-  updatedAt: IsoDateTime,
-  nextRunAt: Schema.NullOr(IsoDateTime),
-  lastRunAt: Schema.NullOr(IsoDateTime),
-  lastRunStatus: ScheduledTaskRunStatus,
-  lastRunError: Schema.NullOr(Schema.String),
-  runCount: Schema.Int.check(Schema.isGreaterThanOrEqualTo(0)),
-  webhook: Schema.optional(ScheduledTaskWebhookEndpoint),
-  /** Why the task cannot run regardless of `enabled`, such as a managed policy refusing webhooks. */
-  blockedByPolicy: Schema.optionalKey(Schema.String),
-});
-export type ScheduledTask = typeof ScheduledTask.Type;
-
-export const ScheduledTaskListInput = Schema.Struct({});
-export type ScheduledTaskListInput = typeof ScheduledTaskListInput.Type;
-
-export const ScheduledTaskListResult = Schema.Struct({
-  tasks: ForwardCompatibleArray(ScheduledTask),
-});
-export type ScheduledTaskListResult = typeof ScheduledTaskListResult.Type;
-
-export const ScheduledTaskUpsertInput = Schema.Struct({
-  id: Schema.optional(ScheduledTaskId),
-  requireExisting: Schema.optional(Schema.Boolean).annotate({
-    description: "Reject the save if the task no longer exists, for edits from a client form.",
-  }),
-  commandId: Schema.optional(CommandId),
-  title: TrimmedNonEmptyString,
-  prompt: TrimmedNonEmptyString,
-  enabled: Schema.Boolean,
-  schedule: ScheduledTaskUpsertSchedule,
-  projectId: ProjectId,
-  threadId: Schema.optional(Schema.NullOr(ThreadId)),
-  /** Omitted: keep the stored mode, or derive it from `threadId` for a new or rebound task. */
-  threadMode: Schema.optional(ScheduledTaskThreadMode),
-  workspaceStrategy: OrchestrationV2ThreadLaunchWorkspaceStrategy,
-  modelSelection: ModelSelection,
-  runtimeMode: RuntimeMode,
-  interactionMode: ProviderInteractionMode,
-  createdBy: Schema.optional(OrchestrationV2Actor),
-  creationSource: Schema.optional(OrchestrationV2CreationSource),
-});
-export type ScheduledTaskUpsertInput = typeof ScheduledTaskUpsertInput.Type;
-
-export const ScheduledTaskSetEnabledInput = Schema.Struct({
-  id: ScheduledTaskId,
-  enabled: Schema.Boolean,
-});
-export type ScheduledTaskSetEnabledInput = typeof ScheduledTaskSetEnabledInput.Type;
-
-export const ScheduledTaskDeleteInput = Schema.Struct({
-  id: ScheduledTaskId,
-});
-export type ScheduledTaskDeleteInput = typeof ScheduledTaskDeleteInput.Type;
-
-export const ScheduledTaskRunNowInput = Schema.Struct({
-  id: ScheduledTaskId,
-});
-export type ScheduledTaskRunNowInput = typeof ScheduledTaskRunNowInput.Type;
-
-export const ScheduledTaskRotateWebhookTokenInput = Schema.Struct({
-  id: ScheduledTaskId,
-});
-export type ScheduledTaskRotateWebhookTokenInput = typeof ScheduledTaskRotateWebhookTokenInput.Type;
 
 export const ScheduledTaskWebhookDeliveryId = TrimmedNonEmptyString.pipe(
   Schema.brand("ScheduledTaskWebhookDeliveryId"),
@@ -352,67 +219,3 @@ export const ScheduledTaskWebhookDeliverySummary = Schema.Struct({
 });
 export type ScheduledTaskWebhookDeliverySummary = typeof ScheduledTaskWebhookDeliverySummary.Type;
 
-export const ScheduledTaskWebhookDelivery = Schema.Struct({
-  ...ScheduledTaskWebhookDeliverySummary.fields,
-  query: Schema.String,
-  headers: Schema.Record(Schema.String, Schema.String),
-  body: Schema.String,
-  bodyTruncated: Schema.Boolean,
-  renderedPrompt: Schema.NullOr(Schema.String),
-});
-export type ScheduledTaskWebhookDelivery = typeof ScheduledTaskWebhookDelivery.Type;
-
-export const ScheduledTaskListWebhookDeliveriesInput = Schema.Struct({
-  id: ScheduledTaskId,
-  /**
-   * Sent by clients that decode any outcome. Shipped clients decode a closed
-   * list and fail on the whole response, so without it the server leaves out
-   * rows with outcomes they don't know.
-   */
-  acceptAnyOutcome: Schema.optional(Schema.Boolean),
-});
-export type ScheduledTaskListWebhookDeliveriesInput =
-  typeof ScheduledTaskListWebhookDeliveriesInput.Type;
-
-export const ScheduledTaskListWebhookDeliveriesResult = Schema.Struct({
-  deliveries: Schema.Array(ScheduledTaskWebhookDeliverySummary),
-});
-export type ScheduledTaskListWebhookDeliveriesResult =
-  typeof ScheduledTaskListWebhookDeliveriesResult.Type;
-
-export const ScheduledTaskGetWebhookDeliveryInput = Schema.Struct({
-  id: ScheduledTaskId,
-  deliveryId: ScheduledTaskWebhookDeliveryId,
-  acceptAnyOutcome: Schema.optional(Schema.Boolean),
-});
-export type ScheduledTaskGetWebhookDeliveryInput = typeof ScheduledTaskGetWebhookDeliveryInput.Type;
-
-export const ScheduledTaskGetWebhookDeliveryResult = Schema.Struct({
-  delivery: ScheduledTaskWebhookDelivery,
-});
-export type ScheduledTaskGetWebhookDeliveryResult =
-  typeof ScheduledTaskGetWebhookDeliveryResult.Type;
-
-export const ScheduledTaskMutationResult = Schema.Struct({
-  task: ScheduledTask,
-});
-export type ScheduledTaskMutationResult = typeof ScheduledTaskMutationResult.Type;
-
-export const ScheduledTaskDeleteResult = Schema.Struct({
-  id: ScheduledTaskId,
-});
-export type ScheduledTaskDeleteResult = typeof ScheduledTaskDeleteResult.Type;
-
-export const ScheduledTaskRunNowResult = Schema.Struct({
-  task: ScheduledTask,
-});
-export type ScheduledTaskRunNowResult = typeof ScheduledTaskRunNowResult.Type;
-
-export class ScheduledTaskError extends Schema.TaggedError<ScheduledTaskError>()(
-  "ScheduledTaskError",
-  {
-    message: Schema.String,
-    taskId: Schema.optional(ScheduledTaskId),
-    cause: Schema.optional(Schema.Defect()),
-  },
-) {}

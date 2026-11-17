@@ -10,16 +10,6 @@ import {
 } from "./baseSchemas";
 import { SourceControlProviderKind } from "./sourceControl";
 
-export const ORCHESTRATION_PROTOCOL_VERSION = 2;
-export const ORCHESTRATION_PROTOCOL_VERSION_TEXT = "2";
-export const ORCHESTRATION_PROTOCOL_QUERY_PARAM = "orchestrationProtocol";
-export const ORCHESTRATION_PROTOCOL_HEADER = "x-t3-orchestration-protocol";
-
-/** Wire shapes a client understands, comma-separated; a client that omits one gets the older shape. */
-export const CLIENT_CAPABILITIES_QUERY_PARAM = "clientCapabilities";
-/** Secret fields may hold a secret provider reference instead of a string. */
-export const SETTINGS_SECRET_REFERENCES_CAPABILITY = "settingsSecretReferences";
-
 export const ExecutionEnvironmentPlatformOs = Schema.Literals([
   "darwin",
   "linux",
@@ -42,7 +32,6 @@ export const ENVIRONMENT_MACHINE_KINDS = [
 ] as const;
 export const EnvironmentMachineKind = Schema.Literals(ENVIRONMENT_MACHINE_KINDS);
 export type EnvironmentMachineKind = typeof EnvironmentMachineKind.Type;
-export const isEnvironmentMachineKind = Schema.is(EnvironmentMachineKind);
 
 export const ExecutionEnvironmentPlatform = Schema.Struct({
   os: ExecutionEnvironmentPlatformOs,
@@ -57,9 +46,6 @@ export type ThreadEnvMode = typeof ThreadEnvMode.Type;
 export const WorktreeSubmodules = Schema.Literals(["recursive", "top-level", "none"]);
 export type WorktreeSubmodules = typeof WorktreeSubmodules.Type;
 export type ExecutionEnvironmentPlatform = typeof ExecutionEnvironmentPlatform.Type;
-
-export const ServerSelfUpdateMethod = Schema.Literals(["boot-service", "respawn", "desktop-app"]);
-export type ServerSelfUpdateMethod = typeof ServerSelfUpdateMethod.Type;
 
 export const ServerInstallation = Schema.Union([
   Schema.Struct({ kind: Schema.Literals(["npx", "pnpm-dlx", "bunx"]) }),

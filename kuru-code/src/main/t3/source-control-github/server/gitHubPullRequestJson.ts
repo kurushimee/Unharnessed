@@ -43,7 +43,6 @@ import type { ProviderChangeRequestSummary } from "../../source-control-core/ser
 import type * as GitHubSchema from "../schema/github.graphql";
 import type {
   PullRequestSummaryRepositoryPullRequestPullRequest as SummarizedPullRequest,
-  PullRequestWatchFingerprintRepositoryPullRequestPullRequest as WatchedPullRequest,
 } from "./pullRequestBatches.graphql";
 import {
   PageInfo as ListingPageInfo,
@@ -977,50 +976,6 @@ export function toPullRequestSummary(pr: SummarizedPullRequest): GitHubPullReque
     checksState: rollupChecksState(rollupStates(pr.commits)),
     mergeability: toMergeability(pr.mergeable),
     ...(pr.stack === undefined ? {} : { stack: toStackMembership(pr) ?? null }),
-  };
-}
-
-export interface GitHubPullRequestWatchFingerprint {
-  readonly status: string;
-  readonly remarks: string;
-}
-
-type EditedConnection = WatchedPullRequest["comments"] | WatchedPullRequest["reviews"];
-type StateCounts = ReadonlyArray<{ readonly state: string; readonly count: number }> | null;
-
-const newestEdit = (connection: EditedConnection) =>
-  (connection?.nodes ?? []).reduce(
-    (newest, node) =>
-      node?.lastEditedAt != null && node.lastEditedAt > newest ? node.lastEditedAt : newest,
-    "",
-  );
-
-const stateCounts = (counts: StateCounts) =>
-  (counts ?? [])
-    .filter(({ count }) => count > 0)
-    .map(({ state, count }) => `${state}:${count}`)
-    .toSorted()
-    .join(",");
-
-export function toPullRequestWatchFingerprint(
-  pr: WatchedPullRequest,
-): GitHubPullRequestWatchFingerprint {
-  const contexts = pr.commits.nodes?.[0]?.commit.statusCheckRollup?.contexts;
-  return {
-    status: [
-      pr.state,
-      pr.mergeable,
-      pr.headRefOid,
-      stateCounts(contexts?.checkRunCountsByState ?? null),
-      stateCounts(contexts?.statusContextCountsByState ?? null),
-    ].join(" "),
-    remarks: [
-      pr.comments.totalCount,
-      newestEdit(pr.comments),
-      pr.reviews?.totalCount ?? 0,
-      newestEdit(pr.reviews),
-      pr.reviewThreads.totalCount,
-    ].join(" "),
   };
 }
 

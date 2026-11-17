@@ -585,18 +585,6 @@ export function createRpc(options: {
       touch(cwd);
       return { status: before === after ? "skipped_up_to_date" : "pulled", refName, upstreamRef: upstream.code === 0 ? upstream.stdout.trim() : null };
     },
-    "vcs.createWorktree": async ({ cwd, refName, newRefName, baseRefName, path }) => {
-      const repoName = (await gitOk("createWorktree", cwd, "rev-parse", "--show-toplevel")).trim();
-      const target = path ?? `${repoName}.worktrees/${(newRefName ?? refName).replace(/[\\/]/g, "-")}`;
-      const args = newRefName ? ["worktree", "add", "-b", newRefName, target, baseRefName ?? refName] : ["worktree", "add", target, refName];
-      await gitOk("createWorktree", cwd, ...args);
-      touch(cwd);
-      return { worktree: { path: target, refName: newRefName ?? refName } };
-    },
-    "vcs.removeWorktree": async ({ cwd, path, force }) => {
-      await gitOk("removeWorktree", cwd, "worktree", "remove", ...(force ? ["--force"] : []), path);
-      touch(cwd);
-    },
     // T3 Code's "Check out" of a pull request, in its local mode: kuru code keeps one checkout
     // per project, so the pull request's branch is checked out in it with `gh pr checkout`.
     "git.preparePullRequestThread": async ({ cwd, reference }) => {

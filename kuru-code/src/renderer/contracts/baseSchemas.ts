@@ -30,7 +30,6 @@ export const TrimmedNonEmptyString = TrimmedString.check(isNonBlank);
 
 export const NonNegativeInt = Schema.Int.check(Schema.isGreaterThanOrEqualTo(0));
 export const PositiveInt = Schema.Int.check(Schema.isGreaterThanOrEqualTo(1));
-export const PortSchema = Schema.Int.check(Schema.isBetween({ minimum: 1, maximum: 65535 }));
 
 export const DpopFailureReason = Schema.Literals([
   "time_window",
@@ -259,8 +258,6 @@ export const EventId = makeEntityId("EventId");
 export type EventId = typeof EventId.Type;
 export const MessageId = makeEntityId("MessageId");
 export type MessageId = typeof MessageId.Type;
-export const TurnId = makeEntityId("TurnId");
-export type TurnId = typeof TurnId.Type;
 export const RunId = makeEntityId("RunId");
 export type RunId = typeof RunId.Type;
 export const RunAttemptId = makeEntityId("RunAttemptId");
@@ -273,35 +270,13 @@ export const GuestMessageId = makeEntityId("GuestMessageId");
 export type GuestMessageId = typeof GuestMessageId.Type;
 export const AuthSessionId = makeEntityId("AuthSessionId");
 export type AuthSessionId = typeof AuthSessionId.Type;
-export const RpcClientId = NonNegativeInt.pipe(Schema.brand("RpcClientId"));
-export type RpcClientId = typeof RpcClientId.Type;
 
 export const ClientSurface = Schema.Literals(["web", "desktop", "mobile", "cli"]);
 export type ClientSurface = typeof ClientSurface.Type;
 
-export const ClientOs = Schema.Literals([
-  "macOS",
-  "Windows",
-  "Linux",
-  "iOS",
-  "Android",
-  "ChromeOS",
-  "other",
-  "unknown",
-]);
-export type ClientOs = typeof ClientOs.Type;
-
-export const ClientDeviceType = Schema.Literals(["desktop", "phone", "tablet", "unknown"]);
-export type ClientDeviceType = typeof ClientDeviceType.Type;
-
 export const ClientWebDeployment = Schema.Literals(["hosted", "server"]);
 export type ClientWebDeployment = typeof ClientWebDeployment.Type;
 
-export const ClientConnectionMethod = Schema.Literals(["direct", "ssh", "relay", "unknown"]);
-export type ClientConnectionMethod = typeof ClientConnectionMethod.Type;
-
-export const ProviderItemId = makeEntityId("ProviderItemId");
-export type ProviderItemId = typeof ProviderItemId.Type;
 export const ProviderSessionId = makeEntityId("ProviderSessionId");
 export type ProviderSessionId = typeof ProviderSessionId.Type;
 export const ProviderThreadId = makeEntityId("ProviderThreadId");
@@ -313,12 +288,7 @@ export type TurnItemId = typeof TurnItemId.Type;
 export const RuntimeRequestId = makeEntityId("RuntimeRequestId");
 export type RuntimeRequestId = typeof RuntimeRequestId.Type;
 export const ScheduledTaskId = makeEntityId("ScheduledTaskId");
-/** A one-use handle to a secret the user entered for an agent; the agent never sees the value. */
-export const SecretRef = makeEntityId("SecretRef");
-export type SecretRef = typeof SecretRef.Type;
 export type ScheduledTaskId = typeof ScheduledTaskId.Type;
-export const ApprovalRequestId = makeEntityId("ApprovalRequestId");
-export type ApprovalRequestId = typeof ApprovalRequestId.Type;
 export const CheckpointRef = makeEntityId("CheckpointRef");
 export type CheckpointRef = typeof CheckpointRef.Type;
 export const CheckpointId = makeEntityId("CheckpointId");

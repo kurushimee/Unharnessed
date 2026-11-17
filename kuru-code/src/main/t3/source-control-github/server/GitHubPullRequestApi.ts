@@ -61,7 +61,6 @@ import {
   decodeWorkflowRunsJson,
   type GitHubPullRequestCore,
   type GitHubPullRequestFileStat,
-  type GitHubPullRequestWatchFingerprint,
   isSubjectOfPullRequest,
   LenientPullRequestList,
   LenientPullRequestSearch,
@@ -85,7 +84,6 @@ import {
   toPullRequestPreview,
   toPullRequestRows,
   toPullRequestSummary,
-  toPullRequestWatchFingerprint,
   toReviewDismissalsPage,
   toReviewerCandidates,
   toReviewThreadCommentsPage,
@@ -466,13 +464,6 @@ export class GitHubPullRequestApi extends Context.Service<
       readonly host: string;
       readonly number: number;
     }) => Effect.Effect<ProviderChangeRequestSummary, GitHubPullRequestApiError>;
-    /** Null triggers a full watch read when GitHub gives no answer. */
-    readonly getPullRequestWatchFingerprint: (input: {
-      readonly cwd: string;
-      readonly repository: string;
-      readonly host: string;
-      readonly number: number;
-    }) => Effect.Effect<GitHubPullRequestWatchFingerprint | null, GitHubPullRequestApiError>;
     readonly revalidateChecks: Effect.Success<typeof makeChecksRevalidator>;
 
     readonly getPullRequestDetail: (input: {
@@ -1717,27 +1708,6 @@ export const make = Effect.gen(function* () {
       ),
   );
 
-  // A missing fingerprint triggers a full watch read; a failed request fails the whole batch.
-  const watchFingerprintResolver = GraphQLResolver.aliased(client.PullRequestWatchFingerprint, {
-    batchKey: GitHubGraphQlClient.batchKey,
-  }).pipe(
-    RequestResolver.setDelay(SUMMARY_BATCH_WINDOW),
-    RequestResolver.batchN(STAT_ALIASES_PER_REQUEST),
-  );
-  const getPullRequestWatchFingerprint: GitHubPullRequestApi["Service"]["getPullRequestWatchFingerprint"] =
-    (input) => {
-      const lookup = pullRequestLookup(input);
-      if (lookup === null) return Effect.succeed(null);
-      return GraphQLResolver.request(lookup, watchFingerprintResolver).pipe(
-        Effect.map((result) => {
-          const pullRequest = result.repository?.pullRequest;
-          return pullRequest == null ? null : toPullRequestWatchFingerprint(pullRequest);
-        }),
-        Effect.catchIf(isNotFoundOnly, () => Effect.succeed(null)),
-        (effect) => batchedRead({ ...input, operation: "getPullRequestWatchFingerprint" }, effect),
-      );
-    };
-
   const statsResolver = GraphQLResolver.aliased(client.PullRequestStats, {
     batchKey: GitHubGraphQlClient.batchKey,
   }).pipe(RequestResolver.batchN(STAT_ALIASES_PER_REQUEST));
@@ -2002,7 +1972,6 @@ export const make = Effect.gen(function* () {
     ),
 
     getPullRequestSummary,
-    getPullRequestWatchFingerprint,
 
     getPullRequestDetail,
     getPullRequestPreview: Effect.fn("GitHubPullRequestApi.getPullRequestPreview")(

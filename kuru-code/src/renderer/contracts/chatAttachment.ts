@@ -3,10 +3,8 @@ import * as Schema from "effect/Schema";
 
 import {
   IsoDateTime,
-  MessageId,
   NonNegativeInt,
   PositiveInt,
-  ThreadId,
   TrimmedNonEmptyString,
   TrimmedString,
 } from "./baseSchemas";
@@ -14,7 +12,6 @@ import {
 export const PROVIDER_SEND_TURN_MAX_INPUT_CHARS = 120_000;
 export const PROVIDER_SEND_TURN_MAX_ATTACHMENTS = 100;
 export const PROVIDER_SEND_TURN_MAX_IMAGE_BYTES = 10 * 1024 * 1024;
-const PROVIDER_SEND_TURN_MAX_TOTAL_IMAGE_BYTES = 80 * 1024 * 1024;
 export const PROVIDER_SEND_TURN_MAX_FILE_BYTES = 50 * 1024 * 1024;
 export const PROVIDER_SEND_TURN_SUPPORTED_IMAGE_MIME_TYPES = [
   "image/gif",
@@ -206,44 +203,6 @@ export const ChatAttachment = Schema.Union([
 ]);
 export type ChatAttachment = typeof ChatAttachment.Type;
 
-export function getProviderAttachmentLimitError(
-  attachments: ReadonlyArray<Pick<ChatAttachment, "type" | "mimeType" | "sizeBytes">>,
-): string | undefined {
-  if (attachments.length > PROVIDER_SEND_TURN_MAX_ATTACHMENTS) {
-    return `You can attach up to ${PROVIDER_SEND_TURN_MAX_ATTACHMENTS} files per message or question response.`;
-  }
-  const imageBytes = attachments.reduce(
-    (total, attachment) =>
-      total +
-      (attachment.type === "image" || isProviderSendTurnSupportedImageMimeType(attachment.mimeType)
-        ? attachment.sizeBytes
-        : 0),
-    0,
-  );
-  if (imageBytes > PROVIDER_SEND_TURN_MAX_TOTAL_IMAGE_BYTES) {
-    return "Images can total up to 80 MiB per message or question response. Use smaller images or send fewer at once.";
-  }
-}
-
 export const UploadChatAttachment = Schema.Union([UploadChatImageAttachment]);
 export type UploadChatAttachment = typeof UploadChatAttachment.Type;
 
-export const PersistChatAttachmentsInput = Schema.Struct({
-  threadId: ThreadId,
-  messageId: MessageId,
-  attachments: Schema.Array(UploadChatAttachment),
-});
-export type PersistChatAttachmentsInput = typeof PersistChatAttachmentsInput.Type;
-
-export const PersistChatAttachmentsResult = Schema.Struct({
-  attachments: Schema.Array(ChatAttachment),
-});
-export type PersistChatAttachmentsResult = typeof PersistChatAttachmentsResult.Type;
-
-export class PersistChatAttachmentsError extends Schema.TaggedError<PersistChatAttachmentsError>()(
-  "PersistChatAttachmentsError",
-  {
-    message: Schema.String,
-    cause: Schema.optional(Schema.Defect()),
-  },
-) {}

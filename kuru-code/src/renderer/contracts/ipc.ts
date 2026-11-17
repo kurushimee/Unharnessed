@@ -1,14 +1,12 @@
 import * as Schema from "effect/Schema";
 
 import { SnapShotSource } from "./chatAttachment";
-import { EnvironmentId, TrimmedNonEmptyString } from "./baseSchemas";
-import { BrowserProfileId } from "./browserProfile";
+import { TrimmedNonEmptyString } from "./baseSchemas";
 import { AuthAccessTokenResult, AuthSessionState } from "./auth";
 import { AdvertisedEndpoint } from "./remoteAccess";
 import { ExecutionEnvironmentDescriptor } from "./environment";
 import { type ClientSettings, type QuitConfirmationMode, SnapShotShortcut } from "./settings";
 import type { EditorId } from "./editor";
-import { KeybindingShortcut } from "./keybindings";
 
 import type { DesktopAppActivationRequest, DesktopAppActivationResponse } from "./desktopAppActivation";
 
@@ -29,36 +27,6 @@ export type QuitShortcutHintEvent =
   | { readonly state: "down"; readonly mode: Exclude<QuitConfirmationMode, "direct"> }
   | { readonly state: "up" };
 
-export interface ContextMenuItemSchemaType {
-  readonly id: string;
-  readonly label: string;
-  readonly detail?: string;
-  readonly destructive?: boolean;
-  readonly disabled?: boolean;
-  readonly header?: boolean;
-  readonly icon?: string;
-  readonly separatorBefore?: boolean;
-  readonly checked?: boolean;
-  readonly children?: readonly ContextMenuItemSchemaType[];
-}
-
-export const ContextMenuItemSchema: Schema.Codec<ContextMenuItemSchemaType> = Schema.Struct({
-  id: Schema.String,
-  label: Schema.String,
-  detail: Schema.optionalKey(Schema.String),
-  destructive: Schema.optionalKey(Schema.Boolean),
-  disabled: Schema.optionalKey(Schema.Boolean),
-  header: Schema.optionalKey(Schema.Boolean),
-  icon: Schema.optionalKey(Schema.String),
-  separatorBefore: Schema.optionalKey(Schema.Boolean),
-  checked: Schema.optionalKey(Schema.Boolean),
-  children: Schema.optionalKey(
-    Schema.Array(
-      Schema.suspend((): Schema.Codec<ContextMenuItemSchemaType> => ContextMenuItemSchema),
-    ),
-  ),
-});
-
 export type DesktopUpdateStatus =
   | "disabled"
   | "idle"
@@ -74,32 +42,11 @@ export type DesktopTheme = "light" | "dark" | "system";
 export type DesktopUpdateChannel = "latest" | "nightly";
 export type DesktopAppStageLabel = "Alpha" | "Beta" | "Dev" | "Nightly";
 
-export const DesktopUpdateStatusSchema = Schema.Literals([
-  "disabled",
-  "idle",
-  "checking",
-  "up-to-date",
-  "available",
-  "downloading",
-  "downloaded",
-  "error",
-]);
-export const DesktopRuntimeArchSchema = Schema.Literals(["arm64", "x64", "other"]);
-export const DesktopThemeSchema = Schema.Literals(["light", "dark", "system"]);
-export const DesktopUpdateChannelSchema = Schema.Literals(["latest", "nightly"]);
-export const DesktopAppStageLabelSchema = Schema.Literals(["Alpha", "Beta", "Dev", "Nightly"]);
-
 export interface DesktopAppBranding {
   baseName: string;
   stageLabel: DesktopAppStageLabel;
   displayName: string;
 }
-
-export const DesktopAppBrandingSchema = Schema.Struct({
-  baseName: Schema.String,
-  stageLabel: DesktopAppStageLabelSchema,
-  displayName: Schema.String,
-});
 
 export const DesktopSnapShotMode = Schema.Literals(["direct", "portal", "unavailable"]);
 export type DesktopSnapShotMode = typeof DesktopSnapShotMode.Type;
@@ -252,12 +199,6 @@ export const DesktopSnapShotAnimationDestination = Schema.Struct({
 });
 export type DesktopSnapShotAnimationDestination = typeof DesktopSnapShotAnimationDestination.Type;
 
-export interface DesktopRuntimeInfo {
-  hostArch: DesktopRuntimeArch;
-  appArch: DesktopRuntimeArch;
-  runningUnderArm64Translation: boolean;
-}
-
 export interface DesktopUpdateState {
   enabled: boolean;
   status: DesktopUpdateStatus;
@@ -293,36 +234,6 @@ export interface DesktopUpdateReleaseNote {
   footer?: string;
 }
 
-export const DesktopUpdateReleaseNoteSchema = Schema.Struct({
-  version: Schema.String,
-  items: Schema.Array(Schema.String),
-  totalItems: Schema.Number,
-  releasedAt: Schema.optionalKey(Schema.String),
-  intro: Schema.optionalKey(Schema.String),
-  stats: Schema.optionalKey(Schema.String),
-  footer: Schema.optionalKey(Schema.String),
-});
-
-export const DesktopUpdateStateSchema = Schema.Struct({
-  enabled: Schema.Boolean,
-  status: DesktopUpdateStatusSchema,
-  channel: DesktopUpdateChannelSchema,
-  currentVersion: Schema.String,
-  hostArch: DesktopRuntimeArchSchema,
-  appArch: DesktopRuntimeArchSchema,
-  runningUnderArm64Translation: Schema.Boolean,
-  availableVersion: Schema.NullOr(Schema.String),
-  downloadedVersion: Schema.NullOr(Schema.String),
-  releaseNotes: Schema.Array(DesktopUpdateReleaseNoteSchema),
-  omittedReleaseCount: Schema.Number,
-  downloadPercent: Schema.NullOr(Schema.Number),
-  checkedAt: Schema.NullOr(Schema.String),
-  message: Schema.NullOr(Schema.String),
-  errorContext: Schema.NullOr(Schema.Literals(["check", "download", "install"])),
-  canRetry: Schema.Boolean,
-  notAppliedVersion: Schema.optionalKey(Schema.String),
-});
-
 export const DesktopCliCommandStateSchema = Schema.Struct({
   supported: Schema.Boolean,
   installedPath: Schema.NullOr(Schema.String),
@@ -341,23 +252,10 @@ export interface DesktopUpdateActionResult {
   state: DesktopUpdateState;
 }
 
-export const DesktopUpdateActionResultSchema = Schema.Struct({
-  accepted: Schema.Boolean,
-  completed: Schema.Boolean,
-  state: DesktopUpdateStateSchema,
-});
-
 export interface DesktopUpdateCheckResult {
   checked: boolean;
   state: DesktopUpdateState;
 }
-
-export const DesktopUpdateCheckResultSchema = Schema.Struct({
-  checked: Schema.Boolean,
-  state: DesktopUpdateStateSchema,
-});
-
-export const PRIMARY_LOCAL_ENVIRONMENT_ID = "primary";
 
 export interface DesktopEnvironmentBootstrap {
   // Stable backend identity used to reopen routed projects.
@@ -370,15 +268,6 @@ export interface DesktopEnvironmentBootstrap {
   bootstrapToken?: string;
 }
 
-export const DesktopEnvironmentBootstrapSchema = Schema.Struct({
-  id: Schema.String,
-  label: Schema.String,
-  runningDistro: Schema.optionalKey(Schema.NullOr(Schema.String)),
-  httpBaseUrl: Schema.NullOr(Schema.String),
-  wsBaseUrl: Schema.NullOr(Schema.String),
-  bootstrapToken: Schema.optionalKey(Schema.String),
-});
-
 export const DesktopSshEnvironmentTargetSchema = Schema.Struct({
   alias: Schema.String,
   hostname: Schema.String,
@@ -388,19 +277,10 @@ export const DesktopSshEnvironmentTargetSchema = Schema.Struct({
 export type DesktopSshEnvironmentTarget = typeof DesktopSshEnvironmentTargetSchema.Type;
 
 export type DesktopSshHostSource = "ssh-config" | "known-hosts";
-export const DesktopSshHostSourceSchema = Schema.Literals(["ssh-config", "known-hosts"]);
 
 export interface DesktopDiscoveredSshHost extends DesktopSshEnvironmentTarget {
   source: DesktopSshHostSource;
 }
-
-export const DesktopDiscoveredSshHostSchema = Schema.Struct({
-  alias: Schema.String,
-  hostname: Schema.String,
-  username: Schema.NullOr(Schema.String),
-  port: Schema.NullOr(Schema.Number),
-  source: DesktopSshHostSourceSchema,
-});
 
 export interface DesktopSshEnvironmentBootstrap {
   target: DesktopSshEnvironmentTarget;
@@ -411,15 +291,6 @@ export interface DesktopSshEnvironmentBootstrap {
   remoteServerKind?: "external" | "managed";
 }
 
-export const DesktopSshEnvironmentBootstrapSchema = Schema.Struct({
-  target: DesktopSshEnvironmentTargetSchema,
-  httpBaseUrl: Schema.String,
-  wsBaseUrl: Schema.String,
-  pairingToken: Schema.NullOr(Schema.String),
-  remotePort: Schema.optionalKey(Schema.Number),
-  remoteServerKind: Schema.optionalKey(Schema.Literals(["external", "managed"])),
-});
-
 export interface DesktopSshPasswordPromptRequest {
   requestId: string;
   destination: string;
@@ -428,68 +299,7 @@ export interface DesktopSshPasswordPromptRequest {
   expiresAt: string;
 }
 
-export const DesktopSshPasswordPromptCancelledType = "ssh-password-prompt-cancelled" as const;
-
-export const DesktopSshPasswordPromptCancelledResultSchema = Schema.Struct({
-  type: Schema.Literal(DesktopSshPasswordPromptCancelledType),
-  message: Schema.String,
-});
-
-export const DesktopSshEnvironmentEnsureOptionsSchema = Schema.Struct({
-  issuePairingToken: Schema.optionalKey(Schema.Boolean),
-});
-
-export const DesktopSshEnvironmentEnsureInputSchema = Schema.Struct({
-  target: DesktopSshEnvironmentTargetSchema,
-  options: Schema.optionalKey(DesktopSshEnvironmentEnsureOptionsSchema),
-});
-
-export const DesktopSshEnvironmentEnsureResultSchema = Schema.Union([
-  DesktopSshEnvironmentBootstrapSchema,
-  DesktopSshPasswordPromptCancelledResultSchema,
-]);
-
-export const DesktopSshHttpBaseUrlInputSchema = Schema.Struct({
-  httpBaseUrl: Schema.String,
-});
-
-export const DesktopSshBearerRequestInputSchema = Schema.Struct({
-  httpBaseUrl: Schema.String,
-  bearerToken: Schema.String,
-});
-
-export const DesktopSshBearerBootstrapInputSchema = Schema.Struct({
-  httpBaseUrl: Schema.String,
-  credential: Schema.String,
-});
-
-export const DesktopSshPasswordPromptResolutionInputSchema = Schema.Struct({
-  requestId: Schema.String,
-  password: Schema.NullOr(Schema.String),
-});
-
-export const PersistedSavedEnvironmentRecordSchema = Schema.Struct({
-  environmentId: EnvironmentId,
-  label: Schema.String,
-  wsBaseUrl: Schema.String,
-  httpBaseUrl: Schema.String,
-  createdAt: Schema.String,
-  lastConnectedAt: Schema.NullOr(Schema.String),
-  desktopSsh: Schema.optionalKey(DesktopSshEnvironmentTargetSchema),
-  relayManaged: Schema.optionalKey(
-    Schema.Struct({
-      relayUrl: Schema.String,
-    }),
-  ),
-});
-export type PersistedSavedEnvironmentRecord = typeof PersistedSavedEnvironmentRecordSchema.Type;
-
 export type DesktopServerExposureMode = "local-only" | "network-accessible";
-
-export const DesktopServerExposureModeSchema = Schema.Literals([
-  "local-only",
-  "network-accessible",
-]);
 
 export interface DesktopServerExposureState {
   mode: DesktopServerExposureMode;
@@ -499,23 +309,10 @@ export interface DesktopServerExposureState {
   tailscaleServePort: number;
 }
 
-export const DesktopServerExposureStateSchema = Schema.Struct({
-  mode: DesktopServerExposureModeSchema,
-  endpointUrl: Schema.NullOr(Schema.String),
-  advertisedHost: Schema.NullOr(Schema.String),
-  tailscaleServeEnabled: Schema.Boolean,
-  tailscaleServePort: Schema.Number,
-});
-
 export interface PickFolderOptions {
   initialPath?: string | null;
   targetEnvironmentId?: string;
 }
-
-export const PickFolderOptionsSchema = Schema.Struct({
-  initialPath: Schema.optionalKey(Schema.NullOr(Schema.String)),
-  targetEnvironmentId: Schema.optionalKey(Schema.String),
-});
 
 /** Oversized files have empty text so the main process never loads their contents. */
 export interface PickedThemeFile {
@@ -524,23 +321,11 @@ export interface PickedThemeFile {
   text: string;
 }
 
-export const PickedThemeFileSchema = Schema.Struct({
-  name: Schema.String,
-  size: Schema.Number,
-  text: Schema.String,
-});
-
 export interface DesktopWslDistro {
   name: string;
   isDefault: boolean;
   version: 1 | 2;
 }
-
-export const DesktopWslDistroSchema = Schema.Struct({
-  name: Schema.String,
-  isDefault: Schema.Boolean,
-  version: Schema.Literals([1, 2]),
-});
 
 export interface DesktopWslState {
   enabled: boolean;
@@ -552,466 +337,6 @@ export interface DesktopWslState {
   // Always null in wsl-only mode, which falls back to Windows with a dialog.
   preflightError: string | null;
 }
-
-export const DesktopWslStateSchema = Schema.Struct({
-  enabled: Schema.Boolean,
-  distro: Schema.NullOr(Schema.String),
-  available: Schema.Boolean,
-  wslOnly: Schema.Boolean,
-  distros: Schema.Array(DesktopWslDistroSchema),
-  preflightError: Schema.NullOr(Schema.String),
-});
-
-export type DesktopPreviewNavStatus =
-  | { kind: "Idle" }
-  | { kind: "Loading"; url: string; title: string }
-  | { kind: "Success"; url: string; title: string }
-  | {
-      kind: "LoadFailed";
-      url: string;
-      title: string;
-      code: number;
-      description: string;
-    };
-
-export type DesktopPreviewColorScheme = "system" | "light" | "dark";
-
-export const DesktopPreviewColorSchemeSchema: Schema.Codec<DesktopPreviewColorScheme> =
-  Schema.Literals(["system", "light", "dark"]);
-
-export const FAVICON_DATA_URL_MAX_LENGTH = 8192;
-export const FAVICON_CAPTURED_AT_MAX = 8_640_000_000_000_000;
-
-export interface DesktopPreviewFavicon {
-  dataUrl: string;
-  pageUrl: string;
-  capturedAt: number;
-}
-
-export interface DesktopPreviewTabState {
-  tabId: string;
-  webContentsId: number | null;
-  navStatus: DesktopPreviewNavStatus;
-  canGoBack: boolean;
-  canGoForward: boolean;
-  zoomFactor: number;
-  pictureInPicture: boolean;
-  colorScheme: DesktopPreviewColorScheme;
-  audioMuted: boolean;
-  /** Chromium reports playback even when audioMuted is true. */
-  audible: boolean;
-  controller: "human" | "agent" | "none";
-  /** A screenshot or stream of the guest is pending, so the client keeps it painting while hidden. */
-  capturing: boolean;
-  favicon?: DesktopPreviewFavicon;
-  updatedAt: string;
-}
-
-export const DesktopPreviewTabIdSchema = Schema.String.check(Schema.isTrimmed()).check(
-  Schema.isNonEmpty(),
-);
-
-export interface DesktopPreviewPointerEvent {
-  tabId: string;
-  phase: "move" | "click";
-  x: number;
-  y: number;
-  sequence: number;
-  createdAt: string;
-}
-
-export interface DesktopPreviewOpenLinkEvent {
-  tabId: string;
-  url: string;
-  background: boolean;
-}
-
-export const DesktopPreviewRecordingInputSchema = Schema.Union([
-  Schema.Struct({
-    type: Schema.Literal("pointer"),
-    phase: Schema.Literals(["move", "down", "up", "click"]),
-    x: Schema.Finite,
-    y: Schema.Finite,
-    width: Schema.Finite.check(Schema.isGreaterThan(0)),
-    height: Schema.Finite.check(Schema.isGreaterThan(0)),
-  }),
-  Schema.Struct({
-    type: Schema.Literal("key"),
-    label: Schema.NullOr(Schema.String.check(Schema.isMaxLength(100))),
-    held: Schema.Boolean,
-    width: Schema.Finite.check(Schema.isGreaterThan(0)),
-  }),
-  Schema.Struct({ type: Schema.Literal("clear") }),
-]);
-export type DesktopPreviewRecordingInput = typeof DesktopPreviewRecordingInputSchema.Type;
-export interface DesktopPreviewRecordingInputEvent {
-  readonly tabId: string;
-  readonly input: DesktopPreviewRecordingInput;
-}
-
-export interface DesktopPreviewWebviewConfig {
-  partition: string;
-  /** Sandboxed with contextIsolation off so the picker preload can read the React DevTools hook. */
-  webPreferences: string;
-  /** Absolute file:// preload URL; null requires disabling element picking. */
-  preloadUrl: string | null;
-}
-
-export const DesktopPreviewWebviewConfigSchema: Schema.Codec<DesktopPreviewWebviewConfig> =
-  Schema.Struct({
-    partition: Schema.String,
-    webPreferences: Schema.String,
-    preloadUrl: Schema.NullOr(Schema.String),
-  });
-
-export interface DesktopPreviewAnnotationTheme {
-  colorScheme: "light" | "dark";
-  radius: string;
-  background: string;
-  foreground: string;
-  popover: string;
-  popoverForeground: string;
-  primary: string;
-  primaryForeground: string;
-  muted: string;
-  mutedForeground: string;
-  accent: string;
-  accentForeground: string;
-  border: string;
-  input: string;
-  ring: string;
-  fontSans: string;
-  fontMono: string;
-}
-
-export const DesktopPreviewAnnotationThemeSchema: Schema.Codec<DesktopPreviewAnnotationTheme> =
-  Schema.Struct({
-    colorScheme: Schema.Literals(["light", "dark"]),
-    radius: Schema.String,
-    background: Schema.String,
-    foreground: Schema.String,
-    popover: Schema.String,
-    popoverForeground: Schema.String,
-    primary: Schema.String,
-    primaryForeground: Schema.String,
-    muted: Schema.String,
-    mutedForeground: Schema.String,
-    accent: Schema.String,
-    accentForeground: Schema.String,
-    border: Schema.String,
-    input: Schema.String,
-    ring: Schema.String,
-    fontSans: Schema.String,
-    fontMono: Schema.String,
-  });
-
-export interface DesktopPreviewRecordingFrame {
-  tabId: string;
-  data: string;
-  width: number;
-  height: number;
-  receivedAt: string;
-}
-
-export interface DesktopPreviewRecordingArtifact {
-  id: string;
-  tabId: string;
-  path: string;
-  mimeType: string;
-  sizeBytes: number;
-  createdAt: string;
-}
-
-export const DesktopPreviewRecordingArtifactSchema: Schema.Codec<DesktopPreviewRecordingArtifact> =
-  Schema.Struct({
-    id: Schema.String,
-    tabId: DesktopPreviewTabIdSchema,
-    path: Schema.String,
-    mimeType: Schema.String,
-    sizeBytes: Schema.Int,
-    createdAt: Schema.String,
-  });
-
-export interface DesktopPreviewScreenshotArtifact {
-  id: string;
-  tabId: string;
-  path: string;
-  mimeType: "image/png";
-  sizeBytes: number;
-  createdAt: string;
-}
-
-export const DesktopPreviewScreenshotArtifactSchema: Schema.Codec<DesktopPreviewScreenshotArtifact> =
-  Schema.Struct({
-    id: Schema.String,
-    tabId: DesktopPreviewTabIdSchema,
-    path: Schema.String,
-    mimeType: Schema.Literal("image/png"),
-    sizeBytes: Schema.Int,
-    createdAt: Schema.String,
-  });
-
-export interface PickedElementStackFrame {
-  functionName: string | null;
-  fileName: string | null;
-  lineNumber: number | null;
-  columnNumber: number | null;
-}
-
-export const PickedElementStackFrameSchema: Schema.Codec<PickedElementStackFrame> = Schema.Struct({
-  functionName: Schema.NullOr(Schema.String),
-  fileName: Schema.NullOr(Schema.String),
-  lineNumber: Schema.NullOr(Schema.Number),
-  columnNumber: Schema.NullOr(Schema.Number),
-});
-
-export interface PickedElementPayload {
-  pageUrl: string;
-  pageTitle: string | null;
-  tagName: string;
-  selector: string | null;
-  htmlPreview: string;
-  componentName: string | null;
-  source: PickedElementStackFrame | null;
-  stack: ReadonlyArray<PickedElementStackFrame>;
-  styles: string;
-  pickedAt: string;
-}
-
-export const PickedElementPayloadSchema: Schema.Codec<PickedElementPayload> = Schema.Struct({
-  pageUrl: Schema.String,
-  pageTitle: Schema.NullOr(Schema.String),
-  tagName: Schema.String,
-  selector: Schema.NullOr(Schema.String),
-  htmlPreview: Schema.String,
-  componentName: Schema.NullOr(Schema.String),
-  source: Schema.NullOr(PickedElementStackFrameSchema),
-  stack: Schema.Array(PickedElementStackFrameSchema),
-  styles: Schema.String,
-  pickedAt: Schema.String,
-});
-
-export interface PreviewAnnotationRect {
-  x: number;
-  y: number;
-  width: number;
-  height: number;
-}
-
-export const PreviewAnnotationRectSchema: Schema.Codec<PreviewAnnotationRect> = Schema.Struct({
-  x: Schema.Number,
-  y: Schema.Number,
-  width: Schema.Number,
-  height: Schema.Number,
-});
-
-export interface PreviewAnnotationPoint {
-  x: number;
-  y: number;
-}
-
-export const PreviewAnnotationPointSchema: Schema.Codec<PreviewAnnotationPoint> = Schema.Struct({
-  x: Schema.Number,
-  y: Schema.Number,
-});
-
-export interface PreviewAnnotationElementTarget {
-  id: string;
-  element: PickedElementPayload;
-  rect: PreviewAnnotationRect;
-}
-
-export const PreviewAnnotationElementTargetSchema: Schema.Codec<PreviewAnnotationElementTarget> =
-  Schema.Struct({
-    id: Schema.String,
-    element: PickedElementPayloadSchema,
-    rect: PreviewAnnotationRectSchema,
-  });
-
-export interface PreviewAnnotationRegionTarget {
-  id: string;
-  rect: PreviewAnnotationRect;
-}
-
-export const PreviewAnnotationRegionTargetSchema: Schema.Codec<PreviewAnnotationRegionTarget> =
-  Schema.Struct({
-    id: Schema.String,
-    rect: PreviewAnnotationRectSchema,
-  });
-
-export interface PreviewAnnotationStrokeTarget {
-  id: string;
-  color: string;
-  width: number;
-  points: ReadonlyArray<PreviewAnnotationPoint>;
-  bounds: PreviewAnnotationRect;
-}
-
-export const PreviewAnnotationStrokeTargetSchema: Schema.Codec<PreviewAnnotationStrokeTarget> =
-  Schema.Struct({
-    id: Schema.String,
-    color: Schema.String,
-    width: Schema.Number,
-    points: Schema.Array(PreviewAnnotationPointSchema),
-    bounds: PreviewAnnotationRectSchema,
-  });
-
-export interface PreviewAnnotationStyleChange {
-  targetId: string;
-  selector: string | null;
-  property: string;
-  previousValue: string;
-  value: string;
-}
-
-export const PreviewAnnotationStyleChangeSchema: Schema.Codec<PreviewAnnotationStyleChange> =
-  Schema.Struct({
-    targetId: Schema.String,
-    selector: Schema.NullOr(Schema.String),
-    property: Schema.String,
-    previousValue: Schema.String,
-    value: Schema.String,
-  });
-
-export interface PreviewAnnotationScreenshot {
-  dataUrl: string;
-  width: number;
-  height: number;
-  cropRect: PreviewAnnotationRect;
-}
-
-export const PreviewAnnotationScreenshotSchema: Schema.Codec<PreviewAnnotationScreenshot> =
-  Schema.Struct({
-    dataUrl: Schema.String,
-    width: Schema.Number,
-    height: Schema.Number,
-    cropRect: PreviewAnnotationRectSchema,
-  });
-
-export interface PreviewAnnotationPayload {
-  id: string;
-  pageUrl: string;
-  pageTitle: string | null;
-  comment: string;
-  elements: ReadonlyArray<PreviewAnnotationElementTarget>;
-  regions: ReadonlyArray<PreviewAnnotationRegionTarget>;
-  strokes: ReadonlyArray<PreviewAnnotationStrokeTarget>;
-  styleChanges: ReadonlyArray<PreviewAnnotationStyleChange>;
-  screenshot: PreviewAnnotationScreenshot | null;
-  createdAt: string;
-}
-
-export const PreviewAnnotationPayloadSchema: Schema.Codec<PreviewAnnotationPayload> = Schema.Struct(
-  {
-    id: Schema.String,
-    pageUrl: Schema.String,
-    pageTitle: Schema.NullOr(Schema.String),
-    comment: Schema.String,
-    elements: Schema.Array(PreviewAnnotationElementTargetSchema),
-    regions: Schema.Array(PreviewAnnotationRegionTargetSchema),
-    strokes: Schema.Array(PreviewAnnotationStrokeTargetSchema),
-    styleChanges: Schema.Array(PreviewAnnotationStyleChangeSchema),
-    screenshot: Schema.NullOr(PreviewAnnotationScreenshotSchema),
-    createdAt: Schema.String,
-  },
-);
-
-export type PreviewAnnotationSubmission = "attach" | "send";
-export const PreviewAnnotationSubmissionSchema: Schema.Codec<PreviewAnnotationSubmission> =
-  Schema.Literals(["attach", "send"]);
-
-export interface PreviewAnnotationSubmissionResult {
-  annotation: PreviewAnnotationPayload;
-  submission: PreviewAnnotationSubmission;
-  screenshotFailed?: boolean;
-}
-export const PreviewAnnotationSubmissionResultSchema: Schema.Codec<PreviewAnnotationSubmissionResult> =
-  Schema.Struct({
-    annotation: PreviewAnnotationPayloadSchema,
-    submission: PreviewAnnotationSubmissionSchema,
-    screenshotFailed: Schema.optionalKey(Schema.Boolean),
-  });
-
-export const DesktopPreviewTabInputSchema = Schema.Struct({
-  tabId: DesktopPreviewTabIdSchema,
-});
-
-/** Apply zoom and color scheme at creation to avoid flashing browser defaults. */
-export const DesktopPreviewCreateTabInputSchema = Schema.Struct({
-  tabId: DesktopPreviewTabIdSchema,
-  zoomFactor: Schema.optional(Schema.Number.check(Schema.isGreaterThan(0))),
-  colorScheme: Schema.optional(DesktopPreviewColorSchemeSchema),
-  serverTab: Schema.optional(
-    Schema.Struct({ threadId: TrimmedNonEmptyString, tabId: TrimmedNonEmptyString }),
-  ),
-});
-
-export interface DesktopPreviewTabDefaults {
-  readonly zoomFactor?: number | undefined;
-  readonly colorScheme?: DesktopPreviewColorScheme | undefined;
-  readonly serverTab?: { readonly threadId: string; readonly tabId: string } | undefined;
-}
-
-export const DesktopPreviewRegisterWebviewInputSchema = Schema.Struct({
-  tabId: DesktopPreviewTabIdSchema,
-  webContentsId: Schema.Int.check(Schema.isGreaterThan(0)),
-});
-
-export const DesktopPreviewNavigateInputSchema = Schema.Struct({
-  tabId: DesktopPreviewTabIdSchema,
-  url: Schema.String,
-});
-
-export const DesktopPreviewConfigInputSchema = Schema.Struct({
-  environmentId: EnvironmentId,
-  /** Main must derive the partition to ensure its session has UA rewrites and permission handlers. */
-  profileId: Schema.optional(BrowserProfileId),
-});
-
-export const DesktopPreviewClearDataInputSchema = Schema.Struct({
-  environmentId: EnvironmentId,
-  /** Omit to clear every profile; otherwise only this profile's partition. */
-  profileId: Schema.optional(BrowserProfileId),
-});
-
-export const DesktopPreviewSetColorSchemeInputSchema = Schema.Struct({
-  tabId: DesktopPreviewTabIdSchema,
-  colorScheme: DesktopPreviewColorSchemeSchema,
-});
-
-export const DesktopPreviewSetZoomFactorInputSchema = Schema.Struct({
-  tabId: DesktopPreviewTabIdSchema,
-  zoomFactor: Schema.Number.check(Schema.isGreaterThan(0)),
-});
-
-export const DesktopPreviewSetAudioMutedInputSchema = Schema.Struct({
-  tabId: DesktopPreviewTabIdSchema,
-  audioMuted: Schema.Boolean,
-});
-
-export const DesktopPreviewSetShownInputSchema = Schema.Struct({
-  tabId: DesktopPreviewTabIdSchema,
-  shown: Schema.Boolean,
-});
-
-export const DesktopPreviewAnnotationThemeInputSchema = Schema.Struct({
-  theme: DesktopPreviewAnnotationThemeSchema,
-});
-
-export const DesktopPreviewAnnotationSendEnabledInputSchema = Schema.Struct({
-  tabId: DesktopPreviewTabIdSchema,
-  enabled: Schema.Boolean,
-});
-
-export const DesktopPreviewArtifactInputSchema = Schema.Struct({
-  path: Schema.String.check(Schema.isTrimmed()).check(Schema.isNonEmpty()),
-});
-
-export const DesktopPreviewRecordingSaveInputSchema = Schema.Struct({
-  tabId: DesktopPreviewTabIdSchema,
-  mimeType: Schema.String.check(Schema.isTrimmed()).check(Schema.isNonEmpty()),
-  data: Schema.Uint8Array,
-});
 
 export const DesktopMediaReadSchema = Schema.Struct({
   status: Schema.Number,
@@ -1150,82 +475,6 @@ export interface DesktopBridge {
     onRequest: (listener: (request: DesktopAppActivationRequest) => void) => () => void;
   };
 }
-
-/** Renderer callback invoked by Electron with a fresh user gesture before display-media capture. */
-export const DESKTOP_PREVIEW_RECORDING_CAPTURE_TRIGGER = "__t3DesktopPreviewRecordingCapture";
-
-/**
- * Dictation for the annotation editor drawn inside a preview guest. The guest only shows
- * controls and forwards trusted user gestures; the renderer records, with its consent
- * checks, and publishes state back. `shortcuts` are the dictation chords in effect.
- */
-export const DesktopPreviewAnnotationVoiceConfigSchema = Schema.Struct({
-  sessionId: Schema.String.check(Schema.isMaxLength(64)),
-  shortcuts: Schema.Array(KeybindingShortcut).check(Schema.isMaxLength(16)),
-});
-export type DesktopPreviewAnnotationVoiceConfig =
-  typeof DesktopPreviewAnnotationVoiceConfigSchema.Type;
-
-export const DesktopPreviewAnnotationVoiceEventSchema = Schema.Struct({
-  sessionId: Schema.String.check(Schema.isMaxLength(64)),
-  text: Schema.String.check(Schema.isMaxLength(100_000)),
-  cursor: Schema.Int.check(Schema.isGreaterThanOrEqualTo(0)),
-  selectionEnd: Schema.optional(Schema.Int.check(Schema.isGreaterThanOrEqualTo(0))),
-  action: Schema.Literals([
-    "sync",
-    "start",
-    "stop",
-    "cancel",
-    "skip",
-    "settings",
-    "key",
-    "focus",
-    "blur",
-  ]),
-  keyboard: Schema.optional(
-    Schema.Struct({
-      type: Schema.Literals(["keydown", "keyup"]),
-      key: Schema.String.check(Schema.isMaxLength(32)),
-      code: Schema.String.check(Schema.isMaxLength(64)),
-      metaKey: Schema.Boolean,
-      ctrlKey: Schema.Boolean,
-      shiftKey: Schema.Boolean,
-      altKey: Schema.Boolean,
-      repeat: Schema.Boolean,
-    }),
-  ),
-});
-export type DesktopPreviewAnnotationVoiceEvent =
-  typeof DesktopPreviewAnnotationVoiceEventSchema.Type;
-
-export const DesktopPreviewAnnotationVoiceStateSchema = Schema.Struct({
-  tabId: DesktopPreviewTabIdSchema,
-  sessionId: Schema.String.check(Schema.isMaxLength(64)),
-  available: Schema.Boolean,
-  phase: Schema.Literals([
-    "idle",
-    "preparing",
-    "recording",
-    "transcribing",
-    "post-processing",
-    "error",
-  ]),
-  status: Schema.NullOr(Schema.String),
-  errorAction: Schema.NullOr(Schema.Literals(["retry", "settings"])),
-  preview: Schema.NullOr(Schema.String),
-  level: Schema.Number,
-  shortcutLabel: Schema.NullOr(Schema.String),
-  freezesEditor: Schema.Boolean,
-  blocksSubmission: Schema.Boolean,
-  draft: Schema.NullOr(Schema.Struct({ text: Schema.String, cursor: Schema.Int })),
-});
-export type DesktopPreviewAnnotationVoiceState =
-  typeof DesktopPreviewAnnotationVoiceStateSchema.Type;
-
-export const DesktopPreviewPickElementInputSchema = Schema.Struct({
-  tabId: DesktopPreviewTabIdSchema,
-  voice: Schema.optional(DesktopPreviewAnnotationVoiceConfigSchema),
-});
 
 export type ConfirmDialogVariant = "default" | "destructive";
 

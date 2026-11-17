@@ -1,22 +1,14 @@
 import { EasDeviceHostConfigs, SimlockDeviceHostConfigs, SshDeviceHostConfigs } from "./device";
-import {
-  AuthOrchestrationOperateScope,
-  AuthSettingsWriteScope,
-  AuthProvidersManageScope,
-  type AuthEnvironmentScope,
-} from "./auth";
 import * as Effect from "effect/Effect";
 import * as Option from "effect/Option";
 import * as Duration from "effect/Duration";
 import * as Schema from "effect/Schema";
 import * as SchemaTransformation from "effect/SchemaTransformation";
 import {
-  EnvironmentId,
   ForwardCompatibleNullable,
   ForwardCompatibleOptional,
   OmittedWhenNull,
   ProjectId,
-  ThreadId,
   TrimmedNonEmptyString,
   TrimmedString,
 } from "./baseSchemas";
@@ -33,7 +25,7 @@ import {
   ProviderOptionSelections,
 } from "./model";
 import { ModelSelection } from "./modelSelection";
-import { ProjectScript, type ProjectMutation } from "./project";
+import { ProjectScript } from "./project";
 import { DEFAULT_RUNTIME_MODE, RuntimeMode } from "./providerPolicy";
 import { BrowserProfile, BrowserProfileId, DEFAULT_BROWSER_PROFILE_ID } from "./browserProfile";
 import {
@@ -46,14 +38,9 @@ import {
   PreviewViewportSetting,
   PreviewZoomFactor,
 } from "./preview";
-import {
-  ProviderInstanceConfig,
-  ProviderInstanceId,
-  ProviderDriverKind,
-} from "./providerInstance";
+import { ProviderInstanceConfig, ProviderInstanceId, ProviderDriverKind } from "./providerInstance";
 import { PullRequestMergeMethod } from "./pullRequest";
 import {
-  CloudSpeechModelId,
   SpeechAcceleration,
   SpeechCorrectionCue,
   SpeechCustomWords,
@@ -232,37 +219,6 @@ export const SnapShotSound = Schema.Literals(["soft-pop", "camera-shutter"]);
 export type SnapShotSound = typeof SnapShotSound.Type;
 const DEFAULT_SNAP_SHOT_SOUND: SnapShotSound = "soft-pop";
 
-export type SnapShotModifierPairShortcut = Extract<SnapShotShortcut, { readonly kind: string }>;
-
-export function isModifierPairShortcut(
-  shortcut: SnapShotShortcut,
-): shortcut is SnapShotModifierPairShortcut {
-  return "kind" in shortcut;
-}
-
-export function snapShotShortcutModifierPair(
-  shortcut: SnapShotModifierPairShortcut,
-): SnapShotModifier {
-  return shortcut.kind === "both-shift-keys" ? "shift" : shortcut.modifier;
-}
-
-const APPLE_MODIFIER_LABELS: Record<SnapShotModifier, string> = {
-  shift: "Shift",
-  meta: "Command",
-  control: "Control",
-  alt: "Option",
-};
-const OTHER_MODIFIER_LABELS: Record<SnapShotModifier, string> = {
-  shift: "Shift",
-  meta: "Super",
-  control: "Ctrl",
-  alt: "Alt",
-};
-
-export function snapShotModifierPairLabel(modifier: SnapShotModifier, apple: boolean): string {
-  const label = (apple ? APPLE_MODIFIER_LABELS : OTHER_MODIFIER_LABELS)[modifier];
-  return `${label} + ${label}`;
-}
 const DEFAULT_SNAP_SHOT_SHORTCUT: SnapShotShortcut = {
   kind: "both-shift-keys",
 };
@@ -369,26 +325,6 @@ export type ModelPreferences = {
 
 export const VoiceShortcutMode = Schema.Literals(["auto", "hold", "toggle"]);
 export type VoiceShortcutMode = typeof VoiceShortcutMode.Type;
-
-/**
- * Where this device sends microphone audio. A cloud grant names the forwarding environment and
- * the provider; an OpenRouter grant also names the exact model, since OpenRouter has no default.
- */
-export const VoiceTranscriptionDestination = Schema.Union([
-  Schema.Struct({ kind: Schema.Literal("environment"), environmentId: EnvironmentId }),
-  Schema.Struct({
-    kind: Schema.Literal("cloud"),
-    environmentId: EnvironmentId,
-    provider: Schema.Literals(["openai", "xai"]),
-  }),
-  Schema.Struct({
-    kind: Schema.Literal("cloud"),
-    environmentId: EnvironmentId,
-    provider: Schema.Literal("openrouter"),
-    model: CloudSpeechModelId,
-  }),
-]);
-export type VoiceTranscriptionDestination = typeof VoiceTranscriptionDestination.Type;
 
 export const ClientSettingsSchema = Schema.Struct({
   notificationMode: NotificationMode.pipe(
@@ -624,14 +560,6 @@ export interface ProviderSettingsFormAnnotation {
   readonly options?: ReadonlyArray<ProviderSettingsFormOption> | undefined;
 }
 
-export function secretSettingsFields(schema: {
-  readonly fields: Readonly<Record<string, Schema.Top>>;
-}): ReadonlyArray<string> {
-  return Object.entries(schema.fields).flatMap(([field, fieldSchema]) => {
-    return isSecretSetting(fieldSchema) ? [field] : [];
-  });
-}
-
 export interface ProviderSettingsFormSchemaAnnotation {
   readonly order?: readonly string[] | undefined;
 }
@@ -653,15 +581,6 @@ export function secretSetting<S extends Schema.Top>(schema: S): S["Rebuild"] {
   return schema.annotateKey({ settingsSecret: true });
 }
 
-/** A masked form field is a credential too, so none is saved or sent to clients as plain text. */
-export function isSecretSetting(schema: Schema.Top): boolean {
-  const annotations = Schema.resolveAnnotationsKey(schema) ?? Schema.resolveAnnotations(schema);
-  return (
-    annotations?.settingsSecret === true ||
-    annotations?.providerSettingsForm?.control === "password"
-  );
-}
-
 export type ProviderSettingsOrder<Fields extends Schema.Struct.Fields> = readonly Extract<
   keyof Fields,
   string
@@ -680,63 +599,6 @@ export function makeProviderSettingsSchema<const Fields extends Schema.Struct.Fi
     }),
   );
 }
-
-export const CodexSettings = makeProviderSettingsSchema(
-  {
-    setupMode: Schema.optionalKey(Schema.Literals(["managed", "existing"])).pipe(
-      Schema.annotateKey({ providerSettingsForm: { hidden: true } }),
-    ),
-    enabled: Schema.Boolean.pipe(
-      Schema.withDecodingDefault(Effect.succeed(true)),
-      Schema.annotateKey({ providerSettingsForm: { hidden: true } }),
-    ),
-    binaryPath: makeBinaryPathSetting("codex").pipe(
-      Schema.annotateKey({
-        title: "Binary path",
-        description: "Path to the Codex binary used by this instance.",
-        providerSettingsForm: { placeholder: "codex", clearWhenEmpty: "omit" },
-      }),
-    ),
-    homePath: TrimmedString.pipe(
-      Schema.withDecodingDefault(Effect.succeed("")),
-      Schema.annotateKey({
-        title: "CODEX_HOME path",
-        description: "Custom Codex home and config directory.",
-        providerSettingsForm: {
-          placeholder: "~/.codex",
-          clearWhenEmpty: "omit",
-        },
-      }),
-    ),
-    shadowHomePath: TrimmedString.pipe(
-      Schema.withDecodingDefault(Effect.succeed("")),
-      Schema.annotateKey({
-        title: "Shadow home path",
-        description:
-          "Account-specific Codex home. Keeps auth.json separate while sharing state from CODEX_HOME.",
-        providerSettingsForm: {
-          placeholder: "~/.codex-t3/personal",
-          clearWhenEmpty: "omit",
-        },
-      }),
-    ),
-    launchArgs: TrimmedString.pipe(
-      Schema.withDecodingDefault(Effect.succeed("")),
-      Schema.annotateKey({
-        title: "Launch arguments",
-        description: "Additional CLI arguments passed to codex app-server on session start.",
-      }),
-    ),
-    customModels: Schema.Array(CustomModelSetting).pipe(
-      Schema.withDecodingDefault(Effect.succeed([])),
-      Schema.annotateKey({ providerSettingsForm: { hidden: true } }),
-    ),
-  },
-  {
-    order: ["binaryPath", "homePath", "shadowHomePath", "launchArgs"],
-  },
-);
-export type CodexSettings = typeof CodexSettings.Type;
 
 const CLAUDE_AUTO_COMPACT_WINDOW_PATTERN = /^(?:|[1-9]\d{5}|1000000)$/;
 
@@ -831,83 +693,6 @@ export const ClaudeSettings = makeProviderSettingsSchema(
 );
 export type ClaudeSettings = typeof ClaudeSettings.Type;
 
-export const ANTIGRAVITY_AUTH_METHODS = [
-  { value: "oauth-personal", label: "Google account" },
-  { value: "oauth-business", label: "Gemini Enterprise" },
-  { value: "gemini-api-key", label: "Gemini API key" },
-  { value: "agent-platform", label: "Agent Platform (Vertex AI)" },
-] as const satisfies ReadonlyArray<ProviderSettingsFormOption>;
-export const AntigravityAuthMethod = Schema.Literals(
-  ANTIGRAVITY_AUTH_METHODS.map((method) => method.value),
-);
-export type AntigravityAuthMethod = typeof AntigravityAuthMethod.Type;
-
-export const AntigravitySettings = makeProviderSettingsSchema(
-  {
-    enabled: Schema.Boolean.pipe(
-      Schema.withDecodingDefault(Effect.succeed(false)),
-      Schema.annotateKey({ providerSettingsForm: { hidden: true } }),
-    ),
-    authMethod: AntigravityAuthMethod.pipe(
-      Schema.withDecodingDefault(Effect.succeed("oauth-personal" as const)),
-      Schema.annotateKey({
-        title: "Sign-in method",
-        description:
-          "Google accounts use your subscription; API keys and Agent Platform bill usage.",
-        providerSettingsForm: {
-          control: "select",
-          options: ANTIGRAVITY_AUTH_METHODS,
-          clearWhenEmpty: "omit",
-        },
-      }),
-    ),
-    apiKey: SettingsSecretValue.pipe(
-      secretSetting,
-      Schema.withDecodingDefault(Effect.succeed("")),
-      Schema.annotateKey({
-        title: "API key",
-        description: "Gemini or Vertex AI express key. Stored separately on the host.",
-        providerSettingsForm: {
-          control: "password",
-          placeholder: "Optional",
-          clearWhenEmpty: "omit",
-        },
-      }),
-    ),
-    gcpProject: TrimmedString.pipe(
-      Schema.withDecodingDefault(Effect.succeed("")),
-      Schema.annotateKey({
-        title: "GCP project",
-        description:
-          "Required for Gemini Enterprise. Agent Platform uses it when no API key is set.",
-        providerSettingsForm: { placeholder: "my-project-id", clearWhenEmpty: "omit" },
-      }),
-    ),
-    gcpLocation: TrimmedString.pipe(
-      Schema.withDecodingDefault(Effect.succeed("")),
-      Schema.annotateKey({
-        title: "GCP location",
-        description: "Region for Gemini Enterprise or Agent Platform.",
-        providerSettingsForm: { placeholder: "us-central1", clearWhenEmpty: "omit" },
-      }),
-    ),
-    binaryPath: TrimmedString.pipe(
-      Schema.withDecodingDefault(Effect.succeed("")),
-      Schema.annotateKey({
-        title: "Binary path",
-        description: "Custom ACP executable. Leave empty to select automatically.",
-        providerSettingsForm: { placeholder: "Automatic", clearWhenEmpty: "persist" },
-      }),
-    ),
-    customModels: Schema.Array(CustomModelSetting).pipe(
-      Schema.withDecodingDefault(Effect.succeed([])),
-      Schema.annotateKey({ providerSettingsForm: { hidden: true } }),
-    ),
-  },
-  { order: ["authMethod", "apiKey", "gcpProject", "gcpLocation", "binaryPath"] },
-);
-export type AntigravitySettings = typeof AntigravitySettings.Type;
-
 export const UsageLimitSourceConfig = Schema.Struct({
   kind: Schema.Literal("cliproxy"),
   label: Schema.optional(TrimmedNonEmptyString),
@@ -950,44 +735,6 @@ export const TextGeneratorConfig = Schema.Struct({
   enabled: Schema.Boolean.pipe(Schema.withDecodingDefault(Effect.succeed(true))),
 });
 export type TextGeneratorConfig = typeof TextGeneratorConfig.Type;
-
-export const TextGeneratorModel = Schema.Struct({
-  id: TrimmedNonEmptyString,
-  name: TrimmedNonEmptyString,
-});
-export type TextGeneratorModel = typeof TextGeneratorModel.Type;
-
-export const ListTextGeneratorModelsInput = Schema.Struct({
-  id: ProviderInstanceId,
-  /**
-   * Unsaved settings to check before saving, such as from the add dialog. A redacted key keeps
-   * the one saved under `id`.
-   */
-  config: Schema.optional(TextGeneratorConfig),
-  /** Skip the server's cached list and ask the API again. */
-  refresh: Schema.optional(Schema.Boolean),
-  /** Also have a model answer a tiny prompt, which proves the key, endpoint, and model. */
-  test: Schema.optional(Schema.Boolean),
-  /** With `test`, the model to try; a cheap listed one when omitted. */
-  model: Schema.optional(TrimmedNonEmptyString),
-});
-export type ListTextGeneratorModelsInput = typeof ListTextGeneratorModelsInput.Type;
-
-export const ListTextGeneratorModelsResult = Schema.Struct({
-  models: Schema.Array(TextGeneratorModel),
-  /** The model that answered, when `test` was set. */
-  testedModel: Schema.optional(TrimmedNonEmptyString),
-});
-export type ListTextGeneratorModelsResult = typeof ListTextGeneratorModelsResult.Type;
-
-export class TextGeneratorError extends Schema.TaggedError<TextGeneratorError>()(
-  "TextGeneratorError",
-  { detail: Schema.String },
-) {
-  override get message(): string {
-    return this.detail;
-  }
-}
 
 export const SecretProviderKind = SecretProviderSlug.pipe(Schema.brand("SecretProviderKind"));
 export type SecretProviderKind = typeof SecretProviderKind.Type;
@@ -1228,85 +975,6 @@ export const keepUnknownOverrideKeys = <Entry extends Schema.Struct<Schema.Struc
   Entry["DecodingServices"],
   Entry["EncodingServices"]
 > => Schema.StructWithRest(entry, [Schema.Record(Schema.String, Schema.Unknown)]);
-
-/** True if null stores an override; otherwise null removes it. */
-export function isNullableProjectSettingsOverride(key: ProjectScopedServerSettingKey): boolean {
-  return NULLABLE_PROJECT_SETTINGS_OVERRIDES.has(key);
-}
-const NULLABLE_PROJECT_SETTINGS_OVERRIDES: ReadonlySet<ProjectScopedServerSettingKey> = new Set<
-  {
-    [K in ProjectScopedServerSettingKey]: null extends ProjectSettingsOverrides[K] ? K : never;
-  }[ProjectScopedServerSettingKey]
->([
-  "defaultModelSelection",
-  "sourceControlWriterModelSelection",
-  "reviewGuideModelSelection",
-  "pullRequestMergeMethod",
-  "sidebarAutoSettleAfterDays",
-]);
-
-/** Reclaimable bytes from which the offline `t3 doctor` repair is worth suggesting. */
-export const DATABASE_COMPACTION_RECOMMENDED_BYTES = 1024 ** 3;
-
-export const DatabaseStorageStatus = Schema.Struct({
-  databaseBytes: Schema.Number,
-  /** Free pages inside the file that an offline VACUUM (or incremental auto_vacuum) returns to disk. */
-  reclaimableBytes: Schema.Number,
-  /** False on databases created before incremental auto_vacuum; `t3 doctor` converts them. */
-  incrementalVacuumEnabled: Schema.Boolean,
-  /** Run on the host while offline. */
-  compactCommand: Schema.String,
-  /** The server can run the repair itself: the desktop app or background service restarts it. */
-  canReclaim: Schema.optionalKey(Schema.Boolean),
-  /** Why the last repair started from Settings failed. */
-  reclaimFailure: Schema.optionalKey(Schema.String),
-});
-export type DatabaseStorageStatus = typeof DatabaseStorageStatus.Type;
-
-export class DatabaseReclaimError extends Schema.TaggedError<DatabaseReclaimError>()(
-  "DatabaseReclaimError",
-  { reason: Schema.String },
-) {
-  override get message() {
-    return this.reason;
-  }
-}
-
-export function shouldRecommendDatabaseCompaction(status: DatabaseStorageStatus): boolean {
-  return (
-    !status.incrementalVacuumEnabled &&
-    status.reclaimableBytes >= DATABASE_COMPACTION_RECOMMENDED_BYTES
-  );
-}
-
-/** Offline minutes the repair takes, at 30 s per GiB of live data (a BB-1 NVMe disk took 21 s). */
-export function databaseReclaimMinutes(status: DatabaseStorageStatus): number {
-  const liveGiB = (status.databaseBytes - status.reclaimableBytes) / 1024 ** 3;
-  return Math.max(1, Math.ceil(liveGiB / 2));
-}
-
-export const StorageCleanupReportEntry = Schema.Struct({
-  kind: Schema.Literals(["worktree", "browser-artifacts", "logs"]),
-  outcome: Schema.Literals(["removed", "kept", "failed"]),
-  reason: Schema.String,
-  path: Schema.NullOr(Schema.String),
-  projectPath: Schema.NullOr(Schema.String).pipe(Schema.withDecodingDefault(Effect.succeed(null))),
-  threadId: Schema.NullOr(ThreadId),
-  threadTitle: Schema.NullOr(Schema.String),
-  bytes: Schema.NullOr(Schema.Number).pipe(Schema.withDecodingDefault(Effect.succeed(null))),
-  files: Schema.NullOr(Schema.Number).pipe(Schema.withDecodingDefault(Effect.succeed(null))),
-});
-export type StorageCleanupReportEntry = typeof StorageCleanupReportEntry.Type;
-export const StorageCleanupReport = Schema.Struct({
-  trigger: Schema.Literals(["automatic", "manual"]),
-  startedAt: Schema.String,
-  finishedAt: Schema.String,
-  entries: Schema.Array(StorageCleanupReportEntry),
-  counts: Schema.Struct({ removed: Schema.Number, kept: Schema.Number, failed: Schema.Number }),
-  omittedCount: Schema.Number,
-  bytesFreed: Schema.Number.pipe(Schema.withDecodingDefault(Effect.succeed(0))),
-});
-export type StorageCleanupReport = typeof StorageCleanupReport.Type;
 
 export const StorageCleanupSettings = Schema.Struct({
   worktreeKeepWhen: WorktreeKeepWhen.pipe(
@@ -1651,22 +1319,6 @@ export const withIdleCompaction = <S extends IdleCompactionSettings>(
   mode: IdleCompactionMode,
 ): S => ({ ...settings, idleCompaction: mode, compactIdleThreads: mode === "beforeCacheExpires" });
 
-/** Whether a server reads modes, rather than only the boolean switch from before them. */
-export const readsIdleCompactionModes = (settings: IdleCompactionSettings) =>
-  settings.idleCompaction !== undefined || typeof settings.compactIdleThreads === "string";
-
-/**
- * The patch that sets `mode` in the form the server's settings show it reads:
- * the mode for a server that has `idleCompaction` or kept the mode in the legacy
- * field, the boolean switch for a server from before modes.
- */
-export const idleCompactionPatch = (settings: IdleCompactionSettings, mode: IdleCompactionMode) =>
-  settings.idleCompaction !== undefined
-    ? { idleCompaction: mode }
-    : readsIdleCompactionModes(settings)
-      ? { compactIdleThreads: mode }
-      : { compactIdleThreads: mode === "beforeCacheExpires" };
-
 export const resolveIdleCompaction = (
   settings: Pick<ServerSettings, "providerInstances" | "compactIdleThreads" | "idleCompaction">,
   instanceId: ProviderInstanceId,
@@ -1680,64 +1332,6 @@ export const resolveIdleCompaction = (
   );
   return override === "default" ? globalIdleCompaction(settings) : override;
 };
-
-export const ServerSettingsOperation = Schema.Literals([
-  "normalize",
-  "check-exists",
-  "create-provider-instance",
-  "read-file",
-  "read-provider-history",
-  "read-project-settings",
-  "read-secret",
-  "remove-secret",
-  "remove-stale-secret",
-  "write-secret",
-  "write-secret-provider",
-  "write-file",
-  "prepare-directory",
-  "write-managed-setting",
-  "use-disallowed-provider",
-]);
-export type ServerSettingsOperation = typeof ServerSettingsOperation.Type;
-
-/** Why a provider the administrator's policy leaves out cannot be used. */
-export const disallowedProviderMessage = (organization: string | undefined, label: string) =>
-  `${organization === undefined ? "Your organization" : `${organization}'s`} policy does not allow the ${label} provider.`;
-
-export class ServerSettingsError extends Schema.TaggedError<ServerSettingsError>()(
-  "ServerSettingsError",
-  {
-    settingsPath: Schema.String,
-    operation: ServerSettingsOperation,
-    providerInstanceId: Schema.optional(Schema.String),
-    environmentVariable: Schema.optional(Schema.String),
-    /** For `write-managed-setting`: the locked dot path and who manages it. */
-    managedSetting: Schema.optional(Schema.String),
-    managedBy: Schema.optional(Schema.String),
-    /** For `use-disallowed-provider`: the provider's name as users know it. */
-    providerLabel: Schema.optional(Schema.String),
-    cause: Schema.optional(Schema.Defect()),
-  },
-) {
-  override get message(): string {
-    if (this.operation === "write-managed-setting") {
-      return `${this.managedSetting ?? "This setting"} is managed by ${this.managedBy ?? "your organization"} and cannot be changed.`;
-    }
-    if (this.operation === "use-disallowed-provider") {
-      return disallowedProviderMessage(
-        this.managedBy,
-        this.providerLabel ?? this.providerInstanceId ?? "this",
-      );
-    }
-    const provider =
-      this.providerInstanceId === undefined ? "" : ` for provider ${this.providerInstanceId}`;
-    const variable =
-      this.environmentVariable === undefined
-        ? ""
-        : ` and environment variable ${this.environmentVariable}`;
-    return `Server settings ${this.operation} failed${provider}${variable} at ${this.settingsPath}.`;
-  }
-}
 
 export type UnifiedSettings = Omit<ServerSettings, keyof ModelPreferences> & ClientSettings;
 export const DEFAULT_UNIFIED_SETTINGS: UnifiedSettings = {
@@ -1932,48 +1526,6 @@ export const ServerSettingsPatch = Schema.Struct({
   ),
 });
 export type ServerSettingsPatch = typeof ServerSettingsPatch.Type;
-
-export function requiredScopesForServerSettingsPatch(
-  patch: ServerSettingsPatch,
-): ReadonlyArray<AuthEnvironmentScope> {
-  let changesProviders = false;
-  let changesSettings = false;
-  for (const [key, value] of Object.entries(patch)) {
-    if (value === undefined) continue;
-    if (
-      key === "providers" ||
-      key === "providerInstances" ||
-      key === "usageLimitSources" ||
-      key === "textGenerators" ||
-      key === "secretProviders"
-    ) {
-      changesProviders = true;
-    } else {
-      changesSettings = true;
-    }
-  }
-  // Removing a secret provider also clears the settings fields that read from it.
-  if (Object.values(patch.secretProviders ?? {}).some((entry) => entry === null)) {
-    changesSettings = true;
-  }
-  return [
-    ...(changesSettings || !changesProviders ? [AuthSettingsWriteScope] : []),
-    ...(changesProviders ? [AuthProvidersManageScope] : []),
-  ];
-}
-
-/** Host-executed project scripts require settings-write authority in addition to orchestration:operate. */
-export function requiredScopesForProjectMutation(
-  mutation: ProjectMutation,
-): ReadonlyArray<AuthEnvironmentScope> {
-  if (mutation.type === "project.delete" || mutation.scripts === undefined) {
-    return [AuthOrchestrationOperateScope];
-  }
-  return [
-    AuthOrchestrationOperateScope,
-    ...requiredScopesForServerSettingsPatch({ defaultProjectScripts: mutation.scripts }),
-  ];
-}
 
 export const ClientSettingsPatch = Schema.Struct({
   notificationMode: Schema.optionalKey(NotificationMode),

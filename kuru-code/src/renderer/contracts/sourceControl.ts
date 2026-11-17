@@ -48,9 +48,6 @@ export type SourceControlRepositoryCloneUrls = typeof SourceControlRepositoryClo
 export const SourceControlRepositoryVisibility = Schema.Literals(["private", "public"]);
 export type SourceControlRepositoryVisibility = typeof SourceControlRepositoryVisibility.Type;
 
-export const SourceControlCloneProtocol = Schema.Literals(["auto", "ssh", "https"]);
-export type SourceControlCloneProtocol = typeof SourceControlCloneProtocol.Type;
-
 export const SourceControlRepositoryInfo = Schema.Struct({
   provider: SourceControlProviderKind,
   nameWithOwner: TrimmedNonEmptyString,
@@ -58,51 +55,6 @@ export const SourceControlRepositoryInfo = Schema.Struct({
   sshUrl: TrimmedNonEmptyString,
 });
 export type SourceControlRepositoryInfo = typeof SourceControlRepositoryInfo.Type;
-
-export const SourceControlRepositoryLookupInput = Schema.Struct({
-  provider: SourceControlProviderKind,
-  repository: TrimmedNonEmptyString,
-  cwd: Schema.optional(TrimmedNonEmptyString),
-});
-export type SourceControlRepositoryLookupInput = typeof SourceControlRepositoryLookupInput.Type;
-
-export const SourceControlCloneRepositoryInput = Schema.Struct({
-  provider: Schema.optional(SourceControlProviderKind),
-  repository: Schema.optional(TrimmedNonEmptyString),
-  remoteUrl: Schema.optional(TrimmedNonEmptyString),
-  destinationPath: TrimmedNonEmptyString,
-  protocol: Schema.optional(SourceControlCloneProtocol),
-});
-export type SourceControlCloneRepositoryInput = typeof SourceControlCloneRepositoryInput.Type;
-
-export const SourceControlCloneRepositoryResult = Schema.Struct({
-  cwd: TrimmedNonEmptyString,
-  remoteUrl: TrimmedNonEmptyString,
-  repository: Schema.NullOr(SourceControlRepositoryInfo),
-});
-export type SourceControlCloneRepositoryResult = typeof SourceControlCloneRepositoryResult.Type;
-
-export const SourceControlPublishRepositoryInput = Schema.Struct({
-  cwd: TrimmedNonEmptyString,
-  provider: SourceControlProviderKind,
-  repository: TrimmedNonEmptyString,
-  visibility: SourceControlRepositoryVisibility,
-  remoteName: Schema.optional(TrimmedNonEmptyString),
-  protocol: Schema.optional(SourceControlCloneProtocol),
-});
-export type SourceControlPublishRepositoryInput = typeof SourceControlPublishRepositoryInput.Type;
-
-export const SourceControlPublishStatus = Schema.Literals(["pushed", "remote_added"]);
-export type SourceControlPublishStatus = typeof SourceControlPublishStatus.Type;
-
-export const SourceControlPublishRepositoryResult = Schema.Struct({
-  repository: SourceControlRepositoryInfo,
-  remoteName: TrimmedNonEmptyString,
-  remoteUrl: TrimmedNonEmptyString,
-  branch: TrimmedNonEmptyString,
-  status: SourceControlPublishStatus,
-});
-export type SourceControlPublishRepositoryResult = typeof SourceControlPublishRepositoryResult.Type;
 
 export const SourceControlDiscoveryStatus = Schema.Literals(["available", "missing"]);
 export type SourceControlDiscoveryStatus = typeof SourceControlDiscoveryStatus.Type;
@@ -184,35 +136,6 @@ export class SourceControlProviderError extends Schema.TaggedError<SourceControl
   }
 }
 
-export const SourceControlSignInInput = Schema.Struct({
-  provider: SourceControlProviderKind,
-  host: TrimmedNonEmptyString,
-});
-export type SourceControlSignInInput = typeof SourceControlSignInInput.Type;
-
-/** A device-flow code the user enters at `verificationUri` in any browser. */
-export const SourceControlSignInPrompt = Schema.Struct({
-  userCode: TrimmedNonEmptyString,
-  verificationUri: TrimmedNonEmptyString,
-  expiresAt: Schema.Number,
-});
-export type SourceControlSignInPrompt = typeof SourceControlSignInPrompt.Type;
-
-export const SourceControlSignInResult = Schema.Struct({
-  account: TrimmedNonEmptyString,
-});
-export type SourceControlSignInResult = typeof SourceControlSignInResult.Type;
-
-export const SourceControlSignInFailure = Schema.Literals([
-  "unsupported",
-  "not-started",
-  "cancelled",
-  "denied",
-  "expired",
-  "failed",
-]);
-export type SourceControlSignInFailure = typeof SourceControlSignInFailure.Type;
-
 export const SourceControlAppAccessInput = Schema.Struct({
   provider: SourceControlProviderKind,
   host: TrimmedNonEmptyString,
@@ -220,44 +143,3 @@ export const SourceControlAppAccessInput = Schema.Struct({
 });
 export type SourceControlAppAccessInput = typeof SourceControlAppAccessInput.Type;
 
-/** Whether the server's forge app sign-in reaches a repository; `signed-out` when not in use. */
-export const SourceControlAppAccess = Schema.Struct({
-  status: Schema.Literals(["covered", "not-covered", "signed-out"]),
-});
-export type SourceControlAppAccess = typeof SourceControlAppAccess.Type;
-
-export const SourceControlStarredInput = Schema.Struct({
-  provider: SourceControlProviderKind,
-  host: TrimmedNonEmptyString,
-  repository: TrimmedNonEmptyString,
-});
-export type SourceControlStarredInput = typeof SourceControlStarredInput.Type;
-
-export class SourceControlSignInError extends Schema.TaggedError<SourceControlSignInError>()(
-  "SourceControlSignInError",
-  {
-    provider: SourceControlProviderKind,
-    host: Schema.String,
-    reason: SourceControlSignInFailure,
-    detail: Schema.String,
-    cause: Schema.optional(Schema.Defect()),
-  },
-) {
-  override get message(): string {
-    return this.detail;
-  }
-}
-
-export class SourceControlRepositoryError extends Schema.TaggedError<SourceControlRepositoryError>()(
-  "SourceControlRepositoryError",
-  {
-    provider: SourceControlProviderKind,
-    operation: Schema.String,
-    detail: Schema.String,
-    cause: Schema.optional(Schema.Defect()),
-  },
-) {
-  override get message(): string {
-    return `Source control repository operation ${this.operation} failed for ${this.provider}: ${this.detail}`;
-  }
-}
