@@ -25,8 +25,10 @@
 //! exactly in publication order. The process exits when stdin closes or
 //! SIGTERM comes, after the final kernel snapshot.
 
+mod auth_fresh;
 mod commands;
 mod compaction_arms;
+mod complete;
 mod config_options;
 mod events;
 mod goal_continuation;
@@ -477,7 +479,14 @@ async fn handle_request(
             handle_session_close(id, params, state, mode, tx).await;
         }
         rewind::REWIND => rewind::handle_rewind(id, params, state, mode, tx).await,
+        complete::COMPLETE => {
+            let (cwd, agent_dir) = (mode.actual_cwd.clone(), mode.agent_dir.clone());
+            complete::handle_complete(id, params, cwd, agent_dir, tx).await;
+        }
         steer::STEER => steer::handle_steer(id, params, state, mode, tx).await,
+        auth_fresh::AUTH_FRESH => {
+            auth_fresh::handle_auth_fresh(id, params, mode.agent_dir.clone(), tx).await;
+        }
         other => {
             let _ = tx.send(jsonrpc::error_response(
                 &id,

@@ -60,7 +60,35 @@ async function start(): Promise<void> {
   const settings = new Settings(shown, log);
   const sleepAfter = Number(process.env.KURU_SLEEP_MS) || undefined;
   const threads = new Threads(binary, version, home, shown, store, git, log, sleepAfter);
-  const limits = new Limits(log);
+  // The limits ask the agent on screen for its logins' tokens, once it answers.
+  const whenReady = async () => {
+    if (shown.current.kind !== "ready") {
+      await new Promise<void>((resolve, reject) => {
+        const timer = setTimeout(() => {
+          listening.dispose();
+          reject(new Error("the agent did not start"));
+        }, 60_000);
+        const listening = shown.onChange((state) => {
+          if (state.kind !== "ready") return;
+          clearTimeout(timer);
+          listening.dispose();
+          resolve();
+        });
+      });
+    }
+  };
+  const askAgent = async (method: string, params: Record<string, unknown>) => {
+    await whenReady();
+    try {
+      return await shown.request(method, params);
+    } catch {
+      // At start the first agent can give way to the thread's own: ask the next one once.
+      await new Promise((resolve) => setTimeout(resolve, 1_000));
+      await whenReady();
+      return shown.request(method, params);
+    }
+  };
+  const limits = new Limits(log, askAgent, () => store.serverSettings);
   let window: BrowserWindow | undefined;
 
   /** The window, while it exists: closed by its X, it is destroyed and any call on it throws. */
@@ -413,6 +441,7 @@ async function start(): Promise<void> {
   threads.resolveRepository = (cwd) => pullRequests.repositoryIdentity(cwd);
   const handlers: Record<string, (params: any) => unknown> = {
     "limits.get": () => limits.read(),
+    "limits.consume": (input) => limits.consume(input),
     "pullRequests.diff": (input) => pullRequests.diff(input),
     "shell.openExternal": ({ url }) => (/^https?:\/\//i.test(url) ? shell.openExternal(url) : undefined),
     // T3 Code's add project: the folder is made when it is missing.
@@ -560,6 +589,7 @@ async function start(): Promise<void> {
     changed: () => void threads.refresh(),
     pullRequests,
     assets,
+    serverSettings: () => store.serverSettings,
   });
   ipcMain.handle("rpc", (_event, tag: string, payload: unknown) => rpc.call(tag, payload));
   ipcMain.handle("rpc-subscribe", (event, id: string, tag: string, payload: unknown) => rpc.subscribe(event.sender, id, tag, payload));

@@ -7,6 +7,7 @@ import {
   ScreenReaderAnnouncements,
   ToolCallVisibility,
 } from "~/contracts";
+import * as Equal from "effect/Equal";
 import * as Schema from "effect/Schema";
 import { DEFAULT_PREFS } from "@shared/protocol";
 import { post } from "~/bridge";
@@ -35,6 +36,7 @@ import {
 import { searchableSetting } from "./settingsSearch";
 import { AdvancedSettings } from "./AdvancedSettings";
 import { PullRequestLinksOpenInAppSetting } from "./PullRequestLinksOpenInAppSetting";
+import { TextGenerationSettings } from "./TextGenerationSettings";
 
 const SIDEBAR_PROJECT_SORT_ORDER_LABELS: Record<SidebarProjectSortOrder, string> = {
   updated_at: "Last user message",
@@ -139,6 +141,15 @@ export function useSettingsRestore(onRestored?: () => void) {
     ...(settings.pullRequestLinksOpenInApp !== DEFAULT_UNIFIED_SETTINGS.pullRequestLinksOpenInApp
       ? ["Open pull requests in kuru code"]
       : []),
+    ...(!Equal.equals(
+      settings.textGenerationModelSelection ?? null,
+      DEFAULT_UNIFIED_SETTINGS.textGenerationModelSelection ?? null,
+    )
+      ? ["Text generation model"]
+      : []),
+    ...(settings.threadTitleInstructions !== DEFAULT_UNIFIED_SETTINGS.threadTitleInstructions
+      ? ["Thread title instructions"]
+      : []),
   ];
 
   const restoreDefaults = async () => {
@@ -224,6 +235,8 @@ export function useSettingsRestore(onRestored?: () => void) {
       fontSizePrompt: DEFAULT_UNIFIED_SETTINGS.fontSizePrompt,
       fontSizeCode: DEFAULT_UNIFIED_SETTINGS.fontSizeCode,
       pullRequestLinksOpenInApp: DEFAULT_UNIFIED_SETTINGS.pullRequestLinksOpenInApp,
+      textGenerationModelSelection: DEFAULT_UNIFIED_SETTINGS.textGenerationModelSelection,
+      threadTitleInstructions: DEFAULT_UNIFIED_SETTINGS.threadTitleInstructions,
     });
     onRestored?.();
   };
@@ -464,6 +477,8 @@ export function GeneralSettingsPanel() {
           }
         />
       </SettingsSection>
+
+      <TextGenerationSettings />
     </SettingsPageContainer>
   );
 }

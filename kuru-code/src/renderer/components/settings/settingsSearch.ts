@@ -112,6 +112,18 @@ export const SETTINGS_SEARCH_ITEMS = [
     searchTerms: ["about check for updates download install upgrade release"],
   },
   {
+    id: "text-generation-model",
+    title: "Text generation model",
+    to: "/settings/general",
+    searchTerms: ["thread title generate name model auxiliary"],
+  },
+  {
+    id: "thread-title-instructions",
+    title: "Thread title instructions",
+    to: "/settings/general",
+    searchTerms: ["title prompt generate name custom"],
+  },
+  {
     id: "archive-confirmation",
     title: "Archive confirmation",
     to: "/settings/general",
@@ -340,6 +352,14 @@ export const SETTINGS_SEARCH_ITEMS = [
     title: "Providers",
     to: "/settings/providers",
     searchTerms: ["sign in subscription api key connect disconnect openai anthropic claude chatgpt"],
+  },
+  {
+    id: "usage-providers",
+    title: "Usage providers",
+    to: "/settings/providers",
+    searchTerms: [
+      "usage sources CLIProxyAPI CLI proxy hub quota subscription limits management key add remove",
+    ],
   },
   {
     id: "local-models",

@@ -27,7 +27,7 @@ import { useQueuedRunEdit } from "./chat/useQueuedRunEdit";
 import { recallCheckoutIsRepo, rememberCheckoutIsRepo } from "./ChatView.logic";
 import { useStableCallback } from "../hooks/useStableCallback";
 import { visibleThreadPullRequests } from "~/shared/threadPullRequests";
-import { DEFAULT_RUNTIME_MODE } from "~/contracts";
+import { DEFAULT_RUNTIME_MODE, type UsageLimitSourceSnapshots } from "~/contracts";
 import { requestWorkspaceContentFocus, requestWorkspaceFocus } from "~/lib/workspaceFocus";
 import { freshSessionBannerItem } from "./chat/ComposerFreshSession";
 import { armFreshSession, disarmFreshSession, useFreshSessionArmed } from "./chat/freshSessionArms";
@@ -230,6 +230,7 @@ import {
 } from "./ChatView.logic";
 
 const EMPTY_PROVIDERS: ServerProvider[] = [];
+const EMPTY_USAGE_LIMIT_SOURCES: UsageLimitSourceSnapshots = [];
 const EMPTY_PROVIDER_MODELS: ServerProvider["models"] = [];
 
 const EMPTY_FEEDBACK_SUBMISSIONS: ReadonlyArray<CodexFeedbackSubmission> = [];
@@ -2168,6 +2169,7 @@ export default function ChatView(props: ChatViewProps) {
                   usage={{
                     providerInstanceId: activeProviderInstanceId,
                     providers: providerStatuses,
+                    sources: serverConfig?.usageLimitSources ?? EMPTY_USAGE_LIMIT_SOURCES,
                     contextWindow: activeContextWindow,
                   }}
                 />

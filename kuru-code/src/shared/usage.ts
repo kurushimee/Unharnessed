@@ -24,20 +24,32 @@ export type UsageReport = {
   daily: ({ day: string } & UsageTotals)[];
 };
 
-export type LimitWindow = {
-  label: string;
-  /** Percent used, 0 to 100. */
-  usedPercent: number;
-  /** When it resets, ms; absent when unknown. */
-  resetsAt?: number;
-  /** How long the window is, ms. */
-  windowMs?: number;
-};
+// The usage limits, in T3 Code's shapes (packages/contracts/src/providerUsageLimits.ts):
+// main/limits.ts reads them, kuru/limits.ts gives them to T3 Code's screens.
 
-export type ProviderLimits = {
-  provider: string;
-  name: string;
-  windows: LimitWindow[];
-  /** Why they could not be read. */
-  error?: string;
+export type UsageWindow = {
+  id: string;
+  kind: "session" | "weekly" | "monthly" | "other";
+  label: string;
+  usedPercent: number;
+  resetsAt?: string;
+  windowDurationMins?: number;
 };
+export type ResetCreditOption = { creditId: string; label: string; description: string; availableCount: number; expiresAt?: string };
+export type ResetCredits = { availableCount: number; nextExpiresAt?: string; nextCreditId?: string; options?: ResetCreditOption[] };
+export type UsageLimits = {
+  checkedAt: string;
+  windows: UsageWindow[];
+  credentialFingerprint?: string;
+  resetCredits?: ResetCredits;
+  unavailable?: { reason: "unsupported" | "probeFailed"; message?: string };
+};
+/** One signed-in provider of the agent: its limits and whose they are. */
+export type ProviderAccount = { limits: UsageLimits; email?: string; plan?: string; workspaceId?: string };
+export type SourceAccount = { id: string; driver: string; email?: string; plan?: string; workspaceId?: string; usageLimits: UsageLimits };
+export type SourceSnapshot = { id: string; kind: "cliproxy"; label: string; checkedAt: string; accounts: SourceAccount[]; error?: string };
+export type LimitsRead = { providers: Record<string, ProviderAccount>; sources: SourceSnapshot[] };
+export type ConsumeInput = { instanceId: string; creditId?: string } | { sourceId: string; accountId: string; creditId: string };
+export type ConsumeOutcome = "reset" | "nothingToReset" | "noCredit" | "alreadyRedeemed";
+export type ConsumeResult = { outcome: ConsumeOutcome; warning?: string };
+

@@ -140,6 +140,61 @@ pub fn resolve_auxiliary_model(
     }
 }
 
+/// One model named by its `provider/id` selector, with the key and headers
+/// its requests need, for a one-off request outside any session's turns
+/// (`_unharnessed/complete`). The `allowedModels` pin holds.
+///
+/// # Errors
+///
+/// Why not, when the model is unknown, not signed in, or outside the pin.
+pub fn resolve_model_selector(
+    context: &AuxiliaryModelContext,
+    selector: &str,
+) -> Result<ResolvedAuxiliaryModel, String> {
+    let selector = selector.trim().to_lowercase();
+    let settings = crate::settings::SettingsManager::create(&context.cwd, &context.agent_dir);
+    if let Some(allowlist) = settings.get_allowed_models() {
+        if !crate::models::model_allowed(&selector, &allowlist) {
+            return Err(format!("{selector} is not among the allowed models."));
+        }
+    }
+    let auth = crate::auth::AuthStorage::create(&context.agent_dir);
+    let mut registry =
+        crate::models::ModelRegistry::create(auth, context.agent_dir.join("models.json"));
+    registry.load_private_authorization_from_cache();
+    let model = registry
+        .get_rlm_searchable_models()
+        .into_iter()
+        .find(|model| format!("{}/{}", model.provider, model.id).to_lowercase() == selector)
+        .cloned()
+        .ok_or_else(|| format!("No signed-in model {selector}."))?;
+    let resolved = registry.get_api_key_and_headers(&model, model.headers.as_ref());
+    if !resolved.ok {
+        return Err(format!("{selector} has no usable sign-in."));
+    }
+    Ok(ResolvedAuxiliaryModel {
+        model,
+        api_key: resolved.api_key,
+        headers: resolved.headers,
+    })
+}
+
+/// The model a one-off request runs on when its caller names none: the
+/// `auxiliaryModel` setting, else the default provider's default model.
+pub fn default_one_off_selector(context: &AuxiliaryModelContext) -> Option<String> {
+    let settings = crate::settings::SettingsManager::create(&context.cwd, &context.agent_dir);
+    if let Some(selector) = settings
+        .get_auxiliary_model()
+        .map(str::trim)
+        .filter(|selector| !selector.is_empty())
+    {
+        return Some(selector.to_string());
+    }
+    let provider = settings.get_default_provider()?;
+    let model = settings.get_default_model()?;
+    Some(format!("{provider}/{model}"))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

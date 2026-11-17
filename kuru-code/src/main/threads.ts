@@ -1,6 +1,6 @@
 import { existsSync, watch, type FSWatcher } from "node:fs";
 import type { LogOutputChannel } from "vscode";
-import type { SavedSession } from "../../../vscode/src/agent";
+import { errorText, type SavedSession } from "../../../vscode/src/agent";
 import { Conversation } from "../../../vscode/src/conversations";
 import type { Files as PanelFiles } from "../../../vscode/src/files";
 import type { ShownAgent } from "../../../vscode/src/shown";
@@ -10,6 +10,7 @@ import type { Git } from "./git";
 import { tagged } from "./log";
 import { listSessions, sessionsDir, type SessionSummary } from "./sessions";
 import { projectId, type Store, type ThreadMeta } from "./store";
+import { generateThreadTitle, type TitleModel } from "./titles";
 
 /** A thread in the background sleeps after this long without work, like the extension's conversations. */
 const SLEEP_AFTER_MS = 90 * 60_000;
@@ -48,6 +49,8 @@ export class Threads {
   private readonly prLookups = new Set<string>();
   /** The window's ids of new threads whose session is not made yet, or not yet noted. */
   private readonly aliases = new WeakMap<Conversation, string>();
+  /** Titles written for threads whose session has no id yet. */
+  private readonly titled = new WeakMap<Conversation, string>();
   private readonly createListeners = new Set<(conversation: Conversation) => void>();
   private readonly showListeners = new Set<() => void>();
   private readonly appListeners = new Set<(app: AppState) => void>();
@@ -150,7 +153,63 @@ export class Threads {
       this.aliases.set(conversation, id);
       this.log.info(`threads: [${conversation.tag}] is the window's ${id}`);
     }
-    conversation?.chat.send(text, images, undefined, now);
+    if (!conversation) return;
+    // T3 Code titles a new thread from its first message.
+    const saved = this.sessions.some((session) => session.id === conversation?.id);
+    if (conversation.empty && !saved) this.title(conversation, text, images);
+    conversation.chat.send(text, images, undefined, now);
+  }
+
+  /** A title for the new thread `conversation` (titles.ts); a rename made meanwhile is kept. */
+  private title(conversation: Conversation, text: string, images: Attachment[]): void {
+    const settings = this.store.serverSettings ?? {};
+    const instructions = typeof settings.threadTitleInstructions === "string" ? settings.threadTitleInstructions : "";
+    const model = (settings.textGenerationModelSelection ?? null) as TitleModel | null;
+    void this.ready(conversation)
+      .then(() =>
+        generateThreadTitle((method, params) => conversation.agent.request(method, params), {
+          message: text,
+          images,
+          instructions,
+          model,
+        }),
+      )
+      .then(
+        (title) => {
+          if (!title) return;
+          this.log.info(`threads: [${conversation.tag}] titled "${title}"`);
+          this.titled.set(conversation, title);
+          this.applyTitle(conversation);
+        },
+        (error: unknown) => this.log.warn(`threads: [${conversation.tag}] no title: ${errorText(error)}`),
+      );
+  }
+
+  /** The generated title, once the thread's session has an id, unless the thread has a title already. */
+  private applyTitle(conversation: Conversation): void {
+    const title = this.titled.get(conversation);
+    const { id } = conversation;
+    if (!title || !id) return;
+    this.titled.delete(conversation);
+    if (this.store.thread(id).title !== undefined) return;
+    this.store.setThread(id, { title });
+    this.emit();
+  }
+
+  /** The agent of `conversation` answers requests. */
+  private ready(conversation: Conversation): Promise<void> {
+    if (conversation.agent.current.kind === "ready") return Promise.resolve();
+    return new Promise((resolve, reject) => {
+      const listening = conversation.agent.onChange((state) => {
+        if (state.kind === "ready") {
+          listening.dispose();
+          resolve();
+        } else if (state.kind === "failed") {
+          listening.dispose();
+          reject(new Error("the agent did not start"));
+        }
+      });
+    });
   }
 
   /** The thread `id` back to before its turn `turn`'s prompt; why not, when it cannot. */
@@ -501,6 +560,7 @@ export class Threads {
     const away = conversation !== this.shownOne;
     const { id } = conversation;
     const alias = this.aliases.get(conversation);
+    if (id && this.titled.has(conversation)) this.applyTitle(conversation);
     if (alias && id) {
       this.store.setThread(id, { alias });
       this.aliases.delete(conversation);

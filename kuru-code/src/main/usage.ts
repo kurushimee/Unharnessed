@@ -145,7 +145,8 @@ function matches(selectors: { provider?: string; model: string }[] | undefined, 
  * What the threads used in a window, as T3 Code's UsageSummary: buckets by day (or hour), provider
  * and model. Unharnessed records each reply's cost itself, so costs are the provider's.
  */
-export async function usageSummary(input: SummaryInput, hostId: string) {
+export async function usageSummary(input: SummaryInput, hostId: string, priceOverrides?: unknown) {
+  const overrides = overrideRates(priceOverrides);
   const started = Date.now();
   const dir = sessionsDir();
   const format = dayFormat(input.timeZone);
@@ -168,7 +169,8 @@ export async function usageSummary(input: SummaryInput, hostId: string) {
     totals: { uncachedInputTokens: number; cachedInputTokens: number; cacheCreationTokens: number; outputTokens: number; reasoningTokens: number };
     costUsd: number;
     cacheSavingsUsd: number;
-    costSource: "providerReported" | "unpriced";
+    costSource: "providerReported" | "modelPriced" | "unpriced";
+    categoryCostUsd?: { input: number; cacheRead: number; cacheWrite: number; output: number };
     records: number;
     unpricedRecords: number;
     sessions: Set<string>;
@@ -217,10 +219,29 @@ export async function usageSummary(input: SummaryInput, hostId: string) {
       bucket.totals.cachedInputTokens += reply.cacheRead;
       bucket.totals.cacheCreationTokens += reply.cacheWrite;
       bucket.totals.outputTokens += reply.output;
-      bucket.costUsd += reply.cost;
       bucket.records++;
-      if (reply.priced) bucket.costSource = "providerReported";
-      else bucket.unpricedRecords++;
+      // T3 Code's priceUsage: a model's own prices replace what the provider reported.
+      const rate = overrides.get(reply.model.trim());
+      if (rate) {
+        const category = {
+          input: reply.input * rate.input,
+          cacheRead: reply.cacheRead * rate.cacheRead,
+          cacheWrite: reply.cacheWrite * rate.cacheWrite,
+          output: reply.output * rate.output,
+        };
+        const sum = (bucket.categoryCostUsd ??= { input: 0, cacheRead: 0, cacheWrite: 0, output: 0 });
+        sum.input += category.input;
+        sum.cacheRead += category.cacheRead;
+        sum.cacheWrite += category.cacheWrite;
+        sum.output += category.output;
+        bucket.costUsd += category.input + category.cacheRead + category.cacheWrite + category.output;
+        bucket.cacheSavingsUsd += reply.cacheRead * (rate.input - rate.cacheRead);
+        bucket.costSource = "modelPriced";
+      } else {
+        bucket.costUsd += reply.cost;
+        if (reply.priced) bucket.costSource = "providerReported";
+        else bucket.unpricedRecords++;
+      }
       bucket.sessions.add(name);
       const providerSessions = sessionsByProvider.get(reply.provider) ?? new Set<string>();
       providerSessions.add(name);
@@ -247,6 +268,27 @@ export async function usageSummary(input: SummaryInput, hostId: string) {
     scanDurationMs: Date.now() - started,
     ...(input.modelFilter === undefined ? {} : { modelFilter: input.modelFilter }),
   };
+}
+
+type Rate = { input: number; output: number; cacheRead: number; cacheWrite: number };
+
+/** T3 Code's createOverrideRateTable: per-token rates by model; blank cache prices use the input rate. */
+function overrideRates(overrides: unknown): Map<string, Rate> {
+  const rates = new Map<string, Rate>();
+  if (typeof overrides !== "object" || overrides === null) return rates;
+  for (const [model, raw] of Object.entries(overrides as Record<string, Record<string, unknown>>)) {
+    const price = (key: string) => (typeof raw?.[key] === "number" && Number.isFinite(raw[key]) ? (raw[key] as number) : undefined);
+    const input = price("inputCostPerMillionTokens");
+    const output = price("outputCostPerMillionTokens");
+    if (input === undefined || output === undefined) continue;
+    rates.set(model.trim(), {
+      input: input / 1_000_000,
+      output: output / 1_000_000,
+      cacheRead: (price("cacheReadCostPerMillionTokens") ?? input) / 1_000_000,
+      cacheWrite: (price("cacheWriteCostPerMillionTokens") ?? input) / 1_000_000,
+    });
+  }
+  return rates;
 }
 
 /** Unharnessed prices each reply itself; there are no rates to fetch. */

@@ -11,6 +11,7 @@ import {
   type EnvironmentId,
   type ServerProvider,
   type ResolvedKeybindingsConfig,
+  type UsageLimitSourceSnapshots,
 } from "~/contracts";
 import { loadKeybindings, onKeybindingsChange } from "./keybindings";
 import { DEFAULT_RESOLVED_KEYBINDINGS } from "~/shared/keybindings";
@@ -39,6 +40,8 @@ const CAPABILITIES = {
   inlineMessageContext: true,
   projectOrganization: true,
   commandOutputStreaming: false,
+  // Prices of its own for a model; Unharnessed prices each reply, so there is no list to alias into.
+  usagePriceOverrides: true,
 };
 
 function buildConfig(
@@ -46,6 +49,7 @@ function buildConfig(
   providers: ReadonlyArray<ServerProvider>,
   settings: unknown,
   keybindings: ResolvedKeybindingsConfig,
+  usageLimitSources: unknown,
 ): ServerConfig {
   const config = decodeConfig({
     environment: {
@@ -78,6 +82,7 @@ function buildConfig(
     scratchWorkspaceRoot: home,
     threadFind: true,
     threadLinkMetadata: true,
+    usageLimitSources,
   });
   // Unharnessed's providers are its own instances, each on while it is connected; T3 Code's
   // screens read that from the settings' instances, which kuru code never saves.
@@ -118,6 +123,13 @@ const configAtom = Atom.make<ServerConfig | null>(null).pipe(
 // in its settings file. Read once at start; each change is saved there.
 let storedSettings: unknown = undefined;
 let settingsLoaded = false;
+/** The CLIProxyAPI hubs' accounts (T3 Code's usage-limit sources), as kuru/limits.ts last read them. */
+let usageLimitSources: UsageLimitSourceSnapshots = [];
+
+export function setUsageLimitSources(sources: UsageLimitSourceSnapshots): void {
+  usageLimitSources = sources;
+  refresh(useStore.getState());
+}
 
 let keybindings: ResolvedKeybindingsConfig = DEFAULT_RESOLVED_KEYBINDINGS;
 
@@ -126,6 +138,7 @@ let built: {
   providers: ReadonlyArray<ServerProvider>;
   settings: unknown;
   keybindings: ResolvedKeybindingsConfig;
+  usageLimitSources: UsageLimitSourceSnapshots;
   config: ServerConfig;
 } | null = null;
 function refresh(state: Store): void {
@@ -136,7 +149,8 @@ function refresh(state: Store): void {
     built?.home === home &&
     built.providers === providers &&
     built.settings === storedSettings &&
-    built.keybindings === keybindings
+    built.keybindings === keybindings &&
+    built.usageLimitSources === usageLimitSources
   )
     return;
   try {
@@ -145,7 +159,8 @@ function refresh(state: Store): void {
       providers,
       settings: storedSettings,
       keybindings,
-      config: buildConfig(home, providers, storedSettings, keybindings),
+      usageLimitSources,
+      config: buildConfig(home, providers, storedSettings, keybindings, usageLimitSources),
     };
   } catch (error) {
     console.error("kuru: the server config did not decode", error);
@@ -202,5 +217,9 @@ export async function updateServerSettings(patch: ServerSettingsPatch): Promise<
   await invoke("serverSettings.set", { settings: encoded });
   storedSettings = encoded;
   refresh(useStore.getState());
+  // A hub added or removed: its accounts join or leave the limits.
+  if (patch.usageLimitSources !== undefined) {
+    void import("./limits").then(({ refreshUsageLimits }) => refreshUsageLimits()).catch((error) => console.error("kuru: the usage limits did not load", error));
+  }
   return next;
 }

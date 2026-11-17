@@ -33,8 +33,8 @@ const usageByWindowAtom = Atom.family((windowKey: string) =>
 
     const statuses: EnvironmentUsageStatus[] = [];
     for (const [environmentId, presentation] of presentations) {
-      // kuru code's one environment is this machine: always connected, its usage always readable.
       const isConnected = presentation.connection.phase === "connected";
+      // kuru code's one environment is this machine: always connected, its usage always readable.
       const result = get(
         serverEnvironment.usageSummary({
           environmentId,
@@ -62,8 +62,10 @@ const usageByWindowAtom = Atom.family((windowKey: string) =>
 export interface UsageView {
   readonly merged: MergedUsage;
   readonly environments: readonly EnvironmentUsageStatus[];
+  readonly selectedEnvironments: readonly EnvironmentUsageStatus[];
   readonly isPending: boolean;
   readonly shown: { readonly window: UsageSummaryInput; readonly merged: MergedUsage } | null;
+  readonly isPartial: boolean;
   readonly refresh: (input?: UsageSummaryInput) => Promise<void>;
 }
 
@@ -115,17 +117,25 @@ function withoutProviders(
 
 function deriveSelection(
   environments: readonly EnvironmentUsageStatus[],
+  selectedEnvironmentIds: ReadonlySet<EnvironmentId> | null,
   hiddenProviders: ReadonlySet<UsageProviderKind>,
 ) {
+  const selectedEnvironments =
+    selectedEnvironmentIds === null
+      ? environments
+      : environments.filter((environment) => selectedEnvironmentIds.has(environment.environmentId));
   return {
     environments,
+    selectedEnvironmentIds,
     hiddenProviders,
-    merged: mergeAnsweredUsage(withoutProviders(environments, hiddenProviders)),
+    selectedEnvironments,
+    merged: mergeAnsweredUsage(withoutProviders(selectedEnvironments, hiddenProviders)),
   };
 }
 
 export function useUsage(
   input: UsageSummaryInput,
+  selectedEnvironmentIds: ReadonlySet<EnvironmentId> | null = null,
   hiddenProviders: ReadonlySet<UsageProviderKind> = NO_HIDDEN_PROVIDERS,
 ): UsageView {
   const windowKey = JSON.stringify({
@@ -140,37 +150,40 @@ export function useUsage(
   const environments = useAtomValue(atom);
   // Identity-based render sync needs a derivation retained by inputs across renders.
   const [derived, setDerived] = useState(() =>
-    deriveSelection(environments, hiddenProviders),
+    deriveSelection(environments, selectedEnvironmentIds, hiddenProviders),
   );
   let current = derived;
   if (
     derived.environments !== environments ||
+    derived.selectedEnvironmentIds !== selectedEnvironmentIds ||
     derived.hiddenProviders !== hiddenProviders
   ) {
-    current = deriveSelection(environments, hiddenProviders);
+    current = deriveSelection(environments, selectedEnvironmentIds, hiddenProviders);
     setDerived(current);
   }
-  const { merged } = current;
+  const { selectedEnvironments, merged } = current;
 
   const refresh = (nextInput?: UsageSummaryInput) =>
     refreshUsage({
       registry: appAtomRegistry,
       server: serverEnvironment,
       presentations: environmentPresentations,
-      environmentIds: environments.map(({ environmentId }) => environmentId),
+      environmentIds: selectedEnvironments
+        .map(({ environmentId }) => environmentId),
       input: nextInput ?? (JSON.parse(windowKey) as UsageSummaryInput),
     });
 
-  const answeredCount = environments.filter(
+  const answeredCount = selectedEnvironments.filter(
     (environment) => environment.summary !== null,
   ).length;
-  const stillReporting = environments.filter(
+  const stillReporting = selectedEnvironments.filter(
     (environment) => environment.summary === null && environment.error === null,
   ).length;
   const isPending = answeredCount === 0 && stillReporting > 0;
 
   const [lastAnswered, setLastAnswered] = useState<
     | (NonNullable<UsageView["shown"]> & {
+        readonly selection: typeof selectedEnvironmentIds;
         readonly hidden: typeof hiddenProviders;
       })
     | null
@@ -179,16 +192,18 @@ export function useUsage(
     answeredCount > 0 &&
     (lastAnswered?.merged !== merged ||
       lastAnswered.window !== input ||
+      lastAnswered.selection !== selectedEnvironmentIds ||
       lastAnswered.hidden !== hiddenProviders)
   ) {
     setLastAnswered({
       window: input,
       merged,
+      selection: selectedEnvironmentIds,
       hidden: hiddenProviders,
     });
   }
   const kept =
-    lastAnswered?.hidden === hiddenProviders
+    lastAnswered?.selection === selectedEnvironmentIds && lastAnswered.hidden === hiddenProviders
       ? lastAnswered
       : null;
   const shown =
@@ -199,8 +214,10 @@ export function useUsage(
   return {
     merged,
     environments,
+    selectedEnvironments,
     isPending,
     shown,
+    isPartial: answeredCount > 0 && stillReporting > 0,
     refresh,
   };
 }

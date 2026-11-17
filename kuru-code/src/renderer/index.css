@@ -1758,6 +1758,11 @@ body {
   --desktop-window-right-resize-inset: 6px;
 }
 
+/* The thread's scrollbar keeps the same gap from the window's bottom edge as from its right one. */
+.electron-windows .messages-timeline-scroll::-webkit-scrollbar-track {
+  margin-bottom: var(--desktop-window-right-resize-inset);
+}
+
 /* App-chrome grain. Baked into each surface's own background (behind
    content) rather than a fixed overlay on top: a full-viewport overlay
    forces the compositor to re-blend every frame any animation produces,

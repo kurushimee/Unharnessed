@@ -3,6 +3,7 @@ import { isModelCostUnknown, type ModelTotals } from "~/shared/usageMerge";
 
 import { mergeAnsweredUsage, type EnvironmentUsageStatus } from "../../state/usage";
 import { ProviderInstanceIcon } from "../chat/ProviderInstanceIcon";
+import { Button } from "../ui/button";
 import {
   Dialog,
   DialogDescription,
@@ -37,12 +38,14 @@ export function UsageModelDialog({
   environments,
   metric,
   chartWindow,
+  onSetPrice,
   onClose,
 }: {
   readonly model: ModelTotals;
   readonly environments: readonly EnvironmentUsageStatus[];
   readonly metric: UsageChartMetric;
   readonly chartWindow: UsageChartWindow;
+  readonly onSetPrice: () => void;
   readonly onClose: () => void;
 }) {
   const usage = mergeAnsweredUsage(
@@ -137,6 +140,7 @@ export function UsageModelDialog({
             <span className="text-xs text-muted-foreground">
               {formatTokens(model.unpricedTokens)} tokens have no known price
             </span>
+            <Button onClick={onSetPrice}>Set price</Button>
           </DialogFooter>
         ) : null}
       </DialogPopup>

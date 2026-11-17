@@ -1,16 +1,28 @@
+import { ChatGptUsageButton } from "../settings/ChatGptUsageButton";
+import { usesChatGptSharing } from "~/shared/usageLimits";
 import { RefreshIcon } from "~/components/ui/refresh-icon";
 import { useAtomValue } from "@effect/atom-react";
 import { Atom } from "effect/reactivity";
-import { type UsageProviderKind, type UsageSummaryInput } from "~/contracts";
-import { ChevronDownIcon, InfoIcon } from "lucide-react";
+import {
+  USAGE_CONTRACT_VERSION,
+  type EnvironmentId,
+  type UsageProviderKind,
+  type UsageSummaryInput,
+} from "~/contracts";
+import { CircleAlertIcon, ChevronDownIcon, InfoIcon, SlidersHorizontalIcon } from "lucide-react";
 import { useEffect, useEffectEvent, useRef, useState } from "react";
 import { settlePromise } from "~/rt/state/runtime";
 import * as AsyncResult from "effect/reactivity/AsyncResult";
 import * as Cause from "effect/Cause";
 import { refreshUsageLimits } from "~/rt/state/usage";
-import { usageLoadingState } from "~/rt/state/usageProgress";
+import {
+  updatingProvidersLabel,
+  usageEnvironmentProgress,
+  usageLoadingState,
+} from "~/rt/state/usageProgress";
 
 import {
+  isCompatibleUsageContractVersion,
   isModelCostUnknown,
   type DailyTotals,
   type HourlyTotals,
@@ -37,13 +49,21 @@ import {
   formatHourShort,
   formatPercent,
   formatTokens,
+  formatUsageContractMismatch,
   formatUsd,
   makeWindow,
   usageSourceMessages,
 } from "~/shared/usageFormat";
 import { Button, InlineButton } from "../ui/button";
 import { ProviderInstanceIcon } from "../chat/ProviderInstanceIcon";
-import { Menu, MenuCheckboxItem, MenuPopup, MenuSeparator, MenuTrigger } from "../ui/menu";
+import {
+  Menu,
+  MenuCheckboxItem,
+  MenuItem,
+  MenuPopup,
+  MenuSeparator,
+  MenuTrigger,
+} from "../ui/menu";
 import { ScrollArea } from "../ui/scroll-area";
 import { Select, SelectItem, SelectPopup, SelectTrigger, SelectValue } from "../ui/select";
 import { AppRouteModal, AppRouteModalClose } from "../AppRouteModal";
@@ -54,9 +74,11 @@ import {
   WorkspaceBreadcrumb,
   WorkspaceBreadcrumbItem,
   WorkspaceBreadcrumbSeparator,
+  WorkspaceBreadcrumbText,
 } from "../WorkspaceBreadcrumb";
 import { WorkspacePageContainer } from "../WorkspacePageContainer";
 import { UsageLimitsSection } from "./UsageLimits";
+import { UsagePriceOverrides } from "./UsagePriceOverrides";
 import { UsageProviderChart } from "./UsageProviderChart";
 import { SpeedPremium, UsageModelDialog } from "./UsageModelDialog";
 import { UsageShareBar } from "./UsageShareBar";
@@ -67,7 +89,12 @@ import {
   speedCostSegments,
   tokenTypeSegments,
 } from "./usageBreakdown";
-import { METRIC_OPTIONS, WINDOW_OPTIONS, resolveUsageShortcut, type UsageMetric } from "./usageShortcuts";
+import {
+  METRIC_OPTIONS,
+  WINDOW_OPTIONS,
+  resolveUsageShortcut,
+  type UsageMetric,
+} from "./usageShortcuts";
 import {
   providerOrder,
   providerPresentation,
@@ -87,6 +114,8 @@ function isUsageMetric(value: string | null | undefined): value is UsageMetric {
 function isUsageWindowDays(value: number): value is UsagePagePreferences["windowDays"] {
   return WINDOW_OPTIONS.some((option) => option.days === value);
 }
+
+const providerLabel = (provider: UsageProviderKind) => providerPresentation(provider).label;
 
 function usageLoading(
   showingKept: boolean,
@@ -118,9 +147,11 @@ function selectUsageModel(key: string | null): void {
 
 function UsageModelDialogHost({
   models,
+  onSetPrice,
   ...dialogProps
-}: Omit<Parameters<typeof UsageModelDialog>[0], "model" | "onClose"> & {
+}: Omit<Parameters<typeof UsageModelDialog>[0], "model" | "onSetPrice" | "onClose"> & {
   readonly models: MergedUsage["models"];
+  readonly onSetPrice: (model: string) => void;
 }) {
   const selectedKey = useAtomValue(selectedUsageModelKeyAtom);
   // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- clears the shared selected-model atom on unmount
@@ -134,6 +165,10 @@ function UsageModelDialogHost({
     <UsageModelDialog
       {...dialogProps}
       model={model}
+      onSetPrice={() => {
+        selectUsageModel(null);
+        onSetPrice(model.model);
+      }}
       onClose={() => selectUsageModel(null)}
     />
   );
@@ -164,15 +199,20 @@ export function UsagePage() {
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [limitsNow, setLimitsNow] = useState(() => Date.now());
   const refreshingRef = useRef(false);
+  const [priceDialog, setPriceDialog] = useState<{ readonly model?: string } | null>(null);
+  const [selectedEnvironmentIds, setSelectedEnvironmentIds] =
+    useState<ReadonlySet<EnvironmentId> | null>(null);
   const hiddenProviders = new Set(preferences.hiddenProviders);
   const { days: windowDays, window } = windowSelection;
   const isPast24Hours = windowDays === 1;
   const {
     merged: answeredUsage,
     environments,
+    selectedEnvironments,
     shown,
+    isPartial,
     refresh,
-  } = useUsage(window, hiddenProviders);
+  } = useUsage(window, selectedEnvironmentIds, hiddenProviders);
   const merged = shown?.merged ?? answeredUsage;
   const shownWindow = shown?.window ?? window;
   const shownHourly = shownWindow.resolution === "hour";
@@ -186,7 +226,7 @@ export function UsagePage() {
     reportFailure: false,
   });
 
-  const canReadDiagnostics = environments.some(
+  const canReadDiagnostics = selectedEnvironments.some(
     (environment) => environment.canReadDiagnostics,
   );
 
@@ -212,6 +252,7 @@ export function UsagePage() {
     settlePromise(() =>
       Promise.all(
         Array.from(presentations, ([environmentId, presentation]) => {
+          if (selectedEnvironmentIds !== null && !selectedEnvironmentIds.has(environmentId)) return;
           if (presentation.connection.phase === "connected" && presentation.serverConfig !== null) {
             return refreshUsageLimits(
               environmentId,
@@ -283,7 +324,9 @@ export function UsagePage() {
   const connectedLimitsEnvironments = [...presentations]
     .filter(
       ([environmentId, presentation]) =>
-        presentation.connection.phase === "connected" && presentation.serverConfig !== null,
+        presentation.connection.phase === "connected" &&
+        presentation.serverConfig !== null &&
+        (selectedEnvironmentIds === null || selectedEnvironmentIds.has(environmentId)),
     )
     .map(([environmentId]) => environmentId)
     .sort()
@@ -301,6 +344,13 @@ export function UsagePage() {
     shownWindow.sinceTime === undefined || shownWindow.untilTime === undefined
       ? []
       : enumerateHourStarts(shownWindow.sinceTime, shownWindow.untilTime);
+  const showChatGptSharing =
+    !hiddenProviders.has("codex") &&
+    [...presentationsWithProviders].some(
+      ([id, presentation]) =>
+        (selectedEnvironmentIds === null || selectedEnvironmentIds.has(id)) &&
+        (presentation.serverConfig?.providers ?? []).some(usesChatGptSharing),
+    );
 
   const windowLabel =
     shownHourly && shownWindow.sinceTime !== undefined && shownWindow.untilTime !== undefined
@@ -311,6 +361,21 @@ export function UsagePage() {
       <WorkspaceBreadcrumb ariaLabel="Usage breadcrumb" className="min-w-0">
         <WorkspaceBreadcrumbItem>
           <h1>Usage</h1>
+        </WorkspaceBreadcrumbItem>
+        <WorkspaceBreadcrumbSeparator />
+        <WorkspaceBreadcrumbItem className="min-w-10 shrink">
+          <UsageEnvironmentFilter
+            environments={environments}
+            selectedEnvironments={selectedEnvironments}
+            selectedEnvironmentIds={selectedEnvironmentIds}
+            onSelectionChange={setSelectedEnvironmentIds}
+            showUsageStatus={!showingLimits}
+            refreshing={refreshingUsage}
+            isPartial={isPartial}
+            duplicateSources={merged.duplicateSources}
+            contractMismatches={merged.contractMismatches}
+            onOpenModelPrices={() => setPriceDialog({})}
+          />
         </WorkspaceBreadcrumbItem>
         <WorkspaceBreadcrumbSeparator />
         <WorkspaceBreadcrumbItem current className="min-w-10">
@@ -445,8 +510,15 @@ export function UsagePage() {
 
         <ScrollArea className="min-h-0 flex-1">
           <WorkspacePageContainer width="wide">
-            {showingLimits ? (
+            {selectedEnvironments.length === 0 ? (
+              <p className="text-sm text-muted-foreground">
+                {environments.length === 0
+                  ? `Connect an environment to see ${showingLimits ? "limits" : "usage"}.`
+                  : `Select an environment to see ${showingLimits ? "limits" : "usage"}.`}
+              </p>
+            ) : showingLimits ? (
               <UsageLimitsSection
+                selectedEnvironmentIds={selectedEnvironmentIds}
                 hiddenProviders={hiddenProviders}
                 now={limitsNow}
               />
@@ -454,8 +526,11 @@ export function UsagePage() {
               <UsageSkeleton />
             ) : !canReadDiagnostics ? (
               <div className="space-y-2 py-12 text-center text-sm text-muted-foreground">
-                {environments.map((environment) => (
-                  <p key={environment.environmentId}>{environment.error}</p>
+                {selectedEnvironments.map((environment) => (
+                  <p key={environment.environmentId}>
+                    {selectedEnvironments.length > 1 ? `${environment.label}: ` : null}
+                    {environment.error}
+                  </p>
                 ))}
               </div>
             ) : (
@@ -467,9 +542,10 @@ export function UsagePage() {
                 hours={hours}
                 showingKept={showingKept}
                 metric={metric === "tokens" ? "tokens" : "cost"}
-                selectedEnvironments={environments}
+                selectedEnvironments={selectedEnvironments}
                 hiddenProviders={hiddenProviders}
                 refreshingUsage={refreshingUsage}
+                showChatGptSharing={showChatGptSharing}
                 onSelectModel={selectUsageModel}
               />
             )}
@@ -479,7 +555,7 @@ export function UsagePage() {
       {showingLimits ? null : (
         <UsageModelDialogHost
           models={merged.models}
-          environments={environments}
+          environments={selectedEnvironments}
           metric={metric === "tokens" ? "tokens" : "cost"}
           chartWindow={{
             days,
@@ -489,8 +565,19 @@ export function UsagePage() {
             referenceTime: shownWindow.untilTime,
             hour12,
           }}
+          onSetPrice={(model) => setPriceDialog({ model })}
         />
       )}
+      {priceDialog ? (
+        <UsagePriceOverrides
+          usage={environments}
+          initialSelectedEnvironmentIds={selectedEnvironmentIds}
+          initialModel={priceDialog.model}
+          onOpenChange={(open) => {
+            if (!open) setPriceDialog(null);
+          }}
+        />
+      ) : null}
     </AppRouteModal>
   );
 }
@@ -506,6 +593,7 @@ function UsageOverview({
   selectedEnvironments,
   hiddenProviders,
   refreshingUsage,
+  showChatGptSharing,
   onSelectModel,
 }: {
   readonly merged: MergedUsage;
@@ -518,6 +606,7 @@ function UsageOverview({
   readonly selectedEnvironments: readonly EnvironmentUsageStatus[];
   readonly hiddenProviders: ReadonlySet<UsageProviderKind>;
   readonly refreshingUsage: boolean;
+  readonly showChatGptSharing: boolean;
   readonly onSelectModel: (key: string) => void;
 }) {
   const [breakdown, setBreakdown] = useState<"model" | "time">("model");
@@ -601,6 +690,13 @@ function UsageOverview({
               )}
             </span>
           </div>
+
+          {showChatGptSharing ? (
+            <div className="flex items-center justify-between gap-2 text-xs text-muted-foreground">
+              <span>ChatGPT shared usage</span>
+              <ChatGptUsageButton size="xs" />
+            </div>
+          ) : null}
 
           {rankedProviders.map((provider) => {
             const totals = merged.providers.find((entry) => entry.provider === provider);
@@ -967,6 +1063,185 @@ function Metric({
         {value}
       </span>
     </div>
+  );
+}
+
+function UsageCoverageNotice({
+  environments,
+  duplicateSources,
+  contractMismatches,
+}: {
+  readonly environments: readonly EnvironmentUsageStatus[];
+  readonly duplicateSources: readonly string[];
+  readonly contractMismatches: MergedUsage["contractMismatches"];
+}) {
+  const failed = environments.filter((environment) => environment.error !== null);
+  const mismatchByEnvironment = new Map(
+    contractMismatches.map((mismatch) => [mismatch.environmentId, mismatch]),
+  );
+  const incompatible = environments.flatMap((environment) => {
+    const mismatch = mismatchByEnvironment.get(environment.environmentId);
+    return mismatch === undefined ? [] : [{ environment, mismatch }];
+  });
+  if (failed.length === 0 && incompatible.length === 0 && duplicateSources.length === 0) {
+    return null;
+  }
+
+  return (
+    <div className="flex flex-col gap-1 border-t border-border px-2 py-2 text-xs text-muted-foreground">
+      {failed.map((environment) => (
+        <span key={environment.label}>
+          {environment.label}: {environment.error}
+        </span>
+      ))}
+      {incompatible.map(({ environment, mismatch }) => (
+        <span key={environment.environmentId}>
+          {formatUsageContractMismatch(environment.label, mismatch)}
+        </span>
+      ))}
+      {duplicateSources.length > 0 ? (
+        <span>
+          Counted once across environments sharing a transcript directory:{" "}
+          {duplicateSources.join(", ")}
+        </span>
+      ) : null}
+    </div>
+  );
+}
+
+function UsageEnvironmentFilter({
+  environments,
+  selectedEnvironments,
+  selectedEnvironmentIds,
+  onSelectionChange,
+  showUsageStatus,
+  refreshing,
+  isPartial,
+  duplicateSources,
+  contractMismatches,
+  onOpenModelPrices,
+}: {
+  readonly environments: readonly EnvironmentUsageStatus[];
+  readonly selectedEnvironments: readonly EnvironmentUsageStatus[];
+  readonly selectedEnvironmentIds: ReadonlySet<EnvironmentId> | null;
+  readonly onSelectionChange: (ids: ReadonlySet<EnvironmentId> | null) => void;
+  readonly showUsageStatus: boolean;
+  readonly refreshing: boolean;
+  readonly isPartial: boolean;
+  readonly duplicateSources: readonly string[];
+  readonly contractMismatches: MergedUsage["contractMismatches"];
+  readonly onOpenModelPrices: () => void;
+}) {
+  const allSelected = selectedEnvironmentIds === null;
+  const label = allSelected
+    ? "All environments"
+    : selectedEnvironments.length === 1
+      ? selectedEnvironments[0]!.label
+      : `${selectedEnvironments.length} environments`;
+  const hasIssue =
+    selectedEnvironments.some((environment) => environment.error !== null) ||
+    contractMismatches.length > 0;
+
+  return (
+    <Menu>
+      <MenuTrigger render={<InlineButton />} className="group/usage-environment min-w-0 max-w-full">
+        <WorkspaceBreadcrumbText>{label}</WorkspaceBreadcrumbText>
+        <span className="flex size-3.5 shrink-0 items-center justify-center text-muted-foreground">
+          {showUsageStatus && hasIssue ? (
+            <CircleAlertIcon
+              className="size-3.5 text-warning-foreground"
+              aria-label="Some environments could not report usage"
+            />
+          ) : (
+            <ChevronDownIcon
+              className="size-3.5 opacity-60 transition-opacity group-hover/usage-environment:opacity-100 group-focus-visible/usage-environment:opacity-100 group-data-popup-open/usage-environment:opacity-100"
+              aria-hidden
+            />
+          )}
+        </span>
+      </MenuTrigger>
+      <MenuPopup align="start">
+        <MenuCheckboxItem
+          checked={allSelected}
+          closeOnClick={false}
+          onCheckedChange={(checked) => onSelectionChange(checked ? null : new Set())}
+        >
+          All environments
+        </MenuCheckboxItem>
+        <MenuSeparator />
+        {environments.map((environment) => {
+          const checked =
+            selectedEnvironmentIds === null ||
+            selectedEnvironmentIds.has(environment.environmentId);
+          const progress = usageEnvironmentProgress(environment, refreshing);
+          const status =
+            environment.error !== null
+              ? "Unavailable"
+              : environment.summary !== null &&
+                  !isCompatibleUsageContractVersion(
+                    environment.summary.contractVersion,
+                    USAGE_CONTRACT_VERSION,
+                  )
+                ? "Update required"
+                : !environment.isConnected
+                  ? "Connecting…"
+                  : progress.phase === "loading"
+                    ? "Scanning…"
+                    : progress.phase === "stale"
+                      ? "Refreshing…"
+                      : progress.phase === "partway"
+                        ? updatingProvidersLabel(progress.providers, providerLabel)
+                        : "Ready";
+          return (
+            <MenuCheckboxItem
+              key={environment.environmentId}
+              checked={checked}
+              closeOnClick={false}
+              onCheckedChange={(nextChecked) => {
+                const next = new Set(selectedEnvironments.map((entry) => entry.environmentId));
+                if (nextChecked) next.add(environment.environmentId);
+                else next.delete(environment.environmentId);
+                onSelectionChange(next.size === environments.length ? null : next);
+              }}
+            >
+              <span className="flex min-w-0 items-center gap-3">
+                <span className="min-w-0 flex-1 truncate">{environment.label}</span>
+                {showUsageStatus ? (
+                  <span
+                    className={cn(
+                      "shrink-0 text-xs text-muted-foreground",
+                      environment.error !== null && "text-destructive",
+                    )}
+                  >
+                    {status}
+                  </span>
+                ) : null}
+              </span>
+            </MenuCheckboxItem>
+          );
+        })}
+        {environments.length === 0 ? (
+          <p className="px-2 py-2 text-xs text-muted-foreground">No environments connected.</p>
+        ) : null}
+        {showUsageStatus && isPartial ? (
+          <p className="px-2 py-2 text-xs text-muted-foreground">
+            Totals are partial while selected environments scan.
+          </p>
+        ) : null}
+        {showUsageStatus ? (
+          <UsageCoverageNotice
+            environments={selectedEnvironments}
+            duplicateSources={duplicateSources}
+            contractMismatches={contractMismatches}
+          />
+        ) : null}
+        <MenuSeparator />
+        <MenuItem onClick={onOpenModelPrices}>
+          <SlidersHorizontalIcon aria-hidden />
+          Model prices
+        </MenuItem>
+      </MenuPopup>
+    </Menu>
   );
 }
 

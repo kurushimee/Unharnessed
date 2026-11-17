@@ -6,7 +6,9 @@ import { PlusIcon, SearchIcon, UnlinkIcon } from "lucide-react";
 import { useEffect, useState, type FormEvent, type ReactNode } from "react";
 import type { Provider, WebviewMessage } from "@shared/protocol";
 import { post } from "~/bridge";
+import { LOCAL_ENVIRONMENT_ID } from "~/contracts";
 import { useStore } from "~/state";
+import { usePrimarySettings } from "../../hooks/useSettings";
 import { Badge } from "../ui/badge";
 import { Button } from "../ui/button";
 import {
@@ -24,6 +26,7 @@ import { FieldError, ProviderIcon, providerSettingsRowId } from "./agentSettings
 import { LocalServerDialog, NEW_LOCAL } from "./LocalServerDialog";
 import { SettingsPageContainer, SettingsRow, SettingsSection } from "./settingsLayout";
 import { searchableSetting } from "./settingsSearch";
+import { UsageProviderSettings } from "./UsageProviderSettings";
 
 /** From this many rows on, a search field filters them. */
 const SEARCH_FROM = 9;
@@ -68,6 +71,7 @@ function status(provider: Provider): ReactNode {
 export function ProvidersSettingsPanel() {
   const providers = useStore((state) => state.providers);
   const result = useStore((state) => state.providerResult);
+  const usageLimitSources = usePrimarySettings((settings) => settings.usageLimitSources);
   const [query, setQuery] = useState("");
   const [open, setOpen] = useState<Open | null>(null);
   const [busy, setBusy] = useState(false);
@@ -336,6 +340,13 @@ export function ProvidersSettingsPanel() {
           onCancel={() => show(null)}
         />
       ) : null}
+
+      <UsageProviderSettings
+        environmentId={LOCAL_ENVIRONMENT_ID}
+        environmentLabel="this computer"
+        sources={usageLimitSources}
+        readOnly={false}
+      />
     </SettingsPageContainer>
   );
 }

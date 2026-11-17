@@ -12,9 +12,9 @@ import {
   type ProviderOptionDescriptor,
   type ServerProvider,
   type ServerProviderModel,
-  type ServerProviderUsageLimits,
 } from "~/contracts";
 import type { ModelChoice, Provider, SessionState } from "@shared/protocol";
+import type { ProviderAccount } from "@shared/usage";
 import { useStore, type Store } from "~/state";
 
 import { providersChanged, setServerProvidersSource } from "./serverConfig";
@@ -75,7 +75,7 @@ function toProvider(
   choices: ReadonlyArray<ModelChoice>,
   current: string | null,
   descriptors: ReadonlyArray<ProviderOptionDescriptor>,
-  limits: ServerProviderUsageLimits | undefined,
+  account: ProviderAccount | undefined,
 ): ServerProvider {
   const models: ServerProviderModel[] = choices.map((choice) => ({
     slug: modelSlug(choice),
@@ -98,6 +98,10 @@ function toProvider(
       status: connected ? "authenticated" : "unauthenticated",
       ...(provider ? { type: provider.method === "subscription" ? "subscription" : "apiKey" } : {}),
       ...(provider?.removable ? { canLogout: true } : {}),
+      // Whose login it is, as its usage limits read it: T3 Code names and pools accounts by it.
+      ...(account?.email ? { email: account.email } : {}),
+      ...(account?.plan ? { label: account.plan } : {}),
+      ...(account?.workspaceId ? { workspaceId: account.workspaceId } : {}),
     },
     checkedAt: CHECKED_AT,
     ...(provider?.note ? { message: provider.note } : {}),
@@ -106,13 +110,13 @@ function toProvider(
     skills: [],
     supportsConversationRollback: true,
     reportsContextWindow: true,
-    ...(limits ? { usageLimits: limits } : {}),
+    ...(account ? { usageLimits: account.limits as ServerProvider["usageLimits"] } : {}),
   };
 }
 
-let usageLimitsSource: () => ReadonlyMap<string, ServerProviderUsageLimits> = () => new Map();
+let usageLimitsSource: () => ReadonlyMap<string, ProviderAccount> = () => new Map();
 /** Where the providers' usage limits come from; set by kuru/limits.ts. */
-export function setUsageLimitsSource(source: () => ReadonlyMap<string, ServerProviderUsageLimits>): void {
+export function setUsageLimitsSource(source: () => ReadonlyMap<string, ProviderAccount>): void {
   usageLimitsSource = source;
   built = null;
   providersChanged();

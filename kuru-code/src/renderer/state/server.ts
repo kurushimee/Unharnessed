@@ -11,6 +11,7 @@ import {
   type ResolvedKeybindingsConfig,
   type ServerConfig,
   type ProviderInstanceMutation,
+  type ProviderConsumeResetCreditInput,
   type ServerProvider,
   type ServerSettings,
   type ServerSettingsPatch,
@@ -22,7 +23,7 @@ import { useAtomValue } from "@effect/atom-react";
 import { Atom } from "effect/reactivity";
 import { DEFAULT_RESOLVED_KEYBINDINGS } from "~/shared/keybindings";
 import { serverConfigAtom, updateServerSettings } from "~/kuru/serverConfig";
-import { refreshUsageLimits } from "~/kuru/limits";
+import { consumeResetCredit, refreshUsageLimits } from "~/kuru/limits";
 import { serverProvidersOf } from "~/kuru/providers";
 import { useStore } from "~/state";
 import {
@@ -62,6 +63,28 @@ const usageModelFilterFamily = Atom.family((environmentId: EnvironmentId) =>
   ),
 );
 
+// T3 Code's usage scan settings: changed model prices make the usage summary read again.
+const usagePricesFamily = Atom.family((environmentId: EnvironmentId) =>
+  Atom.make((get) => {
+    const overrides = get(settingsValueFamily(environmentId))?.usagePriceOverrides ?? {};
+    // Settings snapshots can make the same mapping in another property order.
+    return JSON.stringify(
+      Object.keys(overrides)
+        .sort()
+        .map((model) => {
+          const price = overrides[model]!;
+          return [
+            model,
+            price.inputCostPerMillionTokens,
+            price.outputCostPerMillionTokens,
+            price.cacheReadCostPerMillionTokens,
+            price.cacheWriteCostPerMillionTokens,
+          ];
+        }),
+    );
+  }),
+);
+
 const updateSettings = createLocalCommand({
   label: "environment-data:server:update-settings",
   execute: async (target: {
@@ -95,6 +118,7 @@ export const serverEnvironment = {
     label: "environment-data:server:usage-summary",
     tag: WS_METHODS.serverGetUsageSummary,
     staleTimeMs: 60_000,
+    refreshTrigger: ({ environmentId }) => usagePricesFamily(environmentId),
   }),
   refreshUsageRates: rpcCommand("environment-data:server:refresh-usage-rates", WS_METHODS.serverRefreshUsageRates),
   // Unharnessed's providers come with the session; what a refresh reads again is their usage limits.
@@ -104,6 +128,12 @@ export const serverEnvironment = {
       if (target.input.modelCatalogOnly !== true) await refreshUsageLimits();
       return { providers: serverProvidersOf(useStore.getState()) };
     },
+  }),
+  // T3 Code's provider.consumeResetCredit: kuru code's main process redeems it with the agent's login.
+  consumeResetCredit: createLocalCommand({
+    label: "environment-data:server:consume-reset-credit",
+    execute: (target: { readonly environmentId: EnvironmentId; readonly input: ProviderConsumeResetCreditInput }) =>
+      consumeResetCredit(target.input),
   }),
   upsertKeybinding: createLocalCommand({
     label: "environment-data:server:upsert-keybinding",

@@ -520,6 +520,8 @@ export function createRpc(options: {
   pullRequests: ReturnType<typeof createPullRequests>;
   /** The local files a thread shows, served under minted URLs. */
   assets: ReturnType<typeof createAssets>;
+  /** T3 Code's server settings, which hold the usage price overrides. */
+  serverSettings: () => Record<string, unknown> | null;
 }) {
   const { pullRequests } = options;
   const { git: gitService, log, writeMessage } = options;
@@ -542,7 +544,7 @@ export function createRpc(options: {
   };
 
   const unary: Record<string, Unary> = {
-    "server.getUsageSummary": (input) => usageSummary(input, hostname()),
+    "server.getUsageSummary": (input) => usageSummary(input, hostname(), options.serverSettings()?.usagePriceOverrides),
     "server.refreshUsageRates": async () => usagePricing(),
     "filesystem.browse": browse,
     "projects.searchEntries": (input) => searchEntries(log, input),

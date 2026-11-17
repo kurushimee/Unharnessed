@@ -6,10 +6,15 @@ import {
   resolveProjectProviderInstanceEnabled,
   type UsageLimitsReport,
   type ProviderInstanceId,
+  type ProviderConsumeResetCreditInput,
+  type ServerProviderSlashCommand,
   isProviderAvailable,
+  PROVIDER_DISPLAY_NAMES,
   type ServerProvider,
+  type ServerProviderResetCredits,
   type ServerProviderUsageLimits,
   type ServerProviderUsageWindow,
+  type UsageLimitSourceSnapshots,
 } from "~/contracts";
 
 import * as DateTime from "effect/DateTime";
@@ -106,6 +111,10 @@ export const CHATGPT_WORKSPACE_USAGE_LIMIT_CODE =
 export const CHATGPT_WORKSPACE_ADMIN_REQUEST =
   "I've reached the limit for using my ChatGPT plan in T3 Code. Could you increase our workspace's usage limits so I can continue?\n\nGo to admin.openai.com → Workspace → Usage limits. Thank you!";
 
+export function usesChatGptSharing(provider: ServerProvider | null | undefined): boolean {
+  return provider?.auth.status === "authenticated" && provider.auth.subscriptionSharing === true;
+}
+
 export const CURSOR_USAGE_WINDOWS = [
   {
     id: "totalPercentUsed",
@@ -149,6 +158,7 @@ export type LimitPresentations = ReadonlyMap<
     readonly entry: { readonly target: { readonly label: string } };
     readonly serverConfig: {
       readonly providers: readonly ServerProvider[];
+      readonly usageLimitSources?: UsageLimitSourceSnapshots | undefined;
     } | null;
   }
 >;
@@ -224,6 +234,8 @@ function accountKeyResolver(reports: Iterable<AccountReport>) {
   };
 }
 
+const hubAccountName = (account: { readonly id: string }) => account.id.replace(/\.json$/i, "");
+
 export interface LimitAccount {
   readonly key: string;
   readonly driver: ServerProvider["driver"];
@@ -236,13 +248,36 @@ export interface LimitAccount {
     readonly label: string;
   }>;
   readonly sourceLabel: string | null;
+  readonly redeem: {
+    readonly environmentId: EnvironmentId;
+    readonly input: ProviderConsumeResetCreditInput;
+  } | null;
   readonly limits: ServerProviderUsageLimits;
 }
 
 export function collectLimitAccounts(presentations: LimitPresentations): readonly LimitAccount[] {
   const accounts = new Map<string, LimitAccount>();
+  const creditSources = new Map<string, LimitAccount>();
+  const hubRedeems = new Map<string, LimitAccount>();
   const planSources = new Map<string, LimitAccount>();
   const merge = (key: string, next: LimitAccount) => {
+    // Prefer hub redemption to clear its routing cooldown too; displayed balance still follows the freshest read.
+    const previousHub = hubRedeems.get(key);
+    if (
+      next.redeem &&
+      "sourceId" in next.redeem.input &&
+      (!previousHub || Date.parse(next.limits.checkedAt) > Date.parse(previousHub.limits.checkedAt))
+    ) {
+      hubRedeems.set(key, next);
+    }
+    const previousCredit = creditSources.get(key);
+    if (
+      next.limits.resetCredits &&
+      (!previousCredit ||
+        Date.parse(next.limits.checkedAt) > Date.parse(previousCredit.limits.checkedAt))
+    ) {
+      creditSources.set(key, next);
+    }
     const previousPlan = planSources.get(key);
     if (
       next.plan &&
@@ -265,22 +300,41 @@ export function collectLimitAccounts(presentations: LimitPresentations): readonl
       ),
     ];
     const winner = fresher ? next : previous;
+    const creditSource = creditSources.get(key);
+    // A hub e-mail names the account better than the driver's default instance name.
+    const hubEmail = [previous, next].some(
+      (account) => account.environments.length === 0 && account.email,
+    );
+    const displayName = previous.displayName ?? next.displayName;
     accounts.set(key, {
       ...previous,
-      displayName: previous.displayName ?? next.displayName,
+      displayName:
+        hubEmail &&
+        displayName?.toLowerCase() === PROVIDER_DISPLAY_NAMES[previous.driver]?.toLowerCase()
+          ? null
+          : displayName,
       plan: planSources.get(key)?.plan ?? previous.plan ?? next.plan,
       accentColor: previous.accentColor ?? next.accentColor,
       environments,
       sourceLabel: environments.length > 0 ? null : (previous.sourceLabel ?? next.sourceLabel),
-      limits: winner.limits,
+      redeem:
+        hubRedeems.get(key)?.redeem ??
+        (creditSource ? creditSource.redeem : (winner.redeem ?? previous.redeem ?? next.redeem)),
+      limits: {
+        ...winner.limits,
+        ...(creditSource?.limits.resetCredits
+          ? { resetCredits: creditSource.limits.resetCredits }
+          : { resetCredits: undefined }),
+      },
     });
   };
   const resolveKey = accountKeyResolver(
-    [...presentations.values()].flatMap((presentation) =>
-      (presentation.serverConfig?.providers ?? [])
+    [...presentations.values()].flatMap((presentation) => [
+      ...(presentation.serverConfig?.providers ?? [])
         .filter((provider) => provider.enabled)
         .map(nativeReport),
-    ),
+      ...(presentation.serverConfig?.usageLimitSources ?? []).flatMap((source) => source.accounts),
+    ]),
   );
   for (const [environmentId, presentation] of presentations) {
     const label = presentation.entry.target.label;
@@ -295,8 +349,42 @@ export function collectLimitAccounts(presentations: LimitPresentations): readonl
         accentColor: provider.accentColor,
         environments: [{ environmentId, label }],
         sourceLabel: null,
+        redeem: { environmentId, input: { instanceId: provider.instanceId } },
         limits: provider.usageLimits,
       });
+    }
+  }
+  const labelEnvironment = presentations.size > 1;
+  for (const [environmentId, presentation] of presentations) {
+    for (const source of presentation.serverConfig?.usageLimitSources ?? []) {
+      const sourceLabel = labelEnvironment
+        ? `${presentation.entry.target.label} · ${source.label}`
+        : source.label;
+      for (const account of source.accounts) {
+        if (limitsNotice(account.usageLimits) !== null) continue;
+        const key = `${source.id}:${account.id}${account.workspaceId ? `:${account.workspaceId}` : ""}`;
+        merge(resolveKey(account) ?? key, {
+          key,
+          driver: account.driver,
+          displayName: account.email ? null : hubAccountName(account),
+          email: account.email,
+          plan: account.plan,
+          accentColor: undefined,
+          environments: [],
+          sourceLabel,
+          redeem: account.usageLimits.resetCredits?.nextCreditId
+            ? {
+                environmentId,
+                input: {
+                  sourceId: source.id,
+                  accountId: account.id,
+                  creditId: account.usageLimits.resetCredits.nextCreditId,
+                },
+              }
+            : null,
+          limits: account.usageLimits,
+        });
+      }
     }
   }
   return [...accounts.values()];
@@ -313,6 +401,13 @@ export function collectLimitNotices(presentations: LimitPresentations): readonly
       const notice = provider.usageLimits ? limitsNotice(provider.usageLimits) : null;
       const name = provider.displayName?.trim() || String(provider.driver);
       if (notice) notices.push(`${label(environmentLabel, name)}: ${notice}`);
+    }
+    for (const source of presentation.serverConfig?.usageLimitSources ?? []) {
+      if (source.error) {
+        notices.push(`${label(environmentLabel, source.label)}: ${source.error}`);
+      } else if (source.accounts.length === 0) {
+        notices.push(`${label(environmentLabel, source.label)}: No accounts reported.`);
+      }
     }
   }
   return notices;
@@ -582,6 +677,55 @@ export function formatDuration(ms: number): string {
 }
 
 /** One redeemable reset as clients offer it; `input` already names the chosen credit. */
+export interface ResetCreditChoice {
+  readonly key: string;
+  readonly summary: string;
+  readonly actionLabel: string;
+  readonly confirmDescription: string;
+  readonly availableCount: number;
+  readonly input: ProviderConsumeResetCreditInput;
+}
+
+export function resetCreditChoices(
+  credits: ServerProviderResetCredits,
+  input: ProviderConsumeResetCreditInput,
+  now: number,
+  compact = false,
+): ReadonlyArray<ResetCreditChoice> {
+  const expiresIn = (at: string | undefined) => (at ? formatDuration(Date.parse(at) - now) : null);
+  if (credits.options && "instanceId" in input) {
+    return credits.options.map((option) => {
+      const expires = expiresIn(option.expiresAt);
+      return {
+        key: option.creditId,
+        summary: `${option.label} · ${option.availableCount} left${expires ? ` · expires in ${expires}` : ""}`,
+        actionLabel: "Use",
+        confirmDescription: `${option.label}: ${option.description} This cannot be undone.`,
+        availableCount: option.availableCount,
+        input: { ...input, creditId: option.creditId },
+      };
+    });
+  }
+  const count = credits.availableCount;
+  const expires = expiresIn(credits.nextExpiresAt);
+  return [
+    {
+      key: "next",
+      summary:
+        count === 0
+          ? "No reset credits banked"
+          : compact
+            ? `${count} banked${expires ? ` · expires in ${expires}` : ""}`
+            : `${count} ${count === 1 ? "reset credit" : "reset credits"} banked${expires ? ` · next expires in ${expires}` : ""}`,
+      actionLabel: "Use reset",
+      confirmDescription:
+        "This redeems one credit on your account and clears the current rate-limit windows. It cannot be undone.",
+      availableCount: count,
+      input,
+    },
+  ];
+}
+
 export function formatResetsIn(window: ServerProviderUsageWindow, now: number): string | null {
   const resetsAt = resetMillis(window);
   if (resetsAt === null) return null;
@@ -590,49 +734,204 @@ export function formatResetsIn(window: ServerProviderUsageWindow, now: number): 
   return `resets in ${formatDuration(resetsAt - now)}`;
 }
 
+export const USAGE_LIMITS_COMMAND = {
+  name: "usage-limits",
+  description: "Show this provider's usage limits",
+} satisfies ServerProviderSlashCommand;
+
+export function isUsageLimitsCommand(prompt: string): boolean {
+  return prompt.trim().toLowerCase() === "/usage-limits";
+}
+
 export function hasProviderUsageLimits(
   driver: ServerProvider["driver"],
   providers: readonly ServerProvider[],
+  sources: UsageLimitSourceSnapshots,
 ): boolean {
-  return providersWithLimits(providers).some((provider) => provider.driver === driver);
+  return (
+    providersWithLimits(providers).some((provider) => provider.driver === driver) ||
+    sources.some(
+      (source) =>
+        source.accounts.some((account) => account.driver === driver) ||
+        (source.error !== undefined && source.accounts.length === 0),
+    )
+  );
+}
+
+export function sameUsageLimitCommandCoverage(
+  previous: UsageLimitSourceSnapshots,
+  next: UsageLimitSourceSnapshots,
+): boolean {
+  const coverage = (sources: UsageLimitSourceSnapshots) =>
+    new Set(
+      sources.flatMap((source) =>
+        source.error !== undefined && source.accounts.length === 0
+          ? ["*"]
+          : source.accounts.map((account) => String(account.driver)),
+      ),
+    );
+  const before = coverage(previous);
+  const after = coverage(next);
+  return before.size === after.size && [...before].every((driver) => after.has(driver));
+}
+
+/** Advertise on workspace catalogs too, which replace the global command list. */
+export function withUsageLimitsCommands(
+  providers: readonly ServerProvider[],
+  sources: UsageLimitSourceSnapshots,
+): ServerProvider[] {
+  const supportedDrivers = new Set([
+    ...providersWithLimits(providers).map((provider) => provider.driver),
+    ...sources.flatMap((source) => source.accounts.map((account) => account.driver)),
+  ]);
+  const unreadableSource = sources.some(
+    (source) => source.error !== undefined && source.accounts.length === 0,
+  );
+  return providers.map((provider) => {
+    if (!unreadableSource && !supportedDrivers.has(provider.driver)) return provider;
+    const commands = (items: readonly ServerProviderSlashCommand[]) => [
+      ...items.filter((command) => command.name !== USAGE_LIMITS_COMMAND.name),
+      USAGE_LIMITS_COMMAND,
+    ];
+    return {
+      ...provider,
+      slashCommands: commands(provider.slashCommands),
+      ...(provider.workspaceSnapshots
+        ? {
+            workspaceSnapshots: provider.workspaceSnapshots.map((snapshot) => ({
+              ...snapshot,
+              slashCommands: commands(snapshot.slashCommands),
+            })),
+          }
+        : {}),
+    };
+  });
 }
 
 export function collectProviderUsageLimits(
   instanceId: ProviderInstanceId,
   providers: readonly ServerProvider[],
+  sources: UsageLimitSourceSnapshots,
   now: number,
 ): UsageLimitsReport | null {
   const selected = providers.find((provider) => provider.instanceId === instanceId);
-  if (!selected || !hasProviderUsageLimits(selected.driver, providers)) return null;
-  const resolveKey = accountKeyResolver(
-    providers.filter((provider) => provider.enabled).map(nativeReport),
-  );
+  if (!selected || !hasProviderUsageLimits(selected.driver, providers, sources)) return null;
+  const resolveKey = accountKeyResolver([
+    ...providers.filter((provider) => provider.enabled).map(nativeReport),
+    ...sources.flatMap((source) => source.accounts),
+  ]);
   type NativeSnapshot = { provider: ServerProvider; limits: ServerProviderUsageLimits };
-  const nativeByAccount = new Map<string, NativeSnapshot>();
+  const nativeByAccount = new Map<
+    string,
+    { usage: NativeSnapshot; credits: NativeSnapshot | null }
+  >();
   for (const provider of providersWithLimits(providers)) {
     if (provider.driver !== selected.driver || !provider.usageLimits) continue;
     const snapshot = { provider, limits: provider.usageLimits };
     const key = resolveKey(nativeReport(provider)) ?? `instance:${provider.instanceId}`;
     const previous = nativeByAccount.get(key);
-    const previousUsable = previous ? limitsNotice(previous.limits) === null : false;
+    const previousUsable = previous ? limitsNotice(previous.usage.limits) === null : false;
     const usable = limitsNotice(snapshot.limits) === null;
     const providerWins =
       !previous ||
       (usable && !previousUsable) ||
       (usable === previousUsable &&
-        Date.parse(snapshot.limits.checkedAt) > Date.parse(previous.limits.checkedAt));
-    if (providerWins) nativeByAccount.set(key, snapshot);
+        Date.parse(snapshot.limits.checkedAt) > Date.parse(previous.usage.limits.checkedAt));
+    const previousCredit = previous?.credits;
+    const credits =
+      snapshot.limits.resetCredits &&
+      (!previousCredit ||
+        Date.parse(snapshot.limits.checkedAt) > Date.parse(previousCredit.limits.checkedAt))
+        ? snapshot
+        : (previousCredit ?? null);
+    nativeByAccount.set(key, {
+      usage: providerWins ? snapshot : previous.usage,
+      credits,
+    });
   }
-  const accounts = [...nativeByAccount.values()].map(({ provider, limits }) => ({
-    id: provider.instanceId,
-    driver: provider.driver,
-    label: `${provider.displayName?.trim() || String(provider.driver)} [${provider.instanceId}]`,
-    ...(provider.auth.label ? { plan: provider.auth.label } : {}),
-    instanceId: provider.instanceId,
-    ...(provider.displayName ? { displayName: provider.displayName } : {}),
-    ...(provider.accentColor ? { accentColor: provider.accentColor } : {}),
-    ...(provider.auth.email ? { email: provider.auth.email } : {}),
-    limits,
-  }));
-  return { createdAt: DateTime.formatIso(DateTime.makeUnsafe(now)), accounts, notices: [] };
+  const native = [...nativeByAccount.values()];
+  const nativeAccountKeys = new Set(
+    native.flatMap(({ usage: { provider, limits } }) => {
+      const key = resolveKey(nativeReport(provider));
+      return key && limits.windows.length && !limits.unavailable ? [key] : [];
+    }),
+  );
+  const accounts: Array<UsageLimitsReport["accounts"][number]> = [];
+  const notices: string[] = [];
+  for (const {
+    usage: { provider, limits },
+    credits,
+  } of native) {
+    const key = resolveKey(nativeReport(provider));
+    const hubCredits = sources
+      .flatMap((source) => source.accounts.map((account) => ({ source, account })))
+      .filter(
+        ({ account }) =>
+          key !== null &&
+          resolveKey(account) === key &&
+          account.usageLimits.resetCredits &&
+          !limitsNotice(account.usageLimits),
+      )
+      .sort(
+        (a, b) =>
+          Date.parse(b.account.usageLimits.checkedAt) - Date.parse(a.account.usageLimits.checkedAt),
+      )[0];
+    const hubCreditId = hubCredits?.account.usageLimits.resetCredits?.nextCreditId;
+    const showHubCredits =
+      hubCredits &&
+      (!credits ||
+        Date.parse(hubCredits.account.usageLimits.checkedAt) >
+          Date.parse(credits.limits.checkedAt));
+    const shownCredits = showHubCredits
+      ? hubCredits.account.usageLimits.resetCredits
+      : credits?.limits.resetCredits;
+    accounts.push({
+      id: provider.instanceId,
+      driver: provider.driver,
+      label: `${provider.displayName?.trim() || String(provider.driver)} [${provider.instanceId}]`,
+      ...(provider.auth.label ? { plan: provider.auth.label } : {}),
+      instanceId: provider.instanceId,
+      resetCreditInput:
+        hubCreditId && hubCredits
+          ? {
+              sourceId: hubCredits.source.id,
+              accountId: hubCredits.account.id,
+              creditId: hubCreditId,
+            }
+          : { instanceId: credits?.provider.instanceId ?? provider.instanceId },
+      ...(provider.displayName ? { displayName: provider.displayName } : {}),
+      ...(provider.accentColor ? { accentColor: provider.accentColor } : {}),
+      ...(provider.auth.email ? { email: provider.auth.email } : {}),
+      limits: shownCredits ? { ...limits, resetCredits: shownCredits } : limits,
+    });
+  }
+  for (const source of sources) {
+    const matching = source.accounts.filter((account) => account.driver === selected.driver);
+    for (const account of matching) {
+      const key = resolveKey(account);
+      if (key && nativeAccountKeys.has(key)) continue;
+      accounts.push({
+        id: `${source.id}:${account.id}`,
+        driver: account.driver,
+        label: `${source.label} · ${hubAccountName(account)}`,
+        sourceLabel: "CLI Proxy",
+        ...(account.usageLimits.resetCredits?.nextCreditId
+          ? {
+              resetCreditInput: {
+                sourceId: source.id,
+                accountId: account.id,
+                creditId: account.usageLimits.resetCredits.nextCreditId,
+              },
+            }
+          : {}),
+        ...(account.plan ? { plan: account.plan } : {}),
+        ...(account.email ? { email: account.email } : {}),
+        limits: account.usageLimits,
+      });
+    }
+    if (source.error && (matching.length > 0 || source.accounts.length === 0)) {
+      notices.push(`${source.label}: ${source.error}`);
+    }
+  }
+  return { createdAt: DateTime.formatIso(DateTime.makeUnsafe(now)), accounts, notices };
 }
