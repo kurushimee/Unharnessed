@@ -139,6 +139,10 @@ fn owner_alive(owner: &LeaseOwner) -> bool {
         None => true,
         Some(expected) => match get_process_start_id(owner.pid) {
             Some(current) => current == expected,
+            // Windows: an owner runs as this user, so its creation time is
+            // always readable; a pid this user cannot query is another
+            // process now (the pid was reused, by a service for one).
+            None if cfg!(windows) && expected.starts_with("win:") => false,
             // Unobservable identity counts as alive, like the TS lease.
             None => true,
         },

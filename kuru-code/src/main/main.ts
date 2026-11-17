@@ -30,7 +30,8 @@ delete process.env.ELECTRON_RUN_AS_NODE;
 
 const APP_NAME = "kuru code";
 app.setName(APP_NAME);
-app.setAppUserModelId("dev.kuru.code");
+// A development run (Electron's own exe and icon) groups apart from the installed app on the taskbar.
+app.setAppUserModelId(app.isPackaged ? "dev.kuru.code" : "dev.kuru.code.dev");
 if (process.env.KURU_USER_DATA) app.setPath("userData", process.env.KURU_USER_DATA);
 
 const TITLEBAR_HEIGHT = 40;

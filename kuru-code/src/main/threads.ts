@@ -394,15 +394,17 @@ export class Threads {
     if (conversation && conversation === this.shownOne) this.begin(undefined, this.cwdOf(conversation), NO_DRAFT);
     if (conversation) await this.close(conversation, "deleted");
     try {
-      // The new thread that took its place may still be starting its agent.
-      await this.ready(this.shown);
-      await this.shownAgent.request(DELETE, { sessionId: id });
+      // Any running agent deletes it; else the one on screen once it started (a new thread
+      // that took its place may still be starting).
+      const running = [this.shownOne, ...this.open].find((open) => open?.agent.current.kind === "ready");
+      const agent = running ? running.agent : await this.ready(this.shown).then(() => this.shown.agent);
+      await agent.request(DELETE, { sessionId: id });
       this.log.info(`threads: ${id} deleted`);
       this.store.forgetThread(id);
       await this.refresh();
       return undefined;
     } catch (error) {
-      const text = error instanceof Error ? error.message : String((error as { message?: unknown })?.message ?? error);
+      const text = errorText(error);
       this.log.warn(`threads: delete of ${id} refused: ${text}`);
       return text;
     }
