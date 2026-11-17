@@ -640,6 +640,17 @@ async function start(): Promise<void> {
       },
     });
     if (saved?.maximized) window.maximize();
+    // The taskbar button's own icon and relaunch target: Windows otherwise may take them from what it
+    // cached for the app id (Electron's atom icon, from runs of Electron's own exe).
+    if (process.platform === "win32" && app.isPackaged) {
+      window.setAppDetails({
+        appId: "dev.kuru.code",
+        appIconPath: process.execPath,
+        appIconIndex: 0,
+        relaunchCommand: `"${process.execPath}"`,
+        relaunchDisplayName: APP_NAME,
+      });
+    }
     window.once("ready-to-show", () => window?.show());
     window.webContents.setWindowOpenHandler(({ url }) => {
       if (/^https?:\/\//i.test(url)) void shell.openExternal(url);

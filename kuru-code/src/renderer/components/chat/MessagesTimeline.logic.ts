@@ -1504,6 +1504,10 @@ export function deriveMessagesTimelineRows(input: {
       ) {
         break;
       }
+      // Images the agent opened end the work above them: what it does next starts below them.
+      if (activeToolEntries.length > 0 && workEntriesViewedImagePaths([entry.entry]).length > 0) {
+        break;
+      }
       if (tailAttemptId === undefined) {
         tailAttemptId = entry.attempt?.id ?? null;
       } else if ((entry.attempt?.id ?? null) !== tailAttemptId) {
@@ -1831,7 +1835,8 @@ export function deriveMessagesTimelineRows(input: {
           foldsByAnchorEntryId.has(nextEntry.id) ||
           supersededFoldsByAnchorEntryId.has(nextEntry.id) ||
           (nextEntry.entry.runId ?? null) !== (timelineEntry.entry.runId ?? null) ||
-          nextEntry.attempt?.id !== timelineEntry.attempt?.id
+          nextEntry.attempt?.id !== timelineEntry.attempt?.id ||
+          workEntriesViewedImagePaths([groupedEntries.at(-1)!]).length > 0
         ) {
           break;
         }

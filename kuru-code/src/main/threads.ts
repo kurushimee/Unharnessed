@@ -1,3 +1,4 @@
+import { spawn } from "node:child_process";
 import { existsSync, watch, type FSWatcher } from "node:fs";
 import type { LogOutputChannel } from "vscode";
 import { errorText, type SavedSession } from "../../../vscode/src/agent";
@@ -245,8 +246,7 @@ export class Threads {
     this.log.info(`threads: ${id} goes on after its usage limit`);
     const saved = { id, path: summary.path };
     const conversation = this.create(saved, summary.cwd || this.home);
-    conversation.chat.reset(true);
-    conversation.agent.start(saved);
+    this.startOn(conversation, saved);
     this.rearm(conversation, id);
   }
 
@@ -628,17 +628,43 @@ export class Threads {
   /** A new agent, on a new thread or on `saved`, on screen. */
   private begin(saved: SavedSession | undefined, cwd: string, draft: Draft): Conversation {
     const conversation = this.create(saved, cwd);
-    if (saved) conversation.chat.reset(true);
+    if (!saved) {
+      this.show(conversation, draft);
+      conversation.agent.start(undefined);
+      return conversation;
+    }
+    this.startOn(conversation, saved, this.stopping.get(saved.id));
     this.show(conversation, draft);
-    const stopping = saved && this.stopping.get(saved.id);
+    clearTimeout(this.resumeTimers.get(saved.id));
+    this.resumeTimers.delete(saved.id);
+    this.rearm(conversation, saved.id);
+    return conversation;
+  }
+
+  /**
+   * The agent starts on the saved thread `saved` (once `stopping`, the last one on it, exited);
+   * meanwhile the conversation shows from its file, read by the agent binary without an agent on it.
+   */
+  private startOn(conversation: Conversation, saved: SavedSession, stopping?: Promise<void>): void {
+    const { chat, session } = conversation;
+    chat.reset(true);
+    chat.expectDrawing();
+    session.replay = false;
+    const began = Date.now();
+    void readHistory(this.binary, saved.path).then(
+      (frames) => {
+        this.log.info(`threads: [${conversation.tag}] drawn from its file in ${Date.now() - began} ms (${frames.length} updates)`);
+        chat.draw(frames);
+      },
+      (error: unknown) => {
+        this.log.warn(`threads: [${conversation.tag}] not drawn from its file: ${errorText(error)}`);
+        chat.undrawn();
+        // The agent's replay brings it instead.
+        if (this.open.includes(conversation)) void conversation.restart();
+      },
+    );
     if (stopping) void stopping.then(() => conversation.agent.start(saved));
     else conversation.agent.start(saved);
-    if (saved) {
-      clearTimeout(this.resumeTimers.get(saved.id));
-      this.resumeTimers.delete(saved.id);
-      this.rearm(conversation, saved.id);
-    }
-    return conversation;
   }
 
   private create(saved: SavedSession | undefined, cwd: string): Conversation {
@@ -783,4 +809,25 @@ export class Threads {
 function samePullRequestUrl(left: string, right: string | undefined): boolean {
   const key = (url: string) => /^https?:\/\/([^/]+\/[^/]+\/[^/]+\/pull\/\d+)/i.exec(url)?.[1]?.toLowerCase() ?? url.toLowerCase();
   return right !== undefined && key(left) === key(right);
+}
+
+/** The `session/update` frames `session/load` replays for the session file `path`, read by the agent binary on its own. */
+function readHistory(binary: string, path: string): Promise<{ params?: unknown }[]> {
+  return new Promise((resolve, reject) => {
+    const child = spawn(binary, ["--unharnessed-history", path], { stdio: ["ignore", "pipe", "pipe"], windowsHide: true });
+    const chunks: Buffer[] = [];
+    let error = "";
+    child.stdout.on("data", (chunk: Buffer) => chunks.push(chunk));
+    child.stderr.on("data", (chunk: Buffer) => (error += chunk.toString()));
+    child.on("error", reject);
+    child.on("close", (code) => {
+      if (code !== 0) return reject(new Error(error.trim() || `exit code ${code}`));
+      try {
+        const text = Buffer.concat(chunks).toString("utf8");
+        resolve(text.split("\n").filter((line) => line.trim()).map((line) => JSON.parse(line) as { params?: unknown }));
+      } catch (parse) {
+        reject(parse);
+      }
+    });
+  });
 }

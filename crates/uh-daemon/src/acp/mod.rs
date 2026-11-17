@@ -625,6 +625,13 @@ async fn handle_session_new(
     }
 }
 
+/// The `session/update` frames a `session/load` of the session file `file`
+/// replays: the conversation as a client shows it, read without an agent.
+#[must_use]
+pub fn history_frames(file: &Path) -> Vec<Value> {
+    history::frames(file)
+}
+
 /// `session/load`: admit the session this process was started on
 /// (`--resume`) under its own id, replay its conversation, then answer
 /// like `session/new`. The replay goes before the answer (ACP), so the
@@ -648,6 +655,9 @@ async fn handle_session_load(
         state.session_new_in_flight = true;
     }
     let requested = session_id_params(&params);
+    // A client that drew the conversation from its file already
+    // (`history_frames`) asks for no replay: `_meta.unharnessed.replay` false.
+    let replay = params.pointer("/_meta/unharnessed/replay") != Some(&Value::Bool(false));
     let (held, file, leaf) = {
         let session = mode.engine.session.shared_persistence();
         let session = session.lock().await;
@@ -678,7 +688,7 @@ async fn handle_session_load(
         state.session = Some(entry);
     }
     producer.commit_session_new_response().await;
-    let entries = match file {
+    let entries = match file.filter(|_| replay) {
         Some(file) => tokio::task::spawn_blocking(move || {
             uh_core::session::manager::load_entries_from_file(&file, false)
         })

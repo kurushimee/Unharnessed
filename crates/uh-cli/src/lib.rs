@@ -96,6 +96,18 @@ fn main_impl(args: &[String], runtime: &dyn mode::Runtime) -> Result<i32, String
         return run_runtime_bootstrap();
     }
 
+    // A client draws a saved conversation before its agent is up: the
+    // frames `session/load` would replay, one JSON line each.
+    if args.len() == 2 && args[0] == "--unharnessed-history" {
+        use std::io::Write;
+        let mut out = std::io::BufWriter::new(std::io::stdout().lock());
+        for frame in uh_daemon::acp::history_frames(std::path::Path::new(&args[1])) {
+            writeln!(out, "{frame}").map_err(|error| error.to_string())?;
+        }
+        out.flush().map_err(|error| error.to_string())?;
+        return Ok(0);
+    }
+
     // Public command routing: help requests, removed commands, management
     // commands, and the model/session rewrites.
     let public_command = public_command::handle_public_command(args);

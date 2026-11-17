@@ -136,6 +136,10 @@ export class Chat {
   private run = 0;
   /** A saved conversation comes back: the panel gets it once it is whole. */
   private loading = false;
+  /** It comes from its file (`draw`), not from the agent's replay. */
+  private drawing = false;
+  /** It was drawn before the agent was up: the agent's first start is no restart. */
+  private drawnBeforeAgent = false;
   /** The kernel came back while the conversation did: its line goes after it. */
   private restored: boolean | undefined;
   private dirtyHeads = new Set<number>();
@@ -187,7 +191,9 @@ export class Chat {
       }
       // A conversation went on before: the agent no longer remembers it.
       const last = this.entries.at(-1);
-      if (state.kind === "ready" && last && last.kind !== "restart") {
+      const drawn = this.drawnBeforeAgent;
+      if (state.kind === "ready") this.drawnBeforeAgent = false;
+      if (state.kind === "ready" && last && last.kind !== "restart" && !drawn) {
         const divider: ChatEntry = { kind: "restart", id: this.nextId++ };
         this.entries.push(divider);
         this.dirtyHeads.add(divider.id);
@@ -196,7 +202,7 @@ export class Chat {
     });
     session.onChange(() => {
       const state = session.current;
-      if (this.loading && (state?.kind === "open" || state?.kind === "failed")) this.loaded();
+      if (this.loading && !this.drawing && (state?.kind === "open" || state?.kind === "failed")) this.loaded();
       // Messages sent before the session opened go once it is.
       this.next();
     });
@@ -530,8 +536,40 @@ export class Chat {
     this.goal = undefined;
     this.showGoal(null);
     this.loading = loading;
+    this.drawing = this.drawnBeforeAgent = false;
     this.restored = undefined;
     this.post({ type: "chat", chat: this.current });
+  }
+
+  /**
+   * The saved conversation comes from its file instead of the agent's replay
+   * (`session.replay` false): `draw` gives it, or `undrawn` once it cannot.
+   */
+  expectDrawing(): void {
+    this.drawing = true;
+  }
+
+  /**
+   * The saved conversation as `session/load` replays it: its `session/update`
+   * frames (`unharnessed --unharnessed-history <file>`), read from its file
+   * while the agent starts.
+   */
+  draw(frames: { params?: unknown }[]): void {
+    if (!this.drawing) return;
+    for (const frame of frames) this.onUpdate(frame.params, true);
+    this.drawing = false;
+    // The agent's own turns are numbered from its start.
+    this.turns.clear();
+    this.streaming = undefined;
+    this.drawnBeforeAgent = this.agent.current.kind !== "ready";
+    this.loaded();
+  }
+
+  /** The conversation could not be read from its file: it shows empty. */
+  undrawn(): void {
+    if (!this.drawing) return;
+    this.drawing = false;
+    this.loaded();
   }
 
   /** The saved conversation is back (or the agent could not load it). */
@@ -702,9 +740,9 @@ export class Chat {
     if (message) void this.start(message);
   }
 
-  private onUpdate(params: unknown): void {
+  private onUpdate(params: unknown, drawn = false): void {
     const { sessionId, update } = params as { sessionId: string; update: Update };
-    if (sessionId !== this.session.updatesFrom) return;
+    if (!drawn && sessionId !== this.session.updatesFrom) return;
     const meta = update._meta?.unharnessed ?? {};
     if (update.sessionUpdate === "available_commands_update") {
       this.setCommands(update.availableCommands ?? []);

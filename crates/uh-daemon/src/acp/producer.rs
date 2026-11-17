@@ -147,45 +147,58 @@ impl UpdateProducer {
         phase: UnharnessedEventPhase,
         outcome: Option<UnharnessedOutcome>,
     ) -> Value {
-        let mut value = update.to_bare_value();
-        let correlation = {
+        let event_sequence = {
             let mut state = self.state.lock().await;
             state.event_sequence += 1;
-            UnharnessedSessionMeta {
-                prompt_turn_id: Some(turn_id),
-                event_sequence: Some(state.event_sequence),
-                phase: Some(phase),
-                outcome,
-                ..Default::default()
-            }
+            state.event_sequence
         };
-        // Merge with any namespace payload the update already carries
-        // (e.g. ipython rich output): correlation fields are stamped onto
-        // the delivered frame, never dropped.
-        let meta = value
-            .as_object_mut()
-            .expect("session updates are objects")
-            .entry("_meta")
-            .or_insert_with(|| unharnessed_meta(&UnharnessedSessionMeta::default()));
-        let namespace = meta
-            .as_object_mut()
-            .expect("_meta is a namespaced object")
-            .entry(UNHARNESSED_META_NAMESPACE.to_string())
-            .or_insert_with(|| json!({}));
-        let mut payload =
-            serde_json::from_value::<UnharnessedSessionMeta>(namespace.clone()).unwrap_or_default();
-        payload.prompt_turn_id = correlation.prompt_turn_id;
-        payload.event_sequence = correlation.event_sequence;
-        payload.phase = correlation.phase;
-        payload.outcome = correlation.outcome;
-        *namespace = serde_json::to_value(&payload).expect("meta payload serializes");
-        jsonrpc::notification(
-            "session/update",
-            &json!({ "sessionId": self.session_id, "update": value }),
+        correlated_frame(
+            &self.session_id,
+            update,
+            turn_id,
+            event_sequence,
+            phase,
+            outcome,
         )
     }
 
     fn send(&self, frame: Value) {
         let _ = self.sink.send(frame);
     }
+}
+
+/// The `session/update` notification of `update` in turn `turn_id`, with its
+/// correlation fields merged into any namespace payload the update already
+/// carries (e.g. ipython rich output): they are stamped onto the delivered
+/// frame, never dropped.
+pub(super) fn correlated_frame(
+    session_id: &str,
+    update: &AcpSessionUpdate,
+    turn_id: u64,
+    event_sequence: u64,
+    phase: UnharnessedEventPhase,
+    outcome: Option<UnharnessedOutcome>,
+) -> Value {
+    let mut value = update.to_bare_value();
+    let meta = value
+        .as_object_mut()
+        .expect("session updates are objects")
+        .entry("_meta")
+        .or_insert_with(|| unharnessed_meta(&UnharnessedSessionMeta::default()));
+    let namespace = meta
+        .as_object_mut()
+        .expect("_meta is a namespaced object")
+        .entry(UNHARNESSED_META_NAMESPACE.to_string())
+        .or_insert_with(|| json!({}));
+    let mut payload =
+        serde_json::from_value::<UnharnessedSessionMeta>(namespace.clone()).unwrap_or_default();
+    payload.prompt_turn_id = Some(turn_id);
+    payload.event_sequence = Some(event_sequence);
+    payload.phase = Some(phase);
+    payload.outcome = outcome;
+    *namespace = serde_json::to_value(&payload).expect("meta payload serializes");
+    jsonrpc::notification(
+        "session/update",
+        &json!({ "sessionId": session_id, "update": value }),
+    )
 }

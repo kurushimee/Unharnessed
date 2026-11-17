@@ -36,8 +36,8 @@ use uh_types::slash_commands::{
 use super::events::{acp_updates_for_event, AcpEngineEvent, MappingState};
 use super::jsonrpc;
 use super::meta::{
-    unharnessed_meta, UnharnessedCommandMeta, UnharnessedSessionMeta, UnharnessedTurnEndMeta,
-    UnharnessedTurnStartMeta,
+    unharnessed_meta, UnharnessedCommandMeta, UnharnessedEventPhase, UnharnessedSessionMeta,
+    UnharnessedTurnEndMeta, UnharnessedTurnStartMeta,
 };
 use super::producer::FrameSink;
 use super::session::STEER_CUSTOM_TYPE;
@@ -201,6 +201,38 @@ pub(super) fn replay(entries: &[FileEntry], leaf: Option<&str>) -> Vec<Vec<AcpSe
     }
     replay.finish();
     replay.turns
+}
+
+/// The `session/update` frames a `session/load` of the session file `file`
+/// replays, as it sends them: what the conversation shows, read without an
+/// agent on it (the client draws it while its agent starts). The header
+/// gives the session id; the file is only read.
+pub(super) fn frames(file: &Path) -> Vec<Value> {
+    let entries = uh_core::session::manager::load_entries_from_file(file, false);
+    let session_id = entries
+        .iter()
+        .find_map(|entry| match entry {
+            FileEntry::Header { header } => Some(header.id.clone()),
+            _ => None,
+        })
+        .unwrap_or_default();
+    let mut sequence = 0;
+    let mut frames = Vec::new();
+    for (index, turn) in replay(&entries, None).iter().enumerate() {
+        let turn_id = index as u64 + 1;
+        for update in turn {
+            sequence += 1;
+            frames.push(super::producer::correlated_frame(
+                &session_id,
+                update,
+                turn_id,
+                sequence,
+                UnharnessedEventPhase::Event,
+                None,
+            ));
+        }
+    }
+    frames
 }
 
 /// The turns of a conversation as its entries are read.

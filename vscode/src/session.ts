@@ -39,6 +39,11 @@ export class Session {
   private file: SavedSession | undefined;
   /** Bumped per agent process, so a late answer never lands on the next one. */
   private run = 0;
+  /**
+   * The next load replays the conversation: false when the chat drew it from
+   * its file already (`Chat.draw`). One load each.
+   */
+  replay = true;
   private readonly listeners = new Set<() => void>();
 
   constructor(
@@ -111,6 +116,8 @@ export class Session {
     const run = this.run;
     const saved = this.agent.resumed;
     const params = { cwd: this.cwd, mcpServers: [] };
+    const replay = this.replay;
+    this.replay = true;
     try {
       let result: {
         sessionId?: string;
@@ -120,7 +127,8 @@ export class Session {
       if (saved) {
         // Its updates (the conversation) come before the answer.
         this.id = saved.id;
-        result = await this.agent.request("session/load", { ...params, sessionId: saved.id });
+        const meta = replay ? {} : { _meta: { unharnessed: { replay: false } } };
+        result = await this.agent.request("session/load", { ...params, sessionId: saved.id, ...meta });
       } else {
         result = await this.agent.request("session/new", params);
       }
